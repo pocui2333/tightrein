@@ -1,0 +1,74 @@
+{
+  "stage": "fix",
+  "items": [
+    {
+      "id": "fix.repro-after-fix",
+      "text": "复现检查修复前失败、修复后通过(接口与页面类由 PR 阶段的本机检查或部署后确认给出)",
+      "method": "code",
+      "scorer": "values-in",
+      "params": {"path": "reproCheck[*].afterFix", "allowed": ["passed", "not-run"]}
+    },
+    {
+      "id": "fix.project-checks",
+      "text": "项目检查(构建、受影响的测试、i18n)全部通过",
+      "method": "code",
+      "scorer": "values-in",
+      "params": {"path": "checks[*].exitCode", "allowed": [0]}
+    },
+    {
+      "id": "fix.other-regressions",
+      "text": "与本次改动相关的其他 Issue 的复现检查全部保持通过；这些检查不向修复 agent 展示",
+      "method": "code",
+      "scorer": "values-in",
+      "appliesWhen": {"path": "otherRegressions[*]", "op": "exists"},
+      "params": {"path": "otherRegressions[*].result", "allowed": ["passed", "not-run"]}
+    },
+    {
+      "id": "fix.diff-size",
+      "text": "改动量在上限内",
+      "method": "code",
+      "scorer": "diff-size"
+    },
+    {
+      "id": "fix.in-plan",
+      "text": "改动文件都在计划中，没有计划外的临时文件",
+      "method": "code",
+      "scorer": "diff-in-plan",
+      "params": {"path": "planFiles[*]"}
+    },
+    {
+      "id": "fix.no-protected",
+      "text": "没有触及未确认的受保护文件",
+      "method": "code",
+      "scorer": "diff-protected"
+    },
+    {
+      "id": "fix.no-test-tampering",
+      "text": "没有修改测试与复现检查，没有新增跳过测试的标记",
+      "method": "code",
+      "scorer": "diff-tests"
+    },
+    {
+      "id": "fix.no-residue",
+      "text": "没有调试残留与注释掉的废弃代码",
+      "method": "code",
+      "scorer": "diff-residue"
+    },
+    {
+      "id": "fix.no-special-case",
+      "text": "没有针对复现输入写死的分支，没有为迁就测试而特判",
+      "method": "judge"
+    },
+    {
+      "id": "fix.acceptance",
+      "text": "改动满足 Issue 的验收标准，根因被修掉，没有破坏已有调用方",
+      "method": "judge"
+    },
+    {
+      "id": "fix.deep-review",
+      "text": "高风险修复：命中类别的检查项全部满足(权限与归属校验在所有入口生效；数据结构变更可撤销、存量数据能被正确处理；契约变更的调用方与前后端字段一并改完)",
+      "method": "judge",
+      "appliesWhen": {"path": "risk.apply.level", "op": "equals", "value": "high"}
+    }
+  ]
+}

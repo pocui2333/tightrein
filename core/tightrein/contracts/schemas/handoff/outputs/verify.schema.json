@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/handoff/outputs/verify.schema.json",
+  "title": "verify 交接文档的 outputs",
+  "type": "object",
+  "required": ["issueId", "phase", "target", "commit", "baseCommit", "items", "conclusion", "unverified"],
+  "additionalProperties": false,
+  "properties": {
+    "issueId": {"$ref": "../../common.schema.json#/$defs/issueId"},
+    "phase": {"$ref": "../../common.schema.json#/$defs/VerifyPhase"},
+    "target": {
+      "type": "object",
+      "required": ["url", "mode"],
+      "additionalProperties": false,
+      "properties": {"url": {"type": "string", "minLength": 1}, "mode": {"enum": ["api", "page", "staging", "worktree"]}}
+    },
+    "commit": {"$ref": "../../common.schema.json#/$defs/commit"},
+    "baseCommit": {"$ref": "../../common.schema.json#/$defs/commit"},
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "category", "command", "result", "evidence", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "category": {
+            "enum": [
+              "project-check",
+              "issue-repro",
+              "other-repro",
+              "api-shallow",
+              "page-patrol",
+              "screenshot",
+              "deferred",
+              "full-regression",
+              "deploy-confirm"
+            ],
+            "description": "project-check、deferred、full-regression 只出现在旧的交接文档中"
+          },
+          "command": {"type": ["string", "null"]},
+          "result": {"$ref": "../../common.schema.json#/$defs/CheckResult"},
+          "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "reason": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "conclusion": {"enum": ["passed", "failed", "awaiting-user"]},
+    "unverified": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/unverifiedItem"}},
+    "deferredToStaging": {"description": "只出现在旧的交接文档中", "type": "array", "items": {"type": "string", "minLength": 1}},
+    "skipped": {"description": "PR 阶段按条件跳过的检查与原因", "type": "array", "items": {"type": "string", "minLength": 1}},
+    "confirmations": {
+      "description": "部署后确认：每个对象的来源、确认方式(replay 对目标环境重放、rerun 对部署 commit 重跑、observe 观察期)与结论",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["object", "source", "method", "result", "detail"],
+        "additionalProperties": false,
+        "properties": {
+          "object": {"type": "string", "minLength": 1},
+          "source": {"type": "string", "minLength": 1},
+          "method": {"enum": ["replay", "rerun", "observe"]},
+          "result": {"$ref": "../../common.schema.json#/$defs/CheckResult"},
+          "detail": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "revert": {
+      "description": "部署后确认发现回归时提的撤销 PR(待确认操作)",
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["operationId", "message"],
+          "additionalProperties": false,
+          "properties": {
+            "operationId": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/operationId"}, {"type": "null"}]},
+            "message": {"type": "string"}
+          }
+        },
+        {"type": "null"}
+      ]
+    },
+    "migration": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["changed", "entries", "operationId"],
+          "additionalProperties": false,
+          "properties": {
+            "changed": {"type": "boolean"},
+            "entries": {"type": "array", "items": {"type": "string", "minLength": 1}},
+            "operationId": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/operationId"}, {"type": "null"}]}
+          }
+        },
+        {"type": "null"}
+      ]
+    },
+    "consecutiveFailures": {"type": "integer", "minimum": 0}
+  }
+}

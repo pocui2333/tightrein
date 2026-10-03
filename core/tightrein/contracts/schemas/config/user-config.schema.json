@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/config/user-config.schema.json",
+  "title": "本机用户配置 ~/.config/tightrein/config.yaml(architecture/01 5.3)：只允许个人键与 agent 工具、网络代理的个人设置",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "branchPrefix": {
+      "$ref": "#/$defs/text"
+    },
+    "defaultWorkspace": {
+      "$ref": "#/$defs/text"
+    },
+    "notify": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "method": {
+          "enum": [
+            "macos",
+            "none"
+          ]
+        }
+      }
+    },
+    "tools": {
+      "description": "各工具的可执行文件路径；tools.semgrep.path 覆盖 runtime.tools.semgrep，含 / 的相对路径相对本工具仓库根目录，例如 local/semgrep/bin/semgrep(本机依赖放在 local/)",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "$ref": "#/$defs/text"
+          }
+        }
+      }
+    },
+    "install": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "targets": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "$ref": "#/$defs/text"
+              },
+              "enabled": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    "agents": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "defaultTool": {
+          "$ref": "project-config.schema.json#/properties/defaultTool"
+        },
+        "stages": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "../common.schema.json#/$defs/Stage"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/agentStage"
+          }
+        },
+        "capabilities": {
+          "$ref": "project-config.schema.json#/properties/capabilities"
+        },
+        "roleCapabilities": {
+          "$ref": "project-config.schema.json#/properties/roleCapabilities"
+        }
+      }
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "proxy": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9+.-]*://\\S+$"
+        },
+        "noProxy": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "text": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "agentChoice": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "capability": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "agentStage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "capability": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "refuter": {
+          "$ref": "#/$defs/agentChoice"
+        },
+        "session": {
+          "$ref": "project-config.schema.json#/$defs/stage/properties/session"
+        },
+        "screenshotReview": {
+          "$ref": "#/$defs/agentChoice"
+        },
+        "review": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "light": {
+              "$ref": "#/$defs/agentChoice"
+            },
+            "deep": {
+              "$ref": "#/$defs/agentChoice"
+            }
+          }
+        },
+        "roles": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/agentChoice"
+          }
+        },
+        "tasks": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/agentChoice"
+          }
+        }
+      }
+    }
+  }
+}

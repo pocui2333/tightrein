@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/extension/points/deploy-source.input.schema.json",
+  "title": "deploy-source 的 input：要看的分支",
+  "type": "object",
+  "required": ["branch"],
+  "additionalProperties": false,
+  "properties": {
+    "branch": {"type": "string", "minLength": 1, "description": "部署所跟随的分支，缺省为 project.mainBranch"}
+  }
+}

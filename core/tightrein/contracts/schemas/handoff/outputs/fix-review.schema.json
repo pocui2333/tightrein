@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/handoff/outputs/fix-review.schema.json",
+  "title": "fix-reviewer 的评审结论",
+  "type": "object",
+  "required": ["mode", "items", "blockers", "unverified"],
+  "additionalProperties": false,
+  "properties": {
+    "analysis": {"type": "string", "minLength": 1},
+    "mode": {"$ref": "../../common.schema.json#/$defs/ReviewMode"},
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["itemId", "result", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "itemId": {"type": "string", "minLength": 1},
+          "result": {"$ref": "../../common.schema.json#/$defs/judgedResult"},
+          "reason": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "location", "trigger", "problem", "category", "rootCause"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {"type": "string", "minLength": 1},
+          "location": {"type": ["string", "null"]},
+          "trigger": {"type": ["string", "null"]},
+          "problem": {"type": "string", "minLength": 1},
+          "category": {"$ref": "../../common.schema.json#/$defs/ReviewCategory"},
+          "rootCause": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "screenshots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "result", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "result": {"enum": ["ok", "issue", "unknown"]},
+          "reason": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "unverified": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/unverifiedItem"}}
+  },
+  "if": {"properties": {"mode": {"const": "screenshot"}}},
+  "then": {"required": ["screenshots"]}
+}

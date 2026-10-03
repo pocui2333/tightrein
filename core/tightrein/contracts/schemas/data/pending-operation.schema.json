@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/data/pending-operation.schema.json",
+  "title": "待确认操作",
+  "type": "object",
+  "required": [
+    "id",
+    "stage",
+    "subjectId",
+    "kind",
+    "executor",
+    "commands",
+    "description",
+    "impact",
+    "reversible",
+    "preconditions",
+    "idempotencyKey",
+    "confirmationsRequired",
+    "confirmationsGiven",
+    "status",
+    "createdAt",
+    "decidedAt",
+    "executedAt",
+    "result"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {"$ref": "../common.schema.json#/$defs/operationId"},
+    "stage": {"$ref": "../common.schema.json#/$defs/Stage"},
+    "subjectId": {"type": "string", "minLength": 1},
+    "kind": {"$ref": "../common.schema.json#/$defs/OperationKind"},
+    "executor": {"$ref": "../common.schema.json#/$defs/OperationExecutor"},
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["argv", "cwd", "description"],
+        "additionalProperties": false,
+        "properties": {
+          "argv": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
+          "cwd": {"type": "string", "minLength": 1},
+          "description": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "description": {
+      "type": "object",
+      "required": ["repo", "branch", "files", "affectsRemote", "undo", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "repo": {"type": "string", "minLength": 1},
+        "branch": {"type": ["string", "null"]},
+        "files": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "affectsRemote": {"type": "boolean"},
+        "undo": {"type": "string", "minLength": 1},
+        "text": {"type": "string", "minLength": 1}
+      }
+    },
+    "impact": {"type": "string", "minLength": 1},
+    "reversible": {"type": "boolean"},
+    "preconditions": {"type": "object"},
+    "idempotencyKey": {"type": "string", "minLength": 1},
+    "confirmationsRequired": {"enum": [1, 2]},
+    "confirmationsGiven": {"type": "integer", "minimum": 0, "maximum": 2},
+    "status": {"$ref": "../common.schema.json#/$defs/OperationStatus"},
+    "createdAt": {"$ref": "../common.schema.json#/$defs/timestamp"},
+    "decidedAt": {"anyOf": [{"$ref": "../common.schema.json#/$defs/timestamp"}, {"type": "null"}]},
+    "executedAt": {"anyOf": [{"$ref": "../common.schema.json#/$defs/timestamp"}, {"type": "null"}]},
+    "result": {"type": ["object", "null"]}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"kind": {"enum": ["fix-plan", "local-migration"]}}},
+      "then": {"properties": {"commands": {"maxItems": 0}}},
+      "else": {"properties": {"commands": {"minItems": 1}}}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "cleanup"}}},
+      "then": {"properties": {"confirmationsRequired": {"const": 2}}},
+      "else": {"properties": {"confirmationsRequired": {"const": 1}}}
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/extension/points/static-tools.output.schema.json",
+  "title": "static-tools 的 output：确定性工具的运行情况与发现",
+  "type": "object",
+  "required": ["tools", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "tools": {"type": "array", "items": {"$ref": "#/$defs/tool"}},
+    "findings": {"type": "array", "items": {"$ref": "#/$defs/finding"}}
+  },
+  "$defs": {
+    "tool": {
+      "type": "object",
+      "required": ["name", "status", "exitCode", "logFile", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "status": {"enum": ["ok", "failed", "skipped"]},
+        "exitCode": {"type": ["integer", "null"]},
+        "logFile": {"anyOf": [{"$ref": "../extension-request.schema.json#/$defs/relativePath"}, {"type": "null"}]},
+        "reason": {"type": ["string", "null"]}
+      },
+      "if": {"properties": {"status": {"enum": ["failed", "skipped"]}}},
+      "then": {"properties": {"reason": {"type": "string", "minLength": 1}}}
+    },
+    "finding": {
+      "type": "object",
+      "required": ["tool", "kind", "rule", "file", "line", "column", "message", "severity", "package"],
+      "additionalProperties": false,
+      "properties": {
+        "tool": {"type": "string", "minLength": 1},
+        "kind": {"enum": ["build-warning", "vulnerability", "lint"]},
+        "rule": {"type": "string", "minLength": 1},
+        "file": {"$ref": "../extension-request.schema.json#/$defs/relativePath"},
+        "line": {"anyOf": [{"type": "integer", "minimum": 1}, {"type": "null"}]},
+        "column": {"anyOf": [{"type": "integer", "minimum": 1}, {"type": "null"}]},
+        "message": {"type": "string", "minLength": 1},
+        "severity": {"enum": ["info", "low", "medium", "high", "critical"]},
+        "package": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["name", "version", "advisoryUrl"],
+              "additionalProperties": false,
+              "properties": {
+                "name": {"type": "string", "minLength": 1},
+                "version": {"type": "string", "minLength": 1},
+                "advisoryUrl": {"type": ["string", "null"]}
+              }
+            },
+            {"type": "null"}
+          ]
+        }
+      },
+      "if": {"properties": {"kind": {"const": "vulnerability"}}},
+      "then": {"properties": {"package": {"type": "object"}}}
+    }
+  }
+}

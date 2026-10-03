@@ -1,0 +1,58 @@
+{
+  "stage": "triage",
+  "items": [
+    {
+      "id": "triage.evidence-location",
+      "text": "每条证据都带「文件路径:行号」，且文件与行号真实存在",
+      "method": "code",
+      "scorer": "evidence-locations",
+      "params": {
+        "paths": [
+          "evidence.facts[*].location",
+          "evidence.counterEvidence[*].upstreamValidation.location",
+          "evidence.sourceOfPhenomenon.location",
+          "rootCauses[*]"
+        ]
+      }
+    },
+    {
+      "id": "triage.output-schema",
+      "text": "输出 JSON 字段齐全，判定属于四档之一；判「证据不足」时写明缺少的信息，判「条件成立」时写明条件",
+      "method": "code",
+      "scorer": "verdict-fields",
+      "params": {
+        "path": "verdict",
+        "allowed": ["confirmed", "conditional", "refuted", "insufficient"],
+        "required": {"insufficient": "missingInfo[*]", "conditional": "evidence.trigger"}
+      }
+    },
+    {
+      "id": "triage.refuted-source",
+      "text": "判定为「不成立」时，现象来源指向真实存在的代码位置或主张中的某条事实",
+      "method": "code",
+      "scorer": "refuted-source",
+      "appliesWhen": {"path": "verdict", "op": "equals", "value": "refuted"}
+    },
+    {
+      "id": "triage.counter-check",
+      "text": "做过反证检查：至少追到一个入口，每条写明入口位置与上游有无校验，位置真实存在",
+      "method": "code",
+      "scorer": "counter-check"
+    },
+    {
+      "id": "triage.no-vague-wording",
+      "text": "结论不含「可能」「大概」「建议进一步排查」等含糊措辞",
+      "method": "code",
+      "scorer": "vague-wording",
+      "params": {
+        "fields": [
+          "reason",
+          "evidence.facts[*].observation",
+          "evidence.trigger",
+          "evidence.counterEvidence[*].result"
+        ],
+        "words": ["可能", "大概", "也许", "似乎", "建议进一步排查"]
+      }
+    }
+  ]
+}

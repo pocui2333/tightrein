@@ -1,0 +1,29 @@
+{
+  "closedAt": "2026-09-30T01:00:00Z",
+  "comments": [
+    {
+      "author": {"login": "yixiao"},
+      "authorAssociation": "COLLABORATOR",
+      "body": "分页上限改成 200 之后再合并",
+      "createdAt": "2026-09-29T08:00:00Z",
+      "url": "https://github.com/cty/sample/pull/186#issuecomment-1"
+    }
+  ],
+  "headRefName": "cty/fix-order-query-500",
+  "mergeCommit": {"oid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"},
+  "mergeable": "UNKNOWN",
+  "mergedAt": "2026-09-30T01:00:00Z",
+  "number": 186,
+  "reviewDecision": "APPROVED",
+  "reviews": [
+    {
+      "author": {"login": "yixiao"},
+      "authorAssociation": "COLLABORATOR",
+      "body": "",
+      "state": "APPROVED",
+      "submittedAt": "2026-09-30T00:50:00Z"
+    }
+  ],
+  "state": "MERGED",
+  "url": "https://github.com/cty/sample/pull/186"
+}

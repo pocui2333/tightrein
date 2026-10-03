@@ -1,0 +1,59 @@
+name: sentry
+point: error-tracking
+summary: 读取 Sentry 中时间窗口内有新事件的错误分组(后端异常与浏览器端错误，含堆栈与操作轨迹)，只读 API
+applicability: 被测项目已接入 Sentry SDK(后端或浏览器端)；自建 Sentry 或兼容其 API 的 GlitchTip 改 baseUrl 即可
+optionsSchema:
+  type: object
+  required: [baseUrl, organization, projects, environment, keychainItem, retentionDays, limit, breadcrumbs, timeoutSeconds]
+  additionalProperties: false
+  properties:
+    baseUrl:
+      description: Sentry 的地址，SaaS 为 https://sentry.io
+      type: string
+      pattern: '^https?://'
+    organization:
+      description: 组织的 slug
+      type: string
+      minLength: 1
+    projects:
+      description: 项目的 slug 或编号；为空时为组织下全部项目
+      type: array
+      items: {type: string, minLength: 1}
+    environment:
+      description: 只看这个环境；为空时不限
+      type: [string, "null"]
+    keychainItem:
+      description: 存放只读令牌(event:read)的钥匙串条目名
+      type: string
+      minLength: 1
+    retentionDays:
+      description: 平台的数据保留天数，用于判断读取窗口是否超出保留期
+      type: integer
+      minimum: 1
+    limit:
+      description: 每次读取的分组条数上限
+      type: integer
+      minimum: 1
+    breadcrumbs:
+      description: 每个分组保留的最近操作轨迹条数
+      type: integer
+      minimum: 0
+    timeoutSeconds:
+      description: 每个请求的超时秒数
+      type: integer
+      minimum: 1
+tools: []
+doc:
+  prerequisites:
+    - 在 Sentry 建一个只有 event:read 权限的令牌(Organization Token 或 Internal Integration)
+    - "security add-generic-password -s <条目名> -a sentry -w 把令牌存进钥匙串"
+    - 前端错误要还原到源码行，被测项目构建时须向 Sentry 上传 source map
+  output: 每个分组一条，含分组编号(sentry:<组织>/<编号>，作为问题指纹)、前后端、标题、异常类型与消息、出现次数、影响用户数、首末出现时间、版本、堆栈帧(出错处在前)、操作轨迹、页面地址与浏览器
+  limitations:
+    - 每个分组另发一次请求取最新事件，limit 不宜过大(受 Sentry 的速率限制)
+    - 只读 is:unresolved 的分组；平台上的解决状态不回写也不读取，问题的解决按覆盖运行判断
+  example: |
+    extensions:
+      error-tracking:
+        use: core/sentry
+        options: {organization: my-org, projects: [api, web], keychainItem: tightrein.my-project.sentry}

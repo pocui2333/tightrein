@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/handoff/document.schema.json",
+  "title": "Markdown 交接文档的头信息",
+  "description": "给程序路由、判断状态与串联链路；由核心写入并校验，状态只看这里。",
+  "type": "object",
+  "required": [
+    "kind",
+    "id",
+    "status",
+    "from",
+    "to",
+    "subject",
+    "created",
+    "updated"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "文档类型，决定「内容」部分有哪些固定小节；须已在 domain/handoff/types.py 登记",
+      "examples": [
+        "plan"
+      ]
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "description": "唯一编号",
+      "examples": [
+        "TR-20261002-0003"
+      ]
+    },
+    "status": {
+      "enum": [
+        "pending",
+        "in-progress",
+        "blocked",
+        "done",
+        "failed"
+      ],
+      "description": "文档所说的工作的状态",
+      "examples": [
+        "done"
+      ]
+    },
+    "from": {
+      "type": "string",
+      "minLength": 1,
+      "description": "写入者：模块或「模块/角色」",
+      "examples": [
+        "triage/claim-verifier"
+      ]
+    },
+    "to": {
+      "type": "string",
+      "minLength": 1,
+      "description": "交给谁：模块、「模块/角色」或 user",
+      "examples": [
+        "fix"
+      ]
+    },
+    "subject": {
+      "type": "string",
+      "minLength": 1,
+      "description": "所说的对象(问题、Issue、运行等)的编号；一份文档只说一个对象",
+      "examples": [
+        "P-0043"
+      ]
+    },
+    "parent": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "description": "上游文档的编号，串起整条链路；没有上游时为 null",
+      "examples": [
+        "SC-20261001-0042"
+      ]
+    },
+    "created": {
+      "$ref": "../common.schema.json#/$defs/timestamp",
+      "description": "创建时间(UTC)",
+      "examples": [
+        "2026-10-02T02:15:00Z"
+      ]
+    },
+    "updated": {
+      "$ref": "../common.schema.json#/$defs/timestamp",
+      "description": "最后一次写入的时间(UTC)",
+      "examples": [
+        "2026-10-02T02:21:00Z"
+      ]
+    },
+    "next": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "下一步的简述",
+      "examples": [
+        "fix plan 0003"
+      ]
+    }
+  }
+}

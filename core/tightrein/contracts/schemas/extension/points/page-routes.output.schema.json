@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/extension/points/page-routes.output.schema.json",
+  "title": "page-routes 的 output：前端页面路由",
+  "type": "object",
+  "required": ["routes", "sourceFiles"],
+  "additionalProperties": false,
+  "properties": {
+    "routes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "name", "componentFile", "meta"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {"type": "string", "pattern": "^/"},
+          "name": {"type": ["string", "null"]},
+          "componentFile": {"anyOf": [{"$ref": "../extension-request.schema.json#/$defs/relativePath"}, {"type": "null"}]},
+          "meta": {"type": ["object", "null"]}
+        }
+      }
+    },
+    "sourceFiles": {"type": "array", "items": {"$ref": "../extension-request.schema.json#/$defs/relativePath"}}
+  }
+}

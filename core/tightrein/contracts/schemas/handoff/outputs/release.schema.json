@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/handoff/outputs/release.schema.json",
+  "title": "release 交接文档的 outputs",
+  "type": "object",
+  "required": ["issueId", "branch", "commits", "syncs", "deployments", "pendingOperations"],
+  "additionalProperties": false,
+  "properties": {
+    "issueId": {"$ref": "../../common.schema.json#/$defs/issueId"},
+    "branch": {"type": "string", "minLength": 1},
+    "commits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["commit", "message", "files", "operationId"],
+        "additionalProperties": false,
+        "properties": {
+          "commit": {"$ref": "../../common.schema.json#/$defs/commit"},
+          "message": {"type": "string", "minLength": 1},
+          "files": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
+          "operationId": {"$ref": "../../common.schema.json#/$defs/operationId"}
+        }
+      }
+    },
+    "syncs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["mainCommit", "conflicts", "mergeCommit"],
+        "additionalProperties": false,
+        "properties": {
+          "mainCommit": {"$ref": "../../common.schema.json#/$defs/commit"},
+          "conflicts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["file", "resolution"],
+              "additionalProperties": false,
+              "properties": {
+                "file": {"type": "string", "minLength": 1},
+                "resolution": {"enum": ["fix-side", "main-side", "both"]}
+              }
+            }
+          },
+          "mergeCommit": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/commit"}, {"type": "null"}]}
+        }
+      }
+    },
+    "push": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["remoteBranch", "commits", "at"],
+          "additionalProperties": false,
+          "properties": {
+            "remoteBranch": {"type": "string", "minLength": 1},
+            "commits": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/commit"}, "minItems": 1},
+            "at": {"$ref": "../../common.schema.json#/$defs/timestamp"}
+          }
+        },
+        {"type": "null"}
+      ]
+    },
+    "pr": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "number",
+            "url",
+            "title",
+            "bodySha256",
+            "state",
+            "mergeable",
+            "mergeCommit",
+            "mergedAt",
+            "closedAt",
+            "userNote"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "number": {"type": "integer", "minimum": 1},
+            "url": {"type": "string", "minLength": 1},
+            "title": {"type": "string", "minLength": 1},
+            "bodySha256": {"$ref": "../../common.schema.json#/$defs/sha256"},
+            "state": {"enum": ["open", "merged", "closed"]},
+            "mergeable": {"type": ["string", "null"]},
+            "mergeCommit": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/commit"}, {"type": "null"}]},
+            "mergedAt": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/timestamp"}, {"type": "null"}]},
+            "closedAt": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/timestamp"}, {"type": "null"}]},
+            "userNote": {"type": ["string", "null"]}
+          }
+        },
+        {"type": "null"}
+      ]
+    },
+    "deployments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["workflowRunId", "commit", "status", "url"],
+        "additionalProperties": false,
+        "properties": {
+          "workflowRunId": {"type": "string", "minLength": 1, "description": "平台上的部署编号；以合并时间为准时为 merge-time"},
+          "commit": {"$ref": "../../common.schema.json#/$defs/commit"},
+          "status": {"$ref": "../../common.schema.json#/$defs/DeploymentStatus"},
+          "url": {"type": ["string", "null"]},
+          "source": {"enum": ["deploy-source", "merge-time"], "description": "部署来源读到的，或没有部署来源时以合并时间加观察期为准"}
+        }
+      }
+    },
+    "masterAt": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/date"}, {"type": "null"}]},
+    "pendingOperations": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/operationId"}},
+    "acceptedFindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["check", "location", "problem"],
+        "additionalProperties": false,
+        "properties": {
+          "check": {"type": "string", "minLength": 1},
+          "location": {"type": ["string", "null"]},
+          "problem": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "cleanup": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["operationId", "status"],
+          "additionalProperties": false,
+          "properties": {
+            "operationId": {"$ref": "../../common.schema.json#/$defs/operationId"},
+            "status": {"$ref": "../../common.schema.json#/$defs/OperationStatus"}
+          }
+        },
+        {"type": "null"}
+      ]
+    },
+    "autoMerge": {
+      "description": "gates.merge 为 auto 时最近一次合并判断：是否已合并、不满足的条件、合并操作与判断时间",
+      "type": "object",
+      "required": ["merged", "reasons", "operationId", "at"],
+      "additionalProperties": false,
+      "properties": {
+        "merged": {"type": "boolean"},
+        "reasons": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "operationId": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/operationId"}, {"type": "null"}]},
+        "at": {"$ref": "../../common.schema.json#/$defs/timestamp"},
+        "native": {"type": "boolean", "description": "主分支有必需检查，使用 GitHub 原生自动合并"},
+        "enabledFor": {"type": "string", "description": "已开启原生自动合并时的 PR 头部 commit"},
+        "decision": {"type": ["string", "null"], "description": "改动命中 release.autoMergeBlockPaths 时的决策简报路径"},
+        "ci": {
+          "description": "CI 必需检查的状态：skipped(没有必需检查)、pending、passed、failed 与失败、进行中的检查名",
+          "type": "object",
+          "required": ["state", "failed", "pending"],
+          "additionalProperties": false,
+          "properties": {
+            "state": {"enum": ["skipped", "pending", "passed", "failed"]},
+            "failed": {"type": "array", "items": {"type": "string"}},
+            "pending": {"type": "array", "items": {"type": "string"}}
+          }
+        }
+      }
+    },
+    "reviewComment": {
+      "description": "已发到 PR 的 AI 评审结论：PR 编号、评审轮次与评论操作",
+      "type": "object",
+      "required": ["pr", "round", "operationId"],
+      "additionalProperties": false,
+      "properties": {
+        "pr": {"type": "integer", "minimum": 1},
+        "round": {"type": "integer", "minimum": 1},
+        "operationId": {"$ref": "../../common.schema.json#/$defs/operationId"}
+      }
+    },
+    "revert": {
+      "description": "撤销该合并的 PR：原因、撤销分支、操作与 PR 链接(执行后写入)",
+      "type": "object",
+      "required": ["reason", "branch", "operationId", "url"],
+      "additionalProperties": false,
+      "properties": {
+        "reason": {"type": "string", "minLength": 1},
+        "branch": {"type": "string", "minLength": 1},
+        "operationId": {"$ref": "../../common.schema.json#/$defs/operationId"},
+        "url": {"type": ["string", "null"]}
+      }
+    }
+  }
+}

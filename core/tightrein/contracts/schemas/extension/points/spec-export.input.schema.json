@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/extension/points/spec-export.input.schema.json",
+  "title": "spec-export 的 input",
+  "type": "object",
+  "required": ["outputFile"],
+  "additionalProperties": false,
+  "properties": {"outputFile": {"$ref": "../extension-request.schema.json#/$defs/absolutePath"}}
+}

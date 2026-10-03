@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/runner/runner-result.schema.json",
+  "title": "执行器结果",
+  "type": "object",
+  "required": [
+    "status",
+    "errorType",
+    "output",
+    "usage",
+    "durationMs",
+    "attempts",
+    "tool",
+    "model",
+    "sessionId",
+    "transcriptPath",
+    "guardReport",
+    "violations"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "status": {"$ref": "../common.schema.json#/$defs/RunnerStatus"},
+    "errorType": {
+      "anyOf": [
+        {
+          "anyOf": [
+            {
+              "enum": [
+                "tool-unavailable",
+                "tool-error",
+                "timeout",
+                "turn-limit",
+                "cost-limit",
+                "daily-budget",
+                "replay-missing",
+                "replay-task-changed",
+                "resume-unsupported"
+              ]
+            },
+            {"$ref": "../common.schema.json#/$defs/ViolationKind"}
+          ]
+        },
+        {"type": "null"}
+      ]
+    },
+    "output": {"type": ["object", "null"]},
+    "usage": {"$ref": "../common.schema.json#/$defs/usage"},
+    "durationMs": {"type": "integer", "minimum": 0},
+    "attempts": {"type": "integer", "minimum": 0},
+    "tool": {"type": "string", "minLength": 1},
+    "model": {"type": ["string", "null"]},
+    "sessionId": {"type": ["string", "null"]},
+    "transcriptPath": {"type": ["string", "null"]},
+    "guardReport": {"type": ["string", "null"]},
+    "violations": {"type": "array", "items": {"$ref": "guard-report.schema.json#/$defs/violation"}}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "ok"}}},
+      "then": {"properties": {"output": {"type": "object"}, "errorType": {"type": "null"}}},
+      "else": {"properties": {"output": {"type": "null"}}}
+    },
+    {
+      "if": {"properties": {"status": {"const": "guard-violation"}}},
+      "then": {"properties": {"violations": {"minItems": 1}}}
+    }
+  ]
+}

@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/handoff/outputs/fix-plan.schema.json",
+  "title": "fix-planner 的修复计划",
+  "type": "object",
+  "required": [
+    "analysis",
+    "summary",
+    "steps",
+    "files",
+    "estimate",
+    "split",
+    "protectedTouches",
+    "flags",
+    "migration",
+    "newDependencies",
+    "deletions",
+    "acceptanceMapping",
+    "userVisibleChange",
+    "affectedEndpoints",
+    "affectedPages",
+    "notDoing",
+    "userDecisions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "risk": {"$ref": "../../common.schema.json#/$defs/riskResult"},
+    "frontendDesign": {"$ref": "../../runner/roles/frontend-designer.schema.json"},
+    "lane": {"$ref": "../../common.schema.json#/$defs/Lane"},
+    "tier": {"$ref": "../../common.schema.json#/$defs/SizeTier"},
+    "analysis": {"type": "string", "minLength": 1},
+    "summary": {"type": "string", "minLength": 1},
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "change", "verification"],
+        "additionalProperties": false,
+        "properties": {
+          "file": {"type": "string", "minLength": 1},
+          "change": {"type": "string", "minLength": 1},
+          "verification": {"type": "string", "minLength": 1}
+        }
+      },
+      "minItems": 1
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "isNew", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "isNew": {"type": "boolean"},
+          "reason": {"type": ["string", "null"]}
+        }
+      },
+      "minItems": 1
+    },
+    "estimate": {"$ref": "#/$defs/estimate"},
+    "split": {"anyOf": [{"$ref": "#/$defs/split"}, {"type": "null"}]},
+    "protectedTouches": {"type": "array", "items": {"$ref": "#/$defs/protectedTouch"}},
+    "flags": {"$ref": "../../common.schema.json#/$defs/flags"},
+    "migration": {"anyOf": [{"$ref": "#/$defs/migration"}, {"type": "null"}]},
+    "newDependencies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "version", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "version": {"type": "string", "minLength": 1},
+          "reason": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "deletions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "reason"],
+        "additionalProperties": false,
+        "properties": {"path": {"type": "string", "minLength": 1}, "reason": {"type": "string", "minLength": 1}}
+      }
+    },
+    "acceptanceMapping": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["criterion", "steps"],
+        "additionalProperties": false,
+        "properties": {
+          "criterion": {"type": "string", "minLength": 1},
+          "steps": {"type": "array", "items": {"type": "integer", "minimum": 1}, "minItems": 1}
+        }
+      }
+    },
+    "userVisibleChange": {"type": "string", "minLength": 1},
+    "affectedEndpoints": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "affectedPages": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "notDoing": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "userDecisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["question", "recommendation", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "question": {"type": "string", "minLength": 1},
+          "recommendation": {"type": "string", "minLength": 1},
+          "reason": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "estimate": {
+      "type": "object",
+      "required": ["files", "lines"],
+      "additionalProperties": false,
+      "properties": {"files": {"type": "integer", "minimum": 0}, "lines": {"type": "integer", "minimum": 0}}
+    },
+    "split": {
+      "type": "object",
+      "required": ["reason", "followUps"],
+      "additionalProperties": false,
+      "properties": {
+        "reason": {"type": "string", "minLength": 1},
+        "followUps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["title", "goal", "files", "estimate", "acceptance"],
+            "additionalProperties": false,
+            "properties": {
+              "title": {"type": "string", "minLength": 1},
+              "goal": {"type": "string", "minLength": 1},
+              "files": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
+              "estimate": {"$ref": "#/$defs/estimate"},
+              "acceptance": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1}
+            }
+          }
+        }
+      }
+    },
+    "protectedTouch": {
+      "type": "object",
+      "required": ["path", "change", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "change": {"type": "string", "minLength": 1},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "migration": {
+      "type": "object",
+      "required": ["entries", "reversible", "revertMethod"],
+      "additionalProperties": false,
+      "properties": {
+        "entries": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
+        "reversible": {"type": "boolean"},
+        "revertMethod": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

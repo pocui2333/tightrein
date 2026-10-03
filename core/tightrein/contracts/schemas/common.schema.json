@@ -1,0 +1,433 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/common.schema.json",
+  "title": "公共定义：编号、时间、位置与领域枚举",
+  "$defs": {
+    "timestamp": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"},
+    "date": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "fingerprint": {"type": "string", "pattern": "^([0-9a-f]{16}|[a-z][a-z0-9-]*:\\S+)$"},
+    "spanId": {"type": "string", "pattern": "^[0-9a-f]{16}$"},
+    "runId": {"type": "string", "pattern": "^R-\\d{8}-\\d{6}-[a-z]+(-[a-z0-9-]+)?$"},
+    "signalId": {"type": "string", "pattern": "^S-[0-9A-HJKMNP-TV-Z]{26}$"},
+    "problemId": {"type": "string", "pattern": "^P-\\d{4,}$"},
+    "issueId": {"type": "string", "pattern": "^\\d{4,}$"},
+    "operationId": {"type": "string", "pattern": "^OP-\\d{4,}$"},
+    "suggestionId": {"type": "string", "pattern": "^LS-\\d{4,}$"},
+    "evalId": {"type": "string", "pattern": "^EV-\\d{8}-\\d{6}$"},
+    "evalCaseId": {"type": "string", "pattern": "^E-\\d{4,}$"},
+    "knowledgeId": {"type": "string", "pattern": "^(DP|TO|TL|FL|CT|RF)-\\d{4,}$"},
+    "codeLocation": {"type": "string", "pattern": "^[^:\\s][^:]*:\\d+(-\\d+)?$"},
+    "httpMethod": {"enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]},
+    "subject": {
+      "type": "object",
+      "required": ["type", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {"enum": ["run", "problem", "issue", "week"]},
+        "id": {"type": "string", "minLength": 1}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"type": {"const": "run"}}},
+          "then": {"properties": {"id": {"$ref": "#/$defs/runId"}}}
+        },
+        {
+          "if": {"properties": {"type": {"const": "problem"}}},
+          "then": {"properties": {"id": {"$ref": "#/$defs/problemId"}}}
+        },
+        {
+          "if": {"properties": {"type": {"const": "issue"}}},
+          "then": {"properties": {"id": {"$ref": "#/$defs/issueId"}}}
+        },
+        {
+          "if": {"properties": {"type": {"const": "week"}}},
+          "then": {"properties": {"id": {"$ref": "#/$defs/date"}}}
+        }
+      ]
+    },
+    "rootCause": {
+      "type": "object",
+      "required": ["file", "line"],
+      "additionalProperties": false,
+      "properties": {
+        "file": {"type": "string", "minLength": 1},
+        "line": {"type": "integer", "minimum": 1},
+        "symbol": {"type": ["string", "null"]}
+      }
+    },
+    "incidentalFinding": {
+      "type": "object",
+      "required": ["file", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "file": {"type": "string", "minLength": 1},
+        "line": {"anyOf": [{"type": "integer", "minimum": 1}, {"type": "null"}]},
+        "symbol": {"type": ["string", "null"]},
+        "text": {"type": "string", "minLength": 1}
+      }
+    },
+    "issueReport": {
+      "type": "object",
+      "required": ["title", "summary", "steps", "expected", "actual", "acceptance", "severity", "severityReason"],
+      "additionalProperties": false,
+      "properties": {
+        "title": {"type": "string", "minLength": 1},
+        "summary": {"type": "string", "minLength": 1},
+        "steps": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "expected": {"type": ["string", "null"]},
+        "actual": {"type": ["string", "null"]},
+        "acceptance": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "severity": {"$ref": "#/$defs/Severity"},
+        "severityReason": {"type": "string", "minLength": 1}
+      }
+    },
+    "introducedBy": {
+      "type": "object",
+      "required": ["commit"],
+      "additionalProperties": false,
+      "properties": {
+        "commit": {"$ref": "#/$defs/commit"},
+        "author": {"type": ["string", "null"]},
+        "pr": {"anyOf": [{"type": "integer", "minimum": 1}, {"type": "null"}]}
+      }
+    },
+    "flag": {
+      "type": "object",
+      "required": ["flagged"],
+      "additionalProperties": false,
+      "properties": {
+        "flagged": {"type": "boolean"},
+        "reason": {"type": ["string", "null"]},
+        "locations": {"type": "array", "items": {"$ref": "#/$defs/codeLocation"}}
+      },
+      "if": {"properties": {"flagged": {"const": true}}},
+      "then": {
+        "required": ["reason", "locations"],
+        "properties": {"reason": {"type": "string", "minLength": 1}, "locations": {"minItems": 1}}
+      }
+    },
+    "flags": {
+      "type": "object",
+      "required": ["design", "dataStructure", "publicContract"],
+      "additionalProperties": false,
+      "properties": {
+        "design": {"$ref": "#/$defs/flag"},
+        "dataStructure": {"$ref": "#/$defs/flag"},
+        "publicContract": {"$ref": "#/$defs/flag"}
+      }
+    },
+    "estimate": {
+      "type": "object",
+      "required": ["files", "lines"],
+      "additionalProperties": false,
+      "properties": {
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "isNew"],
+            "additionalProperties": false,
+            "properties": {"path": {"type": "string", "minLength": 1}, "isNew": {"type": "boolean"}}
+          }
+        },
+        "lines": {"type": "integer", "minimum": 0}
+      }
+    },
+    "judgedResult": {"$ref": "#/$defs/ScoreResult", "not": {"const": "not-applicable"}},
+    "scoreItem": {
+      "type": "object",
+      "required": ["itemId", "result", "method", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "itemId": {"type": "string", "minLength": 1},
+        "result": {"$ref": "#/$defs/ScoreResult"},
+        "method": {"$ref": "#/$defs/ScoreMethod"},
+        "reason": {"type": "string"}
+      }
+    },
+    "usage": {
+      "type": "object",
+      "required": ["inputTokens", "outputTokens", "cachedInputTokens", "costUsd", "costEstimated"],
+      "additionalProperties": false,
+      "properties": {
+        "inputTokens": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]},
+        "outputTokens": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]},
+        "cachedInputTokens": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]},
+        "costUsd": {"anyOf": [{"type": "number", "minimum": 0}, {"type": "null"}]},
+        "costEstimated": {"type": "boolean"}
+      }
+    },
+    "endpoint": {
+      "type": "object",
+      "required": ["method", "route", "role"],
+      "additionalProperties": false,
+      "properties": {
+        "method": {"$ref": "#/$defs/httpMethod"},
+        "route": {"type": "string", "minLength": 1},
+        "role": {"type": ["string", "null"]}
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "endpoints": {"type": "array", "items": {"$ref": "#/$defs/endpoint"}},
+        "endpointsTotal": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]},
+        "files": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "methods": {"enum": ["GET", "all"]},
+        "sources": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "environmentDetail": {
+      "type": "object",
+      "required": ["health", "failedRoles", "reportComplete"],
+      "additionalProperties": false,
+      "properties": {
+        "health": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["status", "elapsedMs"],
+              "additionalProperties": false,
+              "properties": {
+                "status": {"type": ["integer", "null"]},
+                "elapsedMs": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]}
+              }
+            },
+            {"type": "null"}
+          ]
+        },
+        "failedRoles": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "reportComplete": {"type": "boolean"}
+      }
+    },
+    "ignoreCondition": {
+      "type": "object",
+      "required": ["until", "occurrences", "newRelease", "severityEscalated", "baselineOccurrences", "baselineRelease"],
+      "additionalProperties": false,
+      "properties": {
+        "until": {"anyOf": [{"$ref": "#/$defs/timestamp"}, {"type": "null"}]},
+        "occurrences": {"anyOf": [{"type": "integer", "minimum": 1}, {"type": "null"}]},
+        "newRelease": {"type": "boolean"},
+        "severityEscalated": {"type": "boolean"},
+        "baselineOccurrences": {"type": "integer", "minimum": 0},
+        "baselineRelease": {"type": ["string", "null"]}
+      }
+    },
+    "problemScope": {
+      "type": "object",
+      "required": ["location", "roles", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "location": {"type": "string", "minLength": 1},
+        "roles": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "source": {"type": ["string", "null"]}
+      }
+    },
+    "hold": {
+      "type": "object",
+      "required": ["reason", "stage", "since", "details"],
+      "additionalProperties": false,
+      "properties": {
+        "reason": {"type": "string", "minLength": 1},
+        "stage": {"$ref": "#/$defs/Stage"},
+        "since": {"$ref": "#/$defs/timestamp"},
+        "details": {"type": "string"}
+      }
+    },
+    "riskResult": {
+      "type": "object",
+      "required": ["level", "categories", "hits"],
+      "additionalProperties": false,
+      "properties": {
+        "level": {"$ref": "#/$defs/FixRiskLevel"},
+        "categories": {"type": "array", "items": {"$ref": "#/$defs/RiskCategory"}, "uniqueItems": true},
+        "hits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["category", "basis", "file", "excerpt", "rule"],
+            "additionalProperties": false,
+            "properties": {
+              "category": {"$ref": "#/$defs/RiskCategory"},
+              "basis": {"enum": ["path", "content", "flag", "migration", "impact", "endpoint"]},
+              "file": {"type": ["string", "null"]},
+              "excerpt": {"type": ["string", "null"]},
+              "rule": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    },
+    "unverifiedItem": {
+      "type": "object",
+      "required": ["item", "reason"],
+      "additionalProperties": false,
+      "properties": {"item": {"type": "string", "minLength": 1}, "reason": {"type": "string", "minLength": 1}}
+    },
+    "Source": {"enum": ["error", "performance", "behavior", "feedback", "synthetic"]},
+    "Probe": {"enum": ["platform-errors", "access-log", "alerts", "project-probe", "api-fuzz", "static", "incidental"]},
+    "ProbeLevel": {"enum": ["shallow", "deep", "incremental", "full", "baseline"]},
+    "SignalAggregateState": {"enum": ["pending", "voided", "done"]},
+    "ProblemStatus": {"enum": ["pending", "new", "ongoing", "resolved", "regressed", "ignored"]},
+    "Verdict": {"enum": ["confirmed", "conditional", "refuted", "insufficient"]},
+    "Severity": {"enum": ["P0", "P1", "P2", "P3"]},
+    "Complexity": {"enum": ["low", "medium", "high"]},
+    "ImpactKind": {
+      "enum": [
+        "authorization",
+        "data-ownership",
+        "data-correctness",
+        "credential-leak",
+        "core-flow-broken",
+        "non-core-error",
+        "contract-mismatch",
+        "experience",
+        "slow-response",
+        "dependency-vulnerability"
+      ]
+    },
+    "WorthRecommendation": {"enum": ["fix", "optional", "defer", "wont"]},
+    "TaskType": {"enum": ["bug", "security", "data", "frontend", "feature", "refactor", "dependency", "docs-config"]},
+    "SizeTier": {"enum": ["micro", "small", "medium", "large", "oversize"]},
+    "Treatment": {"enum": ["immediate", "scheduled", "observe", "wont-fix"]},
+    "Lane": {"enum": ["fast", "standard", "large"]},
+    "Disposition": {
+      "enum": ["false-positive", "accepted-tradeoff", "awaiting-deploy", "create-issue", "deferred", "manual-queue"]
+    },
+    "TriageOutcome": {"enum": ["correct", "false-confirm", "false-refute", "overridden"]},
+    "IssueStatus": {"enum": ["needs-decision", "todo", "in-progress", "pending-merge", "done", "cancelled"]},
+    "IssuePhase": {"enum": ["fix", "verify", "submit", "deploy-check"]},
+    "IssueOrigin": {"enum": ["triage", "manual"]},
+    "CloseReason": {"enum": ["fixed", "fix-rejected", "wont-fix", "duplicate", "not-a-bug"]},
+    "ReviewCategory": {"enum": ["local", "plan-gap", "needs-user", "design"]},
+    "ReviewMode": {"enum": ["light", "deep", "screenshot"]},
+    "ReviewFindingKind": {
+      "enum": [
+        "root-cause-unfixed",
+        "caller-broken",
+        "hardcode",
+        "new-error-path",
+        "requirement-unmet",
+        "requirement-reduced",
+        "authz",
+        "data-structure",
+        "contract"
+      ]
+    },
+    "FixRiskLevel": {"enum": ["normal", "high"]},
+    "RiskCategory": {"enum": ["schema", "authz", "contract"]},
+    "VerifyPhase": {"enum": ["local", "staging"]},
+    "CheckResult": {"enum": ["pass", "weak", "unverified", "fail"]},
+    "RegressionKind": {"enum": ["api", "page", "static", "test"]},
+    "RegressionResult": {"enum": ["passed", "failed", "not-run", "invalid"]},
+    "DeploymentStatus": {"enum": ["pending", "running", "succeeded", "failed"]},
+    "OperationKind": {
+      "enum": [
+        "create-fix-worktree",
+        "init-readonly-worktree",
+        "commit",
+        "merge-main",
+        "commit-merge",
+        "abort-merge",
+        "push",
+        "pull-request",
+        "merge-pull-request",
+        "pr-comment",
+        "revert-pull-request",
+        "cleanup",
+        "github-issue",
+        "fix-plan",
+        "local-migration"
+      ]
+    },
+    "OperationExecutor": {"enum": ["vcs"]},
+    "OperationStatus": {"enum": ["pending", "confirmed", "rejected", "executed", "failed", "expired"]},
+    "Stage": {"enum": ["collect", "aggregate", "triage", "issue", "fix", "verify", "release", "learn", "improve"]},
+    "RunStage": {
+      "enum": ["collect", "aggregate", "triage", "issue", "fix", "verify", "release", "learn", "improve", "loop"]
+    },
+    "RunStatus": {"enum": ["running", "ok", "partial", "failed", "skipped", "blocked", "interrupted"]},
+    "HandoffStatus": {"enum": ["ok", "blocked", "failed"]},
+    "RunnerStatus": {"enum": ["ok", "failed", "limit-reached", "schema-invalid", "guard-violation"]},
+    "Access": {"enum": ["read-only", "workspace-write"]},
+    "ViolationKind": {
+      "enum": [
+        "credential-present",
+        "git-unreadable",
+        "readonly-modified",
+        "forbidden-path-modified",
+        "git-commit-created",
+        "git-branch-switched",
+        "git-ref-changed",
+        "git-remote-changed",
+        "git-stash-changed",
+        "git-worktree-changed",
+        "git-operation-started",
+        "protected-modified",
+        "test-modified",
+        "skip-marker-added",
+        "size-exceeded",
+        "suspected-hardcode",
+        "residue-added",
+        "outside-plan",
+        "hidden-path-read"
+      ]
+    },
+    "ScoreResult": {"enum": ["pass", "fail", "unknown", "not-applicable"]},
+    "ScoreMethod": {"enum": ["code", "judge", "user"]},
+    "EvalVerdict": {"enum": ["pass", "reject", "needs-review", "incomplete"]},
+    "EvalCaseCategory": {"enum": ["representative", "corrected", "edge"]},
+    "SuggestionKind": {
+      "enum": ["probe-config", "coverage-gap", "knowledge-review", "improvement", "control"]
+    },
+    "SuggestionStatus": {"enum": ["pending", "accepted", "rejected", "expired"]},
+    "YieldOutcome": {"enum": ["pending", "useful", "no-yield"]},
+    "KnowledgeType": {"enum": ["defect-pattern", "tradeoff", "triage-lesson", "fix-lesson", "contract", "reference"]},
+    "KnowledgeStatus": {"enum": ["active", "superseded", "archived"]},
+    "KnowledgeWriteDecision": {"enum": ["add", "update", "merge", "noop"]},
+    "ProblemEvent": {
+      "enum": [
+        "reproduced",
+        "not-reproduced",
+        "promoted",
+        "seen-again",
+        "covered-run-without-occurrence",
+        "resolved-on-new-commit",
+        "regression-check-failed",
+        "triaged",
+        "user-ignored",
+        "user-false-positive",
+        "user-reopened",
+        "ignore-expired",
+        "merged",
+        "rebuilt",
+        "overridden",
+        "retriage-requested",
+        "issue-closed"
+      ]
+    },
+    "ReproduceStrategy": {"enum": ["replay", "immediate"]},
+    "IssueLabel": {"enum": ["discuss-with-author"]},
+    "LogLevel": {"enum": ["trace", "debug", "information", "warning", "error", "critical"]},
+    "ExtensionPoint": {
+      "enum": [
+        "spec-export",
+        "authz-endpoints",
+        "authz-roles",
+        "error-tracking",
+        "log-platform",
+        "log-parse",
+        "alert-source",
+        "static-tools",
+        "page-routes",
+        "local-run",
+        "deploy-source"
+      ]
+    },
+    "ExtensionLayer": {"enum": ["project", "stack", "core", "default"]},
+    "ExtensionMode": {"enum": ["replace", "extend"]}
+  }
+}

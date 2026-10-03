@@ -1,0 +1,14 @@
+# 第三方 skill 的锁定清单(architecture/09 第 7 节，design 9.11)。只写了 name 与 source 的条目尚未锁定：
+# commit、路径、许可证、逐文件哈希与核实数据由 tightrein third-party lock 取得后写入，不手工填写。
+lockVersion: 1
+skills:
+  - name: differential-review
+    source: https://github.com/trailofbits/skills
+  - name: variant-analysis
+    source: https://github.com/trailofbits/skills
+  - name: semgrep-rule-variant-creator
+    source: https://github.com/trailofbits/skills
+  - name: fp-check
+    source: https://github.com/trailofbits/skills
+  - name: sharp-edges
+    source: https://github.com/trailofbits/skills

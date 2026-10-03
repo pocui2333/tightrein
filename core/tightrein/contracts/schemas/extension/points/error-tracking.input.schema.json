@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/extension/points/error-tracking.input.schema.json",
+  "title": "error-tracking 的 input：读取的时间窗口",
+  "type": "object",
+  "required": [
+    "since",
+    "until"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "since": {
+      "$ref": "../../common.schema.json#/$defs/timestamp",
+      "description": "窗口起点(含)"
+    },
+    "until": {
+      "$ref": "../../common.schema.json#/$defs/timestamp",
+      "description": "窗口终点(不含)"
+    }
+  }
+}

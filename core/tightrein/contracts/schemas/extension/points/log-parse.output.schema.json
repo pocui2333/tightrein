@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/extension/points/log-parse.output.schema.json",
+  "title": "log-parse 的 output：结构化日志条目",
+  "type": "object",
+  "required": ["entries", "state", "unparsed"],
+  "additionalProperties": false,
+  "properties": {
+    "entries": {"type": "array", "items": {"$ref": "#/$defs/entry"}},
+    "state": {"type": "object"},
+    "unparsed": {"type": "integer", "minimum": 0}
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "required": [
+        "stream",
+        "position",
+        "occurredAt",
+        "localTime",
+        "level",
+        "rawLevel",
+        "category",
+        "eventId",
+        "message",
+        "exception",
+        "frames",
+        "raw"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "stream": {"type": "string", "minLength": 1},
+        "position": {"type": "integer", "minimum": 0},
+        "occurredAt": {"$ref": "../../common.schema.json#/$defs/timestamp"},
+        "localTime": {"type": ["string", "null"]},
+        "level": {"$ref": "../../common.schema.json#/$defs/LogLevel"},
+        "rawLevel": {"type": "string", "minLength": 1},
+        "category": {"type": ["string", "null"]},
+        "eventId": {"anyOf": [{"type": "integer"}, {"type": "string", "minLength": 1}, {"type": "null"}]},
+        "message": {"type": "string"},
+        "exception": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["type", "message"],
+              "additionalProperties": false,
+              "properties": {"type": {"type": "string", "minLength": 1}, "message": {"type": "string"}}
+            },
+            {"type": "null"}
+          ]
+        },
+        "frames": {"type": "array", "items": {"$ref": "#/$defs/frame"}},
+        "raw": {"type": "string", "minLength": 1}
+      }
+    },
+    "frame": {
+      "type": "object",
+      "required": ["symbol", "file", "line", "isProject"],
+      "additionalProperties": false,
+      "properties": {
+        "symbol": {"type": "string", "minLength": 1},
+        "file": {"type": ["string", "null"]},
+        "line": {"anyOf": [{"type": "integer", "minimum": 1}, {"type": "null"}]},
+        "isProject": {"type": "boolean"}
+      }
+    }
+  }
+}

@@ -1,0 +1,215 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/extension/points/error-tracking.output.schema.json",
+  "title": "error-tracking 的 output：窗口内有新事件的错误分组",
+  "type": "object",
+  "required": [
+    "issues",
+    "truncated",
+    "oldestAvailable"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "issues": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/issue"
+      }
+    },
+    "truncated": {
+      "type": "boolean",
+      "description": "超出条数上限、还有未读取的分组"
+    },
+    "oldestAvailable": {
+      "anyOf": [
+        {
+          "$ref": "../../common.schema.json#/$defs/timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "平台还能查到的最早时间(按保留期)；未知时为空"
+    }
+  },
+  "$defs": {
+    "issue": {
+      "type": "object",
+      "required": [
+        "group",
+        "kind",
+        "title",
+        "type",
+        "message",
+        "culprit",
+        "level",
+        "count",
+        "userCount",
+        "firstSeen",
+        "lastSeen",
+        "release",
+        "environment",
+        "permalink",
+        "frames",
+        "breadcrumbs",
+        "url",
+        "browser"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "group": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*:\\S+$",
+          "description": "平台分组编号，写成「<平台>:<编号>」，作为问题指纹"
+        },
+        "kind": {
+          "enum": [
+            "backend",
+            "frontend"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "culprit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "level": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "userCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "firstSeen": {
+          "$ref": "../../common.schema.json#/$defs/timestamp"
+        },
+        "lastSeen": {
+          "$ref": "../../common.schema.json#/$defs/timestamp"
+        },
+        "release": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "environment": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "permalink": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "frames": {
+          "type": "array",
+          "description": "堆栈帧，出错处在前",
+          "items": {
+            "type": "object",
+            "required": [
+              "file",
+              "function",
+              "line",
+              "inApp"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "file": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "function": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "line": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "inApp": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "breadcrumbs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "time",
+              "category",
+              "message"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "time": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "category": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "message": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "browser": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

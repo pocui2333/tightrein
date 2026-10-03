@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/runner/roles/judge.schema.json",
+  "title": "模型评审的逐项结果",
+  "type": "object",
+  "required": ["items"],
+  "additionalProperties": false,
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["itemId", "result", "reason", "evidence"],
+        "additionalProperties": false,
+        "properties": {
+          "itemId": {"type": "string", "minLength": 1},
+          "result": {"$ref": "../../common.schema.json#/$defs/judgedResult"},
+          "reason": {"type": "string", "minLength": 1},
+          "evidence": {"type": "array", "items": {"type": "string", "minLength": 1}}
+        }
+      },
+      "minItems": 1
+    }
+  }
+}

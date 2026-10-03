@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/extension/extension-response.schema.json",
+  "title": "扩展调用响应的外层",
+  "type": "object",
+  "required": ["protocol", "status"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol": {"type": "integer", "minimum": 1},
+    "status": {"enum": ["ok", "error"]},
+    "output": {"type": "object"},
+    "error": {
+      "type": "object",
+      "required": ["code", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": ["invalid-input", "not-applicable", "tool-missing", "build-failed", "source-unavailable", "parse-failed"]
+        },
+        "message": {"type": "string", "minLength": 1},
+        "hint": {"type": ["string", "null"]}
+      }
+    },
+    "notes": {"type": "array", "items": {"type": "string", "minLength": 1}}
+  },
+  "allOf": [
+    {"if": {"properties": {"status": {"const": "ok"}}}, "then": {"required": ["output"]}},
+    {"if": {"properties": {"status": {"const": "error"}}}, "then": {"required": ["error"]}}
+  ]
+}

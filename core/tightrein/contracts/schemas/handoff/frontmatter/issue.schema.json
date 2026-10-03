@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/handoff/frontmatter/issue.schema.json",
+  "title": "Issue 文件的头信息",
+  "description": "issue 类型交接文档的头信息：基础头信息(kind 到 next)、给人与程序的分类信息与程序字段；由核心写入并校验。",
+  "type": "object",
+  "required": ["kind", "id", "status", "from", "to", "subject", "created", "updated", "title", "severity", "origin",
+               "problems", "rootCause"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {"const": "issue"},
+    "id": {"$ref": "../../common.schema.json#/$defs/issueId"},
+    "status": {"$ref": "../../common.schema.json#/$defs/IssueStatus", "description": "Issue 的六种状态之一"},
+    "from": {"enum": ["triage", "user", "fix"], "description": "写入者：分诊生成、用户需求或修复拆分"},
+    "to": {"type": "string", "minLength": 1, "description": "交给谁，固定为 fix"},
+    "subject": {"$ref": "../../common.schema.json#/$defs/issueId", "description": "所说的对象：本 Issue"},
+    "parent": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "description": "上游：拆分出的子任务为父 Issue 编号，分诊生成的为第一个关联问题，用户需求为 null"
+    },
+    "created": {"$ref": "../../common.schema.json#/$defs/timestamp"},
+    "updated": {"$ref": "../../common.schema.json#/$defs/timestamp"},
+    "next": {"type": ["string", "null"], "description": "下一步的命令"},
+    "title": {"type": "string", "minLength": 1},
+    "severity": {"$ref": "../../common.schema.json#/$defs/Severity"},
+    "taskType": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/TaskType"}, {"type": "null"}]},
+    "sizeTier": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/SizeTier"}, {"type": "null"}]},
+    "treatment": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/Treatment"}, {"type": "null"}]},
+    "source": {"type": ["string", "null"], "description": "来源：探针与档位、用户需求或拆分自哪个 Issue"},
+    "origin": {"$ref": "../../common.schema.json#/$defs/IssueOrigin"},
+    "problems": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/problemId"}},
+    "rootCause": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/codeLocation"}},
+    "introducedBy": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/introducedBy"}, {"type": "null"}]},
+    "triageCommit": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/commit"}, {"type": "null"}]},
+    "findings": {"type": ["string", "null"]},
+    "branch": {"type": ["string", "null"]},
+    "pr": {"type": ["string", "null"]},
+    "runId": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/runId"}, {"type": "null"}]},
+    "closeReason": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/CloseReason"}, {"type": "null"}]},
+    "hold": {
+      "anyOf": [{"$ref": "../../common.schema.json#/$defs/hold"}, {"type": "null"}],
+      "description": "待决定的原因(只出现在待决定的 Issue 上)"
+    },
+    "github": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["number", "url"],
+          "additionalProperties": false,
+          "properties": {
+            "number": {"type": "integer", "minimum": 1},
+            "url": {"type": "string", "pattern": "^https://"}
+          }
+        },
+        {"type": "null"}
+      ]
+    },
+    "dependsOn": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/issueId"}, {"type": "null"}]},
+    "phase": {
+      "anyOf": [{"$ref": "../../common.schema.json#/$defs/IssuePhase"}, {"type": "null"}],
+      "description": "进行中的细分与完成后等待部署后确认，只供程序推进"
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"enum": ["done", "cancelled"]}}},
+      "then": {
+        "required": ["closeReason"],
+        "properties": {"closeReason": {"$ref": "../../common.schema.json#/$defs/CloseReason"}}
+      },
+      "else": {"properties": {"closeReason": {"type": "null"}}}
+    },
+    {
+      "if": {"properties": {"origin": {"const": "manual"}}},
+      "else": {"properties": {"problems": {"minItems": 1}}}
+    }
+  ]
+}

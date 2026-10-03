@@ -1,0 +1,29 @@
+name: openapi-url
+point: spec-export
+summary: 从本机启动的服务读取接口描述(JSON 或 YAML)
+applicability: 服务运行时提供接口描述地址，并且调用前已在本机启动
+optionsSchema:
+  type: object
+  required: [url, timeoutSeconds]
+  additionalProperties: false
+  properties:
+    url:
+      description: 接口描述的地址，例如 http://localhost:8000/openapi.json
+      type: string
+      pattern: '^https?://'
+    timeoutSeconds:
+      description: 请求的超时秒数
+      type: integer
+      minimum: 1
+tools: []
+doc:
+  prerequisites:
+    - 服务运行时提供接口描述地址(框架自动导出，如 Swagger)，调用前已在本机启动
+  output: 本 commit 的接口描述
+  limitations:
+    - 需要本机启动服务(local-run)
+  example: |
+    extensions:
+      spec-export:
+        use: core/openapi-url
+        options: {url: "http://localhost:8000/openapi.json"}

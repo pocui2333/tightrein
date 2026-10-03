@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/extension/points/log-platform.input.schema.json",
+  "title": "log-platform 的 input：查询与时间窗口",
+  "type": "object",
+  "required": [
+    "query",
+    "since",
+    "until",
+    "limit"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "query": {
+      "type": "string",
+      "minLength": 1,
+      "description": "平台的查询语句(如 LogQL)"
+    },
+    "since": {
+      "$ref": "../../common.schema.json#/$defs/timestamp",
+      "description": "窗口起点(含)"
+    },
+    "until": {
+      "$ref": "../../common.schema.json#/$defs/timestamp",
+      "description": "窗口终点(不含)"
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "最多读取的条数"
+    }
+  }
+}

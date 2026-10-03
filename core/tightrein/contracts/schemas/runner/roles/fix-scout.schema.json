@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/runner/roles/fix-scout.schema.json",
+  "title": "fix-scout 的勘察结论",
+  "type": "object",
+  "required": [
+    "analysis",
+    "existing",
+    "reusable",
+    "dataStructure",
+    "linkage",
+    "problems",
+    "designIssue",
+    "affectedEndpoints",
+    "affectedPages",
+    "incidental"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "analysis": {"type": "string", "minLength": 1},
+    "existing": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+    "reusable": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+    "dataStructure": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+    "linkage": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+    "problems": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+    "designIssue": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["rootCause", "reason", "locations"],
+          "additionalProperties": false,
+          "properties": {
+            "rootCause": {"type": "string", "minLength": 1},
+            "reason": {"type": "string", "minLength": 1},
+            "locations": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/codeLocation"}, "minItems": 1}
+          }
+        },
+        {"type": "null"}
+      ]
+    },
+    "affectedEndpoints": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "affectedPages": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "incidental": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/incidentalFinding"}}
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "required": ["location", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "location": {"$ref": "../../common.schema.json#/$defs/codeLocation"},
+        "description": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

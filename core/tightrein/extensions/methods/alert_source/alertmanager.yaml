@@ -1,0 +1,38 @@
+name: alertmanager
+point: alert-source
+summary: 经 Alertmanager API v2 读取已触发、未静默的业务告警，只读 API
+applicability: 被测系统已有 Prometheus 或 Grafana 的告警规则(Prometheus Alertmanager、Grafana 内置告警、Grafana Cloud、Mimir)
+optionsSchema:
+  type: object
+  required: [url, keychainItem, user, timeoutSeconds]
+  additionalProperties: false
+  properties:
+    url:
+      description: Alertmanager 的地址；Grafana 内置告警为 <Grafana 地址>/api/alertmanager/grafana
+      type: string
+      pattern: '^https?://'
+    keychainItem:
+      description: 存放只读令牌的钥匙串条目名；为空时不带认证
+      type: [string, "null"]
+    user:
+      description: 基本认证的用户名；为空时令牌按 Bearer 发送
+      type: [string, "null"]
+    timeoutSeconds:
+      description: 请求的超时秒数
+      type: integer
+      minimum: 1
+tools: []
+doc:
+  prerequisites:
+    - 告警规则已在平台上配置并会触发；tightrein 不重复实现告警规则
+    - Grafana 的服务账号令牌只需 Viewer 角色(读取告警)
+    - "security add-generic-password -s <条目名> -a alertmanager -w 把令牌存进钥匙串"
+  output: 每条已触发、未静默、未被抑制的告警，含 fingerprint(作为问题指纹)、告警名、标签、注解、开始时间与来源链接
+  limitations:
+    - 只读当前处于触发状态的告警，两次运行之间触发又恢复的告警读不到
+    - 基础设施类告警按 sources.alerts.exclude 的名称与标签排除，项目的标签约定不同时需要调整
+  example: |
+    extensions:
+      alert-source:
+        use: core/alertmanager
+        options: {url: "https://grafana.example.com/api/alertmanager/grafana", keychainItem: tightrein.my-project.grafana}

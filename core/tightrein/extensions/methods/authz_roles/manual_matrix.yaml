@@ -1,0 +1,25 @@
+name: manual-matrix
+point: authz-roles
+summary: 读取工作区中手工维护的角色能力矩阵(YAML)
+applicability: 角色与能力的对应关系无法从代码自动读出，可以随权限变化手工维护
+optionsSchema:
+  type: object
+  required: [file]
+  additionalProperties: false
+  properties:
+    file:
+      description: 矩阵文件相对工作区根目录的路径，例如 authz/roles.yaml
+      type: string
+      pattern: '^[^/\\][^\\]*$'
+tools: []
+doc:
+  prerequisites:
+    - 在工作区写一份矩阵，列出每个角色具备的能力
+  output: 每个角色(accounts.roles 中的角色)具备的能力
+  limitations:
+    - 矩阵随权限变化需要手工更新
+  example: |
+    extensions:
+      authz-roles:
+        use: core/manual-matrix
+        options: {file: authz/roles.yaml}

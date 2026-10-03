@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/extension/points/authz-roles.input.schema.json",
+  "title": "authz-roles 的 input",
+  "type": "object",
+  "required": ["roles"],
+  "additionalProperties": false,
+  "properties": {
+    "roles": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1, "uniqueItems": true}
+  }
+}

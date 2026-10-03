@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/extension/points/log-platform.output.schema.json",
+  "title": "log-platform 的 output：日志原文片段(与 log-parse 的输入相同)",
+  "type": "object",
+  "required": [
+    "chunks",
+    "truncated",
+    "oldestAvailable"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "chunks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/chunk"
+      }
+    },
+    "truncated": {
+      "type": "boolean"
+    },
+    "oldestAvailable": {
+      "anyOf": [
+        {
+          "$ref": "../../common.schema.json#/$defs/timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "chunk": {
+      "type": "object",
+      "required": [
+        "stream",
+        "text",
+        "startPosition",
+        "endPosition",
+        "modifiedAt"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "stream": {
+          "type": "string",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string"
+        },
+        "startPosition": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "endPosition": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "modifiedAt": {
+          "anyOf": [
+            {
+              "$ref": "../../common.schema.json#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+[
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-09-30T03:00:00Z",
+    "databaseId": 201,
+    "headSha": "dddddddddddddddddddddddddddddddddddddddd",
+    "status": "completed",
+    "url": "https://github.com/cty/sample/actions/runs/201"
+  }
+]

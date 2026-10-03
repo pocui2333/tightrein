@@ -1,0 +1,25 @@
+name: manual-list
+point: authz-endpoints
+summary: 读取工作区中手工维护的端点权限清单(YAML)
+applicability: 代码中的权限声明无法自动读出，端点数量不多，可以随接口变化手工维护
+optionsSchema:
+  type: object
+  required: [file]
+  additionalProperties: false
+  properties:
+    file:
+      description: 清单文件相对工作区根目录的路径，例如 authz/endpoints.yaml
+      type: string
+      pattern: '^[^/\\][^\\]*$'
+tools: []
+doc:
+  prerequisites:
+    - 在工作区写一份端点清单，每个端点列出方法、路由模板与所需能力
+  output: 每个端点所需的能力(能力名为任意字符串，与 authz-roles 的能力名一致)
+  limitations:
+    - 清单随接口变化需要手工更新，过期的清单会让越权检查误报或漏报
+  example: |
+    extensions:
+      authz-endpoints:
+        use: core/manual-list
+        options: {file: authz/endpoints.yaml}

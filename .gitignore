@@ -1,0 +1,53 @@
+# 本仓库只收录通用的工具代码、skills、文档与第三方 skill 的锁定清单；
+# 本机环境、运行数据、个人项目配置与凭证一律不进入版本库。
+# 以 / 开头的规则只匹配仓库根目录下的同名目录。
+
+# Python：虚拟环境、安装元数据、字节码与测试缓存
+/core/.venv/
+*.egg-info/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node：e2e 运行时安装的依赖
+node_modules/
+
+# 本机依赖：独立虚拟环境中的 Semgrep 等(安装方式见 docs/reference/configuration.md「本机工具」)与第三方 skill 的下载缓存(local/third_party-cache/)
+/local/
+
+# 第三方 skill：安装记录，以及 install --repo-only 在 skills/ 下建立的链接
+/third_party/installed.json
+/skills/differential-review
+/skills/variant-analysis
+/skills/semgrep-rule-variant-creator
+/skills/fp-check
+/skills/sharp-edges
+
+# 工作区：各项目的本机配置、运行数据与 worktree，含本机路径与线上地址；示例见 core/tests/fixtures/demo_workspace/
+/workspaces/
+
+# 凭证文件：防止误提交
+.env
+.env.*
+*.pem
+*.key
+*.p12
+
+# 打包产物
+dist/
+build/
+
+# 本机的开发记录与 agent 配置：实现计划只留在本机；个人的 agent 指令与设置不进入版本库
+/docs/development/
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+/AGENTS.md
+
+# 日志、编辑器与系统文件
+*.log
+.idea/
+.vscode/
+.DS_Store

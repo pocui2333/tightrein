@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/data/authz-model.schema.json",
+  "title": "越权检查的数据：端点到所需能力、角色到能力",
+  "type": "object",
+  "required": ["commit", "generatedAt", "endpoints", "capabilities", "roles"],
+  "additionalProperties": false,
+  "properties": {
+    "commit": {"$ref": "../common.schema.json#/$defs/commit"},
+    "generatedAt": {"$ref": "../common.schema.json#/$defs/timestamp"},
+    "endpoints": {"type": "array", "items": {"$ref": "#/$defs/endpoint"}},
+    "capabilities": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "roles": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"type": "object", "additionalProperties": {"type": "boolean"}}
+    }
+  },
+  "$defs": {
+    "endpoint": {
+      "type": "object",
+      "required": ["method", "route", "requires", "anonymous"],
+      "additionalProperties": false,
+      "properties": {
+        "method": {"$ref": "../common.schema.json#/$defs/httpMethod"},
+        "route": {"type": "string", "pattern": "^/"},
+        "requires": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "anonymous": {"type": "boolean"}
+      }
+    }
+  }
+}

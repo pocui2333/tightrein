@@ -1,0 +1,502 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/handoff/outputs/fix.schema.json",
+  "title": "fix 交接文档的 outputs",
+  "type": "object",
+  "required": [
+    "issueId",
+    "branch",
+    "worktree",
+    "baseCommit"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "lane": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/Lane"}, {"type": "null"}]},
+    "tier": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/SizeTier"}, {"type": "null"}]},
+    "issueId": {
+      "$ref": "../../common.schema.json#/$defs/issueId"
+    },
+    "branch": {
+      "type": "string",
+      "minLength": 1
+    },
+    "worktree": {
+      "type": "string",
+      "minLength": 1
+    },
+    "baseCommit": {
+      "$ref": "../../common.schema.json#/$defs/commit"
+    },
+    "plan": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "path",
+            "sha256",
+            "operationId",
+            "confirmedAt"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sha256": {
+              "$ref": "../../common.schema.json#/$defs/sha256"
+            },
+            "operationId": {
+              "anyOf": [
+                {
+                  "$ref": "../../common.schema.json#/$defs/operationId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "confirmedAt": {
+              "anyOf": [
+                {
+                  "$ref": "../../common.schema.json#/$defs/timestamp"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "reproCheck": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "checkId",
+          "kind",
+          "hash",
+          "afterFix"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "checkId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "$ref": "../../common.schema.json#/$defs/RegressionKind"
+          },
+          "hash": {
+            "$ref": "../../common.schema.json#/$defs/sha256"
+          },
+          "afterFix": {
+            "anyOf": [
+              {
+                "$ref": "../../common.schema.json#/$defs/RegressionResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "changedFiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "added",
+          "removed"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "added": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "removed": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "diffHash": {
+      "anyOf": [
+        {
+          "$ref": "../../common.schema.json#/$defs/sha256"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "command",
+          "exitCode",
+          "log"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "command": {
+            "type": "string",
+            "minLength": 1
+          },
+          "exitCode": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "log": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "planFiles": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "otherRegressions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "issueId",
+          "checkId",
+          "kind",
+          "result"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "issueId": {
+            "$ref": "../../common.schema.json#/$defs/issueId"
+          },
+          "checkId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "$ref": "../../common.schema.json#/$defs/RegressionKind"
+          },
+          "result": {
+            "$ref": "../../common.schema.json#/$defs/RegressionResult"
+          }
+        }
+      }
+    },
+    "risk": {
+      "type": "object",
+      "required": [
+        "plan",
+        "apply"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "plan": {
+          "anyOf": [
+            {
+              "$ref": "../../common.schema.json#/$defs/riskResult"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "apply": {
+          "anyOf": [
+            {
+              "$ref": "../../common.schema.json#/$defs/riskResult"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "rounds": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "round",
+          "checksPassed",
+          "reviews",
+          "blockerCategories",
+          "risk",
+          "failures",
+          "discardedFindings"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "round": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "checksPassed": {
+            "type": "boolean"
+          },
+          "reviews": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "mode",
+                "passed"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "mode": {
+                  "$ref": "../../common.schema.json#/$defs/ReviewMode"
+                },
+                "passed": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                }
+              }
+            }
+          },
+          "blockerCategories": {
+            "type": "array",
+            "items": {
+              "$ref": "../../common.schema.json#/$defs/ReviewCategory"
+            },
+            "uniqueItems": true
+          },
+          "risk": {
+            "anyOf": [
+              {
+                "$ref": "../../common.schema.json#/$defs/riskResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/failure"
+            }
+          },
+          "discardedFindings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/discarded"
+            }
+          }
+        }
+      }
+    },
+    "discardedFindings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/discarded"
+      }
+    },
+    "summary": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "userVisibleChange": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "release": {
+      "description": "fix-executor 给出的发布文字(提交信息与 PR 的范围、一句话、原因、标题、问题、做法、局限)；旧修复没有",
+      "anyOf": [
+        {"$ref": "../../runner/roles/fix-executor.schema.json#/properties/release/anyOf/0"},
+        {"type": "null"}
+      ]
+    },
+    "affectedEndpoints": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "affectedPages": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "migration": {
+      "anyOf": [
+        {
+          "$ref": "fix-plan.schema.json#/$defs/migration"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "deviations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "unverified": {
+      "type": "array",
+      "items": {
+        "$ref": "../../common.schema.json#/$defs/unverifiedItem"
+      }
+    },
+    "leftovers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "incidentalFindings": {
+      "type": "array",
+      "items": {
+        "$ref": "../../common.schema.json#/$defs/incidentalFinding"
+      }
+    },
+    "protectedTouches": {
+      "type": "array",
+      "items": {
+        "$ref": "fix-plan.schema.json#/$defs/protectedTouch"
+      }
+    },
+    "frontendDesign": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "files",
+            "design",
+            "error"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "design": {
+              "anyOf": [
+                {
+                  "$ref": "../../runner/roles/frontend-designer.schema.json"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "error": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "split": {
+      "anyOf": [
+        {
+          "$ref": "fix-plan.schema.json#/$defs/split"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "failure": {
+      "type": "object",
+      "required": [
+        "check",
+        "location",
+        "problem",
+        "category"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "check": {
+          "type": "string",
+          "minLength": 1
+        },
+        "location": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "problem": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "$ref": "../../common.schema.json#/$defs/ReviewCategory"
+        }
+      }
+    },
+    "discarded": {
+      "type": "object",
+      "required": [
+        "finding",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "finding": {
+          "type": "object"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

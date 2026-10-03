@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/handoff/types/finding.schema.json",
+  "title": "finding：采集产出的问题",
+  "description": "finding 类型交接文档的数据块：每个 $defs 项是一个标签为 data:<名称> 的 YAML 代码块",
+  "$defs": {
+    "locations": {
+      "type": "array",
+      "minItems": 1,
+      "description": "「位置」小节中问题出现的代码位置",
+      "items": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "相对仓库根目录的文件路径",
+            "examples": [
+              "src/api/orders.py"
+            ]
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "行号",
+            "examples": [
+              42
+            ]
+          },
+          "symbol": {
+            "type": "string",
+            "description": "函数、类或接口名",
+            "examples": [
+              "OrderService.create"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

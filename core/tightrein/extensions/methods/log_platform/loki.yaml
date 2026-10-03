@@ -1,0 +1,56 @@
+name: loki
+point: log-platform
+summary: 在 Grafana Loki 上按 LogQL 查询时间窗口内的日志原文，只读 API
+applicability: 应用运行日志、项目规范的日志或访问日志已送入 Grafana Loki(自建或 Grafana Cloud)
+optionsSchema:
+  type: object
+  required: [url, user, tenant, keychainItem, retentionDays, pageSize, timeoutSeconds]
+  additionalProperties: false
+  properties:
+    url:
+      description: Loki 的地址(Grafana Cloud 为 https://logs-prod-<区域>.grafana.net)
+      type: string
+      pattern: '^https?://'
+    user:
+      description: 基本认证的用户名(Grafana Cloud 为实例编号)；为空时令牌按 Bearer 发送
+      type: [string, "null"]
+    tenant:
+      description: 多租户部署的 X-Scope-OrgID；为空时不带
+      type: [string, "null"]
+    keychainItem:
+      description: 存放只读访问令牌的钥匙串条目名；为空时不带认证
+      type: [string, "null"]
+    retentionDays:
+      description: 平台的数据保留天数，用于判断读取窗口是否超出保留期
+      type: integer
+      minimum: 1
+    pageSize:
+      description: 每次请求的条数
+      type: integer
+      minimum: 1
+      maximum: 5000
+    timeoutSeconds:
+      description: 每个请求的超时秒数
+      type: integer
+      minimum: 1
+tools: []
+doc:
+  prerequisites:
+    - 在 Grafana Cloud 建一个只有 logs:read 的访问策略令牌，或给自建 Loki 配只读的反向代理认证
+    - "security add-generic-password -s <条目名> -a loki -w 把令牌存进钥匙串"
+    - 日志的字段映射另选 log-parse 方法(core/json-lines 或 core/regex)
+  output: 按标签组合(流)分成片段，片段正文为窗口内按时间排列的原文行，交给 log-parse 解析
+  limitations:
+    - 只支持日志查询(LogQL 的流选择器与过滤)，不支持指标查询
+    - 同一纳秒的多条日志跨页时可能少读，条数上限内读完的窗口不受影响
+  example: |
+    extensions:
+      log-platform:
+        use: core/loki
+        options: {url: "https://logs-prod-012.grafana.net", user: "123456", keychainItem: tightrein.my-project.loki}
+      log-parse:
+        use: core/json-lines
+        options: {timeField: ts, levelField: level, messageField: msg, exceptionTypeField: error.type}
+    sources:
+      platform-errors:
+        logQuery: '{app="api"} | json | level=~"error|fatal"'

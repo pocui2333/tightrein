@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/handoff/types/review.schema.json",
+  "title": "review：评审意见",
+  "description": "review 类型交接文档的数据块：每个 $defs 项是一个标签为 data:<名称> 的 YAML 代码块",
+  "$defs": {
+    "issues": {
+      "type": "array",
+      "description": "「问题清单」小节中的问题；没有问题时为空列表",
+      "items": {
+        "type": "object",
+        "required": [
+          "level",
+          "text"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "level": {
+            "enum": [
+              "blocking",
+              "suggestion"
+            ],
+            "description": "阻断项须修改后才能继续；建议项不阻断",
+            "examples": [
+              "blocking"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "description": "问题与修改建议",
+            "examples": [
+              "缺少对 owner 的校验"
+            ]
+          },
+          "location": {
+            "$ref": "../../common.schema.json#/$defs/codeLocation",
+            "description": "代码位置 <路径>:<行>",
+            "examples": [
+              "src/api/orders.py:42"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/runner/guard-report.schema.json",
+  "title": "边界检查报告",
+  "type": "object",
+  "required": ["ok", "violations", "changedFiles", "linesAdded", "linesRemoved"],
+  "additionalProperties": false,
+  "properties": {
+    "ok": {"type": "boolean"},
+    "violations": {"type": "array", "items": {"$ref": "#/$defs/violation"}},
+    "changedFiles": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "linesAdded": {"type": "integer", "minimum": 0},
+    "linesRemoved": {"type": "integer", "minimum": 0},
+    "removedEnvNames": {"type": "array", "items": {"type": "string", "minLength": 1}}
+  },
+  "$defs": {
+    "violation": {
+      "type": "object",
+      "required": ["kind", "path", "detail"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"$ref": "../common.schema.json#/$defs/ViolationKind"},
+        "path": {"type": ["string", "null"]},
+        "detail": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

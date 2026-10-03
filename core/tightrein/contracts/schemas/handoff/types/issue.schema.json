@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/handoff/types/issue.schema.json",
+  "title": "issue：本地 Issue",
+  "description": "issue 类型交接文档的数据块：每个 $defs 项是一个标签为 data:<名称> 的 YAML 代码块",
+  "$defs": {}
+}

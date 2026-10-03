@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/runner/roles/spec-drafter.schema.json",
+  "title": "spec-drafter 起草的接口描述",
+  "type": "object",
+  "required": [
+    "openapi",
+    "sources",
+    "uncertain"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "openapi": {
+      "type": "object",
+      "required": [
+        "openapi",
+        "info",
+        "paths"
+      ],
+      "description": "OpenAPI 3 文档(JSON 形式)",
+      "properties": {
+        "openapi": {
+          "type": "string",
+          "pattern": "^3\\."
+        },
+        "info": {
+          "type": "object"
+        },
+        "paths": {
+          "type": "object"
+        }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "file"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "file": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "description": "每个接口路由取自哪个代码文件"
+    },
+    "uncertain": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "读代码无法确定、需要用户确认的地方"
+    }
+  }
+}

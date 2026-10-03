@@ -1,0 +1,787 @@
+# 核心的缺省配置(architecture/01 5.1 的第 1 层)。结构与 project.yaml 相同，按 config/project-config.schema.json 校验
+# (不要求任何层级的必填项)；技术栈的 defaults.yaml、工作区的 project.yaml 与本机用户配置中给出的同名键依次覆盖这里的值。
+
+project:
+  language: en                  # 给人读的文字(结论、标题、Issue 正文、计划与 PR 的叙述、评论)的语言：zh、en、ja 等
+
+target:
+  healthTimeoutSeconds: 10      # collect 运行 api-fuzz 前请求 target.healthcheck 的超时秒数
+  environment: staging          # 被测地址所在的环境：staging 或 production，写入信号与 collect 交接文档的 target.environment
+  # baseUrl 没有缺省值；healthcheck 未配置时不做健康检查。部署来源见 extensions.deploy-source(core/github-actions 等)
+
+# accounts 没有缺省值：未配置时 api-fuzz 与验证的页面检查以匿名身份(保留角色名 anonymous)运行，请求不带凭证。
+# accounts.login.kind 缺省为 token-endpoint(调用登录接口换取 token，放进 Authorization: Bearer)；
+# static-header 时钥匙串条目中的密码原样放进 accounts.login.header 指定的请求头，verify 可选。
+
+# 采集方法(redesign/01-collect.md)。每种方法配置了才启用；平台来源与项目探针的 every 为编排的 sources 步骤运行它的间隔，
+# api-fuzz 与静态巡检由部署后浅跑、新提交巡检与 schedule.tasks 触发。
+sources:
+  platform-errors:              # 内部错误：extensions.error-tracking(错误追踪平台)与 extensions.log-platform 加 logQuery(集中日志平台)
+    every: 1h
+    initialLookbackHours: 24    # 首次读取向前读的小时数
+    logQuery: null              # 日志平台上取应用运行报错的查询(如 LogQL)；为空时不读日志平台
+    logLimit: 5000              # 每次从日志平台读取的条数上限
+    levels: [error, critical]   # 产出信号的归一化级别
+  access-log:                   # 访问日志(可选)：query 为空时不启用；数据经 extensions.log-platform 取得
+    every: 1d
+    initialLookbackHours: 24
+    query: null
+    limit: 20000                # 每次读取的条数上限
+    fields: {method: method, route: route, status: status, durationMs: durationMs}
+    pattern: null               # 纯文本访问日志的正则(命名分组 method、route、status、durationMs)，给出时优先
+    minRequests: 20             # 窗口内请求少于它的接口不比较
+    latencyRatio: 2             # p95 耗时超过基线的这么多倍为退化
+    errorRateDelta: 0.05        # 5xx 比例比基线高出这么多为退化
+    baselineWeight: 0.3         # 基线指数平均中本次窗口的权重
+  alerts:                       # 业务告警：extensions.alert-source；基础设施类按名称或标签排除
+    every: 15m
+    exclude:
+      names: ["(?i)^(node|kube|container|pod|disk|filesystem|memory|cpu|load|network|host|instance|target)",
+              "(?i)(restart|oom|watchdog|infoinhibitor|down$|unreachable)"]
+      labels: {category: [infrastructure, infra, platform]}
+  project-probes: []            # 项目探针的登记：name、command、every、keychain、timeoutSeconds
+  api-fuzz:
+    levels:                     # 各档位的 Schemathesis 参数；includeMethod 为空时不限方法
+      shallow: {maxExamples: 50, phases: [examples, coverage, fuzzing], includeMethod: GET}
+      deep: {maxExamples: 200, phases: [examples, coverage, fuzzing, stateful], includeMethod: null}
+    workers: 1                  # Schemathesis 的并发数
+    timeoutMinutes: 30          # 一次运行的超时(分钟)
+    checks:                     # 检查项：服务器报错、越权、状态码不符开启；响应结构不符在接口描述由框架导出时开启(auto)
+      serverError: true
+      authorization: true
+      statusCode: true
+      responseSchema: auto
+      responseTime: false
+      unsupportedMethod: false
+    production:
+      allow: []                 # target.environment 为 production 时允许测试的接口路由(只测 GET)；为空时生产环境不能运行
+  static:
+    maxClaims: 20               # 每次取证的疑点上限(含待处理清单中遗留的)；超出的进入待处理清单，低级疑点不在采集时取证
+    baseline:                   # 基线审查(--level baseline，或第一次巡检的 full 档)：按目录模块分批审查已有代码
+      maxClaims: 40             # 基线审查取证的疑点上限，按严重度取证，超出的进入待处理清单
+      batchFiles: 20            # 每批最多文件数
+      batchLines: 3000          # 每批最多总行数；单个文件超过时独占一批
+      exclude:                  # 不审查的文件，写法同 protectedPaths；项目可整体覆盖或以 exclude+ 追加
+        # 测试夹具与快照
+        - fixtures/
+        - __fixtures__/
+        - testdata/
+        - __snapshots__/
+        - "*.snap"
+        # 生成文件与第三方代码
+        - dist/
+        - build/
+        - out/
+        - coverage/
+        - node_modules/
+        - vendor/
+        - generated/
+        - "*.min.js"
+        - "*.min.css"
+        - "*.map"
+        - "*.g.cs"
+        - "*.Designer.cs"
+        - "*_pb2.py"
+        - "*.pb.go"
+        # 锁文件
+        - "*.lock"
+        - package-lock.json
+        - pnpm-lock.yaml
+        - go.sum
+        - packages.lock.json
+        # 二进制与媒体(另按内容识别二进制)
+        - "*.png"
+        - "*.jpg"
+        - "*.jpeg"
+        - "*.gif"
+        - "*.ico"
+        - "*.webp"
+        - "*.svg"
+        - "*.pdf"
+        - "*.zip"
+        - "*.gz"
+        - "*.woff"
+        - "*.woff2"
+        - "*.ttf"
+        - "*.mp3"
+        - "*.mp4"
+        - "*.db"
+        - "*.sqlite"
+        # 文档与仓库元数据
+        - docs/
+        - "*.md"
+        - "*.rst"
+        - "*.txt"
+        - LICENSE*
+        - .gitignore
+        - .gitattributes
+        - .editorconfig
+
+evaluation:
+  repeats: 3                    # 每个用例在每个变体上的运行次数，不小于 3
+  parallelism: 1                # 评测的并发数
+  judge:                        # 模型评审的工具(runner，缺省为 defaultTool)与模型档；capability 为空时使用工具自己的缺省模型
+    capability: null
+  budgetUsd: 10                 # 单次评测的费用上限(美元)
+
+thresholds:
+  tiers:                        # 规模档(redesign/05-fix.md)：文件数与增删行数(不含测试文件)都不超过某档上限时取该档；超过 large 为超限
+    micro:
+      maxFiles: {value: 1, min: 1, max: 5}
+      maxLines: {value: 30, min: 5, max: 200}
+    small:
+      maxFiles: {value: 3, min: 1, max: 10}
+      maxLines: {value: 100, min: 10, max: 500}
+    medium:
+      maxFiles: {value: 10, min: 2, max: 30}
+      maxLines: {value: 500, min: 50, max: 3000}
+    large:
+      maxFiles: {value: 30, min: 5, max: 100}
+      maxLines: {value: 3000, min: 200, max: 20000}
+  suppressionDays: {value: 30, min: 7, max: 90}       # 抑制规则的缺省有效天数(聚合的 false-positive 与分诊判为误报共用)
+  reproduceAttempts: {value: 2, min: 1, max: 10}      # api-fuzz 复现确认的重放次数
+  resolveCoveredRuns: {value: 3, min: 1, max: 20}     # 判为已解决所需的覆盖运行次数
+  retention:
+    signalsDays: {value: 90, min: 7, max: 3650}       # 信号的保留天数
+    rawDays: {value: 30, min: 7, max: 365}            # 原始输出的保留天数
+    logsDays: {value: 90, min: 7, max: 3650}          # 事件日志的保留天数
+    fixesDays: {value: 90, min: 7, max: 3650}         # 修复目录 data/fixes/<Issue 编号>/ 在 Issue 关闭后的保留天数
+  change:                       # 单个 PR 的改动量上限，不含测试文件(testPaths)；计划预估与实施后的实际 diff 都按它检查，超出时拆分
+    maxFiles: {value: 5, min: 1, max: 30}             # 改动的文件数
+    maxLines: {value: 200, min: 20, max: 3000}        # 增删的行数
+  fix:
+    reviewRounds: {value: 3, min: 0, max: 5}          # 写代码之后修改的轮数上限(检查或评审不通过时交回修改)，超过时转待决定
+    planRounds: {value: 2, min: 1, max: 5}            # 修复计划被否决后重出的次数
+    checkpointRollbackFindings: {value: 3, min: 1, max: 20}  # 有检查点时，一轮不通过项达到此数且多于检查点即退回检查点
+  retrieval:
+    unusedDays: {value: 90, min: 7, max: 365}         # 条目这么多天没有被命中时列为未命中
+    inlineFullTokens: {value: 3000, min: 500, max: 20000}  # 预取时直接放全文的 token 上限
+    contextLimits:                                    # 各任务类型预取的条目上限
+      static-review: {value: 20, min: 1, max: 50}
+      triage: {value: 15, min: 1, max: 50}
+      fix: {value: 15, min: 1, max: 50}
+  triage:
+    perRun: {value: 5, min: 1, max: 50}                # 每次分诊的问题数上限
+    complexityFiles: {value: 1, min: 1, max: 10}       # 任务复杂度：预估改动超过这么多个文件为中(design 13.3)
+    deferredReopenOccurrences: {value: 3, min: 1, max: 10}  # 暂不修的问题再出现这么多次后重新分诊
+    evidenceRetries: {value: 2, min: 0, max: 5}        # 证据检查不通过时交回同一角色重做的次数，仍不通过转人工
+    dedupCandidateDays: {value: 90, min: 1, max: 365}  # 查重候选：最近多少天内分诊过的问题
+    dedupCandidates: {value: 10, min: 1, max: 30}      # 查重候选的最多个数
+    claimSamples: {value: 5, min: 1, max: 20}          # 主张中附带的信号样本数(按角色与位置去重)
+    lockMinutes: {value: 120, min: 10, max: 1440}      # 分诊一个问题时对象锁的时限(分钟)
+  issue:
+    reviewReminderWorkdays: {value: 3, min: 1, max: 20}  # Issue 待审阅超过这么多个工作日时提醒
+    slugMaxLength: {value: 40, min: 10, max: 80}       # Issue 文件名与修复分支中英文简称的最大长度
+    titleMaxLength: {value: 80, min: 20, max: 200}     # Issue 标题(取证输出的 report.title)的最大字符数，超出时截断
+  verify:
+    maxConsecutiveFailures: {value: 2, min: 1, max: 10}  # 合并前验证连续失败的上限
+    stagingWaitDays: {value: 7, min: 1, max: 60}       # 部署后确认等待超过这么多天时在运行摘要中提醒
+    observationHours: {value: 48, min: 1, max: 720}    # 部署后确认的观察期：来自服务端日志或无法执行检查的问题，部署后这么久没有再出现即为已解决
+    localRunLockMinutes: {value: 60, min: 5, max: 480} # 本机服务对象锁 local-run 的时限(分钟)
+    readonlyLockMinutes: {value: 120, min: 10, max: 720}  # 部署后确认在只读 worktree 上重跑检查时对象锁的时限(分钟)
+  release:
+    prReminderWorkdays: {value: 3, min: 1, max: 20}    # PR 待审核超过这么多个工作日时提醒
+    summaryItems: {value: 4, min: 1, max: 10}          # 工作总结最多几条
+    summaryScreenshots: {value: 2, min: 0, max: 10}    # 工作总结附带的截图数
+  learn:
+    noisyCheckRatio: {value: 0.5, min: 0.1, max: 1}    # 同一检查本周被判误报、作废或间歇未复现的信号占比超过它时建议调整采集配置
+    minSamples: {value: 5, min: 1, max: 100}           # 上面的占比与覆盖缺口之外的统计类建议所需的最少样本数
+    coverageGapWeeks: {value: 4, min: 1, max: 12}      # 接口或页面连续这么多周没有被覆盖即为覆盖缺口
+    suggestionExpiryWeeks: {value: 4, min: 1, max: 12} # 建议待处理超过这么多周后标为过期
+    lessonRetries: {value: 3, min: 1, max: 10}         # 同一来源撰写经验连续失败这么多次后放弃，由用户手写
+    lessonReviewDays: {value: 90, min: 7, max: 365}    # 经验条目的复核日期：写入日加这么多天
+    falsePositiveCleanRuns: {value: 3, min: 1, max: 20}  # 判为误报的问题之后被这么多次覆盖运行覆盖而未出现时回填判对
+    suppressionNoticeDays: {value: 7, min: 1, max: 30} # 周报列出这么多天内到期的抑制规则
+    regressionWindowDays: {value: 90, min: 7, max: 365}  # 回归率的分母：这么多天内以已修复关闭过的 Issue
+    trendWeeks: {value: 4, min: 2, max: 12}            # 周报中指标趋势的周数
+    thirdPartyMinStars: {value: 5000, min: 0, max: 1000000}  # design 9.11：来源仓库的最少星标数
+    thirdPartyCommitDays: {value: 90, min: 7, max: 365}  # design 9.11：来源仓库最近一次提交距今不超过的天数
+    rules:                      # 缺陷变规则(redesign/08-learn.md)
+      lookbackDays: {value: 14, min: 1, max: 90}       # 处理这么多天内以已修复关闭的 Issue
+      maxRepoHits: {value: 5, min: 0, max: 100}        # 规则在全仓库的命中数(误报的上限)超过它时不收入规则库
+    improve:                    # 自我改进的建议(learn improve)
+      lookbackDays: {value: 30, min: 7, max: 180}      # 归纳这么多天内出问题的来源
+      minTroubles: {value: 3, min: 1, max: 50}         # 出问题的来源少于它时不调用模型
+      minHeldOutCases: {value: 2, min: 1, max: 50}     # 未参与改进的评测用例少于它时不出建议
+      repeats: {value: 3, min: 3, max: 10}             # 评测中每个用例每个变体的运行次数
+    controls:                   # 分数驱动的控制措施，只以建议进收件箱
+      weeks: {value: 3, min: 2, max: 12}               # 某模型一次通过率连续这么多周偏低时建议升档或换模型
+      firstPassFloor: {value: 0.5, min: 0.1, max: 1}   # 一次通过率低于它为偏低
+      corrections: {value: 3, min: 1, max: 20}         # 一周内用户纠正同一类自动决定达到这么多次时建议改为交用户确认
+  autonomy:                     # 自动确认修复计划的改动量门槛(gates.plan-confirm 为 auto 时生效，design 5.4)，不大于 change
+    planMaxFiles: {value: 3, min: 1, max: 20}          # 计划预估改动的文件数不超过它
+    planMaxLines: {value: 100, min: 10, max: 1000}     # 计划预估改动的行数不超过它
+  loop:                         # 熔断(redesign/09-loop.md 第 3 节)：无人值守推进中达到次数即停止处理该对象，转待决定
+    breakerFailures: {value: 3, min: 1, max: 10}       # 同一对象连续失败的次数
+    breakerRepeats: {value: 3, min: 2, max: 10}        # 同一对象的同一步执行后没有进展的次数
+  health:
+    missedWindowMinutes: {value: 60, min: 5, max: 720}   # 应执行时刻之后这么多分钟内没有对应运行即为漏跑
+    deployToShallowMinutes: {value: 120, min: 10, max: 1440}  # 检测到部署后这么多分钟仍没有浅跑即为部署检测停滞
+    dataDirMaxBytes: {value: 10737418240, min: 104857600, max: 1099511627776}  # data/ 超过这个大小时提示清理
+    lookbackDays: {value: 7, min: 1, max: 30}            # 漏跑、异常退出与部署停滞只看最近这么多天
+    missedNotifyCount: {value: 2, min: 1, max: 10}       # 同一任务最近连续漏跑这么多次时立即通知
+    idleRuns: {value: 10, min: 3, max: 50}               # 同一探针最近这么多次成功运行都没有信号时提示检查
+
+# 修复的风险判定(design 5.8)：核心不含任何路径或模式，技术栈与项目按类别补充；categories 为参与判定的类别。
+review:
+  riskRules:
+    schema: {paths: [], patterns: []}      # 数据库结构
+    authz: {paths: [], patterns: []}       # 权限与数据归属
+    contract: {paths: [], patterns: []}    # 公共接口或契约
+  deepTriggers:
+    categories: [schema, authz, contract]
+
+# 工程参数(architecture/01 5.2 的 runtime 段)：各组件的超时、轮询间隔、宽限时间、输出截断长度、重试间隔与日志轮转。
+runtime:
+  aggregate:
+    titleMaxChars: 120          # 新问题标题的最大字符数
+  keychain:
+    timeoutSeconds: 30          # 执行 security 读取钥匙串的超时秒数
+  guards:
+    minLiteralLength: 4         # 复现检查改动判定中计入的最短字面量长度
+  store:
+    busyTimeoutMs: 5000         # SQLite 的 busy timeout(毫秒)
+    lockPollSeconds: 1          # 等待文件锁时的轮询间隔
+    launchdLogMaxBytes: 10485760  # launchd 日志单个文件达到这个大小时轮转(10 MB)
+    launchdLogBackups: 3        # launchd 日志轮转保留的份数
+  observability:
+    notifyTimeoutSeconds: 10    # 发送本机通知的超时秒数
+  runner:
+    maxCalls: 2                 # 一次任务最多调用工具的次数(首次加格式重试)
+    interruptGraceSeconds: 10   # 超时后发出中断信号到终止信号之间的等待
+    terminateGraceSeconds: 5    # 终止信号到强制结束之间的等待
+    stderrTailLines: 40         # 失败时保留的错误输出尾部行数
+    pollSeconds: 0.05           # 读取进程输出的轮询间隔
+    retryOutputChars: 8000      # 格式重试说明中附带的上一次输出的最大字符数
+    toolOutputMaxChars: 16384   # 会话记录中单次工具输出的最大字符数
+    sessionClockSkewSeconds: 5  # 按开始时间查找工具本机会话记录时容许的时钟偏差
+  extensions:
+    maxStdoutBytes: 67108864    # 扩展标准输出的上限(64 MB)，超过即终止
+    maxStderrBytes: 1048576     # 扩展错误输出保留的上限(1 MB)
+    stderrTailLines: 50         # 失败时报告的错误输出尾部行数
+    killGraceSeconds: 5         # 超时后终止信号到强制结束之间的等待
+    pollSeconds: 0.05           # 等待扩展进程的轮询间隔
+    pointTimeoutSeconds:        # 各扩展点的缺省超时秒数；project.yaml 中 extensions.<扩展点>.timeoutSeconds 可单独覆盖
+      spec-export: 900
+      authz-endpoints: 900
+      authz-roles: 120
+      error-tracking: 120
+      log-platform: 120
+      log-parse: 120
+      alert-source: 60
+      static-tools: 1800
+      page-routes: 120
+      local-run: 30
+      deploy-source: 120
+  tools:
+    semgrep: semgrep            # Semgrep 命令：命令名按 PATH 查找；含 / 的相对路径相对本工具仓库根目录，例如 local/semgrep/bin/semgrep；本机用户配置的 tools.semgrep.path 优先
+  vcs:
+    timeoutSeconds: 300         # git 与 gh 命令的缺省超时秒数
+    fetchTimeoutSeconds: 60     # git fetch 的超时秒数；超时或失败即以网络错误结束(按下一行的间隔重试)
+    readRetryDelaysSeconds: [5, 20]  # 只读的远程命令失败后的重试间隔
+    stderrTailLines: 20         # 失败时报告的错误输出尾部行数
+    operationExpireDays: 7      # 待确认的 git 操作超过这么多天未确认即过期
+    issueListLimit: 1000        # GitHub Issue 镜像读回开关状态、列出标签时一次查询的条数
+  network:
+    rerouteHost: github.com     # 网络类错误换路重试时判断当前路线(直连或经代理)所用的主机
+    errorPatterns:              # 网络类错误的错误输出(正则，不区分大小写)；认证失败、推送被拒等不在其中，不换路
+      - "timed? ?out"
+      - "connection (reset|refused|closed)"
+      - "could not resolve (host|proxy)"
+      - "no such host"
+      - "name or service not known"
+      - "nodename nor servname"
+      - "temporary failure in name resolution"
+      - "failed to connect to"
+      - "(tls|ssl).{0,20}handshake"
+      - "ssl_error_syscall"
+      - "ssl_connect"
+      - "unexpected eof"
+      - "eof occurred in violation of protocol"
+      - "proxyconnect"
+      - "tunnel connection failed"
+      - "network is unreachable"
+      - "recv failure"
+      - "error connecting to"
+  retrieval:
+    lockMinutes: 5              # 索引同步锁的时限
+    lockWaitSeconds: 30         # 等待索引同步锁的上限
+    rrfK: 60                    # 多路检索合并(RRF)的常数
+    columnWeights: {id: 0, title: 10, summary: 5, tags: 5, body: 1}  # 全文检索各列的 bm25 权重
+    candidateFactor: 3          # 每一路检索取 limit 的这么多倍候选再合并
+    indexMaxLines: 200          # INDEX.md 单个文件的最大行数，超过后分页
+    indexPageSize: 180          # 分页后每页的条目数
+    rootListingLimit: 60        # 根 INDEX.md 直接列出的条目上限
+    staleMinSharedTags: 2       # 待复核分组：至少共享的标签数
+    staleMaxGroupSize: 8        # 待复核分组的最大条目数
+    dedupSimilarLimit: 5        # 写入去重时取的相似条目数
+  evaluation:
+    sandboxTimeoutSeconds: 3600  # 一次沙箱运行的超时秒数
+    maxConsecutiveCrashes: 3    # 同一变体连续崩溃这么多次后停止该变体
+  sources:
+    messageChars: 1000          # 信号消息的最大字符数
+    contextBytes: 16384         # 信号上下文序列化后的最大字节数
+    reportErrorChars: 200       # api-fuzz 报告中错误消息的最大字符数
+    responseExcerptChars: 500   # 响应正文摘录的最大字符数
+    logExcerptChars: 2000       # 日志原文摘录的最大字符数
+    unlocatedExcerptChars: 60   # 提取不到文件的顺带发现在提示中摘录的字符数
+    projectFrames: 10           # 内部错误信号保留的本项目帧数
+    httpTimeoutSeconds: 30      # 探针 HTTP 请求与重放的缺省超时秒数
+    semgrepTimeoutSeconds: 1800  # 静态巡检运行 Semgrep 的缺省超时秒数
+    probeTimeoutSeconds: 300    # 项目探针没有写 timeoutSeconds 时的超时秒数
+
+notify:
+  method: macos                 # 本机通知方式：macos、none；本机用户配置的 notify.method 覆盖
+
+# Issue 的去向(architecture/06 10.8)：local 只在本地；github 时本地仍是数据源，GitHub Issue 是给用户阅读与讨论的镜像。
+issues:
+  tracker: local
+  github:
+    repo: null                  # owner/name；为空时取 project.repo 的 origin 远程
+    labelPrefix: "tightrein:"  # 状态标签名为 <前缀><状态取值>
+    privateOnly: true           # 只允许私有仓库：缺陷与安全发现不应公开
+    labelColor: "ededed"        # 自动创建的状态标签颜色
+
+# 分诊(redesign/03-triage.md)：severityGuide 为项目语境下的严重度说明，拼在分诊规则 P0 到 P3 的定义之后；缺省没有。
+triage:
+  severityGuide: null
+  refute:                       # 证伪复核的触发条件：取证判为成立或条件成立且命中任一项时运行(预估 P0 而判为不成立时也运行)
+    severities: [P0, P1]
+    taskTypes: [security]
+    impactKinds: [authorization, data-ownership]
+  treatment:                    # 处理标签的决策树：按顺序取第一条全部条件都满足的规则；条件 verdicts、severities、tiers、worth
+    rules:                      # 省略表示不限；最后一条不带条件作为兜底。项目写 rules 整体覆盖
+      - {worth: [wont], treatment: wont-fix}
+      - {severities: [P0], treatment: immediate}
+      - {severities: [P1], verdicts: [confirmed], treatment: immediate}
+      - {worth: [defer], treatment: observe}
+      - {severities: [P1, P2], treatment: scheduled}
+      - {severities: [P3], tiers: [micro, small], worth: [fix], treatment: scheduled}
+      - {treatment: observe}
+
+# 修复的通道与步骤(redesign/05-fix.md)。lanes 为「类型 × 档」流程表：fast(A 快速)、standard(B 标准)、large(C 大任务)；
+# 类型没有单独一行时取 default；超限档不接，转待决定；规模档未知(用户需求)按 medium 查表。
+fix:
+  lanes:
+    default: {micro: fast, small: fast, medium: standard, large: large}
+    security: {micro: standard, small: standard, medium: standard, large: large}
+    data: {micro: standard, small: standard, medium: standard, large: large}
+    dependency: {micro: standard, small: standard, medium: standard, large: large}
+  scout:
+    taskTypes: [security, data]   # B 通道中这些类型总是先勘察；其余只在 Issue 缺根因位置或范围时勘察
+  repro:
+    skipTypes: [docs-config]      # 不写复现测试的类型
+    independentTypes: [security, data]  # 复现测试由另一会话的 repro-writer 写(可配置为另一种工具或模型)
+    passOnBaseTypes: [refactor]   # 写表征测试，在基准版本上须通过；其余类型须失败
+    siblingTests: 2               # 交给写测试的模型参考的已有测试文件个数(离根因文件最近的)
+    siblingLines: 80              # 每个参考测试截取的行数上限(开头的导入与夹具加第一个测试)
+    testFilePatterns: ["test_*.py", "*_test.py", "*.test.js", "*.test.ts", "*.spec.js", "*.spec.ts", "*_test.go",
+                       "*Test.java", "*Tests.cs"]  # 测试文件的文件名模式；技术栈与项目以 testFilePatterns+ 追加
+  review:
+    skipMicro: true               # A 通道实际改动为微档且检查都通过时跳过轻量评审
+  manualTaskType: feature         # 用户需求的 Issue 没有给出类型时的任务类型
+
+# 发布(design 7.10)：逐次确认与自动合并由关卡表 gates.release-writes、gates.merge 决定。
+release:
+  mergeMethod: squash           # 自动合并的方式：squash 或 merge
+  reviewComment: true           # 把 AI 评审结论以评论写入 PR(只作说明，不是批准)
+  autoMergeBlockPaths:          # 改动命中时不自动合并、写决策简报交用户；写法同 protectedPaths，技术栈与项目以 autoMergeBlockPaths+ 追加
+    # CI 工作流
+    - .github/workflows/
+    - .gitlab-ci.yml
+    - .circleci/
+    - Jenkinsfile
+    - azure-pipelines.yml
+    # 依赖清单与锁文件
+    - package.json
+    - package-lock.json
+    - pnpm-lock.yaml
+    - yarn.lock
+    - requirements*.txt
+    - pyproject.toml
+    - poetry.lock
+    - uv.lock
+    - Pipfile
+    - Pipfile.lock
+    - go.mod
+    - go.sum
+    - Cargo.toml
+    - Cargo.lock
+    - Gemfile
+    - Gemfile.lock
+    - "*.csproj"
+    - packages.lock.json
+    - pom.xml
+    - build.gradle
+    - build.gradle.kts
+    # 迁移
+    - migrations/
+    - Migrations/
+    - "*.sql"
+    # 权限认证
+    - auth/
+    - Auth/
+    - authentication/
+    - authorization/
+    - "*permission*.*"
+    - "*Permission*.*"
+    # 密钥与配置
+    - .env
+    - ".env.*"
+    - "*secret*"
+    - "*.pem"
+    - "*.key"
+  deploy:
+    observationHours: 24        # 没有配置部署来源(extensions.deploy-source)时，合并后经过这么久视为已部署，再做部署后确认
+
+# 审批关卡(redesign/09-loop.md 第 2 节，config/gates.py)：user 交用户决定，auto 按规则由程序处理；模型不能在运行时改变。
+# 最后五项必须交用户，只能为 user。
+gates:
+  issue-approve: user           # 放行新建的 Issue；auto 按 autonomy.approve 的规则放行，不满足的交用户；用户需求创建即放行
+  plan-confirm: user            # 确认 B 通道的修复计划(A 通道总是自动、C 通道总是交用户)；auto 按自主确认规则(thresholds.autonomy)
+  fix-session: user             # 修复：user 在终端交互会话中进行；auto 由 run 以非交互任务推进已放行的 Issue
+  release-writes: user          # 建修复分支、本地提交、合并主干、推送、创建或更新 PR、发评审评论、提撤销 PR；auto 生成后直接执行
+  mirror-writes: user           # GitHub Issue 镜像的写入；auto 直接执行
+  merge: user                   # 合并 PR；auto 满足自动合并条件时合并(有必需检查时开启 GitHub 原生自动合并)
+  high-risk-merge: user         # 改动命中 release.autoMergeBlockPaths 的合并：写决策简报交用户
+  delete: user                  # 删除修复 worktree、分支或数据
+  permissions-secrets: user     # 计划改动 credentialFiles 或 review.riskRules.authz 命中的文件
+  over-task-limit: user         # 超出单个任务上限(thresholds.change、超限档)
+  needs-decision: user          # 待决定的 Issue 不被自动推进
+
+# 自主决定的规则(design 4.12、5.4)：gates.issue-approve 与 gates.plan-confirm 为 auto 时使用；计划的门槛见 thresholds.autonomy。
+autonomy:
+  approve:
+    maxComplexity: low          # 分诊复杂度不高于它才自动放行：low、medium、high
+    impactKinds: [authorization, data-ownership]  # 分诊的影响类别命中其一即交用户
+    severities: []              # 严重度在列表中即交用户，如 [P0]
+
+# 修复的边界检查(architecture/02 3.2)。credentialFiles 只允许追加：各层的值依次拼接，技术栈与项目不能去掉这里的模式；
+# skipMarkers 由上层整体覆盖。
+credentialFiles: [".env", ".env.*", "*.pem", "*.pfx", "*.p12", "*.key", "secrets*.json"]
+skipMarkers: [".skip(", "xit(", "[Fact(Skip", "[Ignore]", "@unittest.skip", "pytest.mark.skip", "#pragma warning disable",
+              "@ts-ignore"]
+
+checks:
+  residuePatterns: []           # 交付规则：新增行不得匹配的正则(调试输出、注释掉的废弃代码等)，由技术栈与项目给出
+  timeoutSeconds: 1800          # 每条项目检查命令的超时秒数
+  pages:                        # 验证环节的页面巡检与页面类复现检查(Playwright，用例在工作区 e2e/)
+    patrolGrep: null            # 巡检用例的 --grep 过滤；为空时运行全部巡检用例
+    ignoreRequests: []          # 不算失败请求的请求：method、pathPattern、status
+    locale: zh-CN               # 浏览器语言
+    retries: 2                  # 失败用例的重试次数
+    timeoutMinutes: 30          # 一次运行的超时(分钟)
+
+# 本机启动(architecture/07 第 11 章)；端口由项目给出。
+localRun:
+  readyTimeoutSeconds: 180      # 等待就绪信号的上限
+  stopTimeoutSeconds: 15        # 收尾时发出终止信号后等待退出的秒数，超过后强制结束
+  readyUrlTimeoutSeconds: 5     # 就绪信号出现后请求 readyUrl 的超时
+  pollIntervalMs: 200           # 读取服务日志、判断就绪的间隔
+  portProbeTimeoutSeconds: 1    # 启动前检查端口是否被占用时连接的超时秒数
+
+# Markdown 交接文档(redesign/00-handoff-documents.md)：各小节正文(不含数据块)的字符数上限，doc check 据此校验；
+# 键为小节键(conclusion、goal、steps 等)，没有列出的小节取 default。超出的内容放进单独的附件文件，正文只给引用与摘要。
+documents:
+  sectionMaxChars:
+    conclusion: 400
+    default: 4000
+
+# 编排与命令行(architecture/09 第 3、4 节)
+loop:
+  objectLockMinutes: 120        # continue 处理一个对象时对象锁的时限(分钟)
+  findLimit: 20                 # find 返回的候选上限
+  lookbackDays: 7               # 从未执行过的定时任务向前补算应执行时刻的天数
+  maxActiveFixes: 1             # 同时处于修复阶段的 Issue 上限(redesign/09-loop.md 第 5 节)；无人值守推进按处理标签与严重度排序
+  watchIntervalSeconds: 2       # tightrein watch 的刷新间隔(秒)；--interval 覆盖
+
+# 预算三层(redesign/09-loop.md 第 3 节)：全部环节合计的费用上限(美元)，null 为不限；到达即停并写入每日汇总。
+# 每周从周一开始(本机时区)；perWeekUsd 为空时按 perWeekPercent(订阅额度的百分比) × subscriptionWeekUsd(订阅额度每周
+# 相当的金额)换算。各环节自己的每日上限仍是 stages.<环节>.budgetPerDay。
+budget:
+  perRunUsd: null
+  perDayUsd: null
+  perWeekUsd: null
+  perWeekPercent: null
+  subscriptionWeekUsd: null
+
+# 接入(redesign/10-onboarding.md)：识别技术栈的标记文件与没有检查命令时推荐的命令。
+onboarding:
+  stackMarkers:
+    python: [pyproject.toml, requirements.txt, setup.py, Pipfile]
+    node: [package.json]
+    dotnet: ["*.sln", "*.csproj"]
+    go: [go.mod]
+    rust: [Cargo.toml]
+    java: [pom.xml, build.gradle, build.gradle.kts]
+    ruby: [Gemfile]
+  checkCommands:
+    python: "python -m pytest -q"
+    node: "npm test"
+    dotnet: "dotnet test"
+    go: "go test ./..."
+    rust: "cargo test"
+    java: "mvn -q test"
+    ruby: "bundle exec rake test"
+
+# 复现检查执行器(architecture/04 第 7 节)
+regressions:
+  apiTimeoutSeconds: 30         # 接口类检查重放请求的超时秒数
+  staticTimeoutSeconds: 600     # 静态类检查运行 Semgrep 的超时秒数
+  loginTimeoutSeconds: 30       # 接口类检查按目标地址登录的超时秒数
+  testFailureExitCodes: [1]     # 测试类检查：这些退出码记为测试失败；0 为通过，其余非零(收集错误、用法错误、没有选中测试)记为检查无效
+  envRetries: 1                 # 环境问题的就地重试次数；只对环境问题重试，测试本身的不稳定不重试
+  # 失败归因规则(正则，不区分大小写)：按输出判断测试失败原因。技术栈与项目以 testFailurePatterns+ 追加各类别
+  testFailurePatterns:
+    # 测试本身有问题：语法、导入、夹具等；命中时交回写测试的一轮重写
+    testBroken:
+      - "SyntaxError:"
+      - "IndentationError:"
+      - "ImportError:"
+      - "ModuleNotFoundError:"
+      - "fixture '\\w+' not found"
+      - "CollectError"
+      - "cannot collect test"
+      - "NameError:"
+      - "TypeError:.*argument"
+      - "compilation failed"
+      - "Cannot find module"
+      - "is not defined"
+      - "ReferenceError:"
+    # 环境问题：网络、超时等；就地重试 envRetries 次后仍失败则停下报环境问题
+    environment:
+      - "Connection refused"
+      - "ConnectionRefusedError"
+      - "ECONNREFUSED"
+      - "Read timed out"
+      - "TimeoutError"
+      - "ETIMEDOUT"
+      - "ECONNRESET"
+      - "ConnectionResetError"
+      - "socket.timeout"
+      - "OSError.*Errno"
+      - "address already in use"
+      - "No such file or directory.*/tmp/"
+
+schedule:
+  tick:                         # launchd 唤醒 tick 的时刻(redesign/09-loop.md 第 5 节)；project.yaml 的 schedule.tick 整体覆盖
+    weekdays: [1, 2, 3, 4, 5]   # 1 为周一
+    minutes: [0, 15, 30, 45]    # 省略 hours 表示每小时
+  runAt: ["09:00"]              # 工作日完整运行的时刻；其余 tick 只检查事件(新提交 → 增量巡检，新部署 → 部署后确认)
+  weekly:
+    at: "08:30"                 # 周任务(learn report)的时刻，日期为本周第一个工作日
+  launchd:
+    lang: en_US.UTF-8           # launchd 任务环境中的 LANG
+
+# skill 的安装与第三方 skill(architecture/09 第 5 到 7 节)
+packaging:
+  targets:                      # 各工具的安装位置；本机用户配置的 install.targets.<工具>.path 覆盖
+    claude: "~/.cache/tightrein/packaging/claude"   # Claude Code 本地插件市场的构建目录
+    codex: "~/.agents/skills"
+    agy: "~/.agents/skills"     # 与 Codex CLI 共用
+  downloadTimeoutSeconds: 120   # 下载第三方 skill 源码归档的超时秒数
+  skillBodyMaxLines: 500        # SKILL.md 正文的行数上限
+  referenceTocLines: 100        # 参考文件超过这么多行时须有「## 目录」一节
+
+# 分支、提交与 PR 的格式(redesign/07-release.md 第 1 节)。conventions 为工作区显式给出的格式(优先级最高)；为空时按
+# 项目中写明的约定(PR 模板、commitlint、CONTRIBUTING.md 等)，再没有时用通用格式。格式串的占位符见 domain/release_format.py。
+git:
+  conventions:
+    branch: null                # 如 "{prefix}{type}/{issue}-{slug}"
+    commit: null                # 如 "{type}{scope}: {summary}"
+    prTemplate: null            # 仓库内的 PR 模板路径；为空时自动识别 .github/PULL_REQUEST_TEMPLATE.md 等
+  personalPrefix: false         # true：分支名前加本机用户配置的 branchPrefix(需要个人前缀的项目在工作区打开)
+  branchTypes:                  # 任务类型 → 分支类型；立即修的 P0 为 hotfix
+    default: bugfix
+    feature: feature
+    refactor: chore
+    dependency: chore
+    docs-config: chore
+  commitTypes:                  # 任务类型 → 提交类型(Conventional Commits)
+    default: fix
+    feature: feat
+    refactor: refactor
+    dependency: build
+    docs-config: chore
+  inference:                    # 从历史推断约定(结果交接入时确认，不自动采用)
+    sampleSize: 50              # 读取的最近提交数
+    minSamples: 10              # 样本少于它时不推断
+    minRatio: 0.8               # 统一比例达到它才认为有统一风格
+  forbiddenPrefixes: [ai, agent, bot, claude, codex, gemini, agy, antigravity, copilot, cursor, gpt]  # 分支前缀不得使用的 AI 与工具名称
+
+# 各角色与任务默认使用的模型档(light、standard、strong，design 9.6)；某个环节需要不同档位时用
+# stages.<环节>.roles|tasks.<名称>.capability 覆盖。档对应的模型与推理强度写在 capabilities.<档>.<工具>(model、effort)。
+roleCapabilities:
+  static-review: strong         # 静态巡检的增量审查(新代码缺陷的主要发现者，redesign/01-collect.md 第 6 节)
+  baseline-review: strong       # 静态巡检的基线审查(一次性、影响大)
+  variant-scan: light           # 以一个缺陷模式为种子的全量扫描
+  claim-verifier: strong        # 取证(分诊与静态巡检)
+  spec-drafter: strong          # 没有自动导出时起草接口描述
+  refuter: strong
+  dedup: light                  # 分诊查重
+  fix-scout: light
+  fix-planner: strong
+  frontend-designer: strong     # 计划含前端文件时的前端设计说明
+  fix-executor: strong          # 写复现测试与写代码(同一会话的两轮)
+  repro-writer: strong          # 安全、数据类的复现测试(另一会话)
+  lesson-writer: standard
+  rule-writer: strong           # 缺陷变规则：规则要用原补丁验证，写错只是不收录
+  improvement-writer: strong    # 从出问题的来源归纳改进建议
+  knowledge-curator: light      # 知识写入去重判断
+
+# 角色与任务的上限。分诊与修复角色的上限按任务复杂度(design 13.3)分三档；没有写的上限项取 stages.<环节>.limits。
+# 评审类设置(review.light、review.deep、screenshotReview)带自己的模型档。
+stages:
+  collect:
+    limits:
+      maxDurationMs: 7200000    # collect 运行的时间上限；超过后仍为 running 的运行在下一次 collect 启动时改为 failed
+    tasks:
+      static-review:            # 静态巡检的增量审查
+        limits: {maxTurns: 60, maxDurationMs: 1200000}
+      baseline-review:          # 静态巡检的基线审查，每批一次
+        limits: {maxTurns: 80, maxDurationMs: 1800000}
+      variant-scan:             # 以一个缺陷模式为种子的全量扫描
+        limits: {maxTurns: 60, maxDurationMs: 1200000}
+      claim-verifier:           # 候选主张的取证
+        limits: {maxTurns: 60, maxDurationMs: 1200000}
+      spec-drafter:             # 起草接口描述(tightrein spec draft)
+        limits: {maxTurns: 80, maxDurationMs: 1800000}
+  aggregate:
+    limits:
+      maxDurationMs: 1800000    # aggregate 排队等待全局锁的上限，超过后退出
+  triage:
+    roles:
+      claim-verifier: &evidence
+        limits:
+          low: {maxTurns: 40, maxDurationMs: 900000}
+          medium: {maxTurns: 70, maxDurationMs: 1500000}
+          high: {maxTurns: 100, maxDurationMs: 2400000}
+      refuter: *evidence
+    tasks:
+      dedup:                    # 查重
+        limits: {maxTurns: 20, maxDurationMs: 600000}
+  fix:
+    roles:
+      fix-scout:                # 勘察(只在 B 通道且需要时)
+        limits:
+          low: {maxTurns: 30, maxDurationMs: 600000}
+          medium: {maxTurns: 50, maxDurationMs: 900000}
+          high: {maxTurns: 70, maxDurationMs: 1200000}
+      fix-planner: &planner
+        limits:
+          low: {maxTurns: 30, maxDurationMs: 900000}
+          medium: {maxTurns: 50, maxDurationMs: 1200000}
+          high: {maxTurns: 70, maxDurationMs: 1800000}
+      frontend-designer:        # 计划预估改动的文件中有匹配 paths 的前端文件时，在 fix-executor 之前出前端设计说明
+        <<: *planner
+        # 前端文件的路径模式(写法同 protectedPaths)；技术栈与项目写 paths 整体覆盖，写 paths+ 追加
+        paths: ["*.vue", "*.jsx", "*.tsx", "*.html", "*.css", "*.scss", "*.sass", "*.less", "*.styl", "*.svelte",
+                public/, static/, assets/, styles/, components/, views/, pages/, layouts/]
+      fix-executor: &executor   # 写复现测试与写代码
+        limits:
+          low: {maxTurns: 60, maxDurationMs: 1800000}
+          medium: {maxTurns: 100, maxDurationMs: 2700000}
+          high: {maxTurns: 150, maxDurationMs: 3600000}
+      repro-writer: *executor   # 安全、数据类的复现测试，与写代码不同的会话
+    review:
+      light:                    # A 通道与 B 通道的轻量评审
+        capability: standard
+        limits: {maxTurns: 40, maxDurationMs: 900000}
+      deep:                     # B 通道高风险时另加的深度评审；须与 fix-executor 使用不同的工具或模型
+        capability: strong
+        limits: {maxTurns: 70, maxDurationMs: 1800000}
+  verify:
+    screenshotReview:           # 合并前验证的截图查看
+      capability: standard
+      limits: {maxTurns: 20, maxDurationMs: 600000}
+  learn:
+    tasks:
+      lesson-writer:            # 经验撰写与同类条目的矛盾比对
+        limits: {maxTurns: 20, maxDurationMs: 600000}
+      rule-writer:              # 缺陷变规则
+        limits: {maxTurns: 30, maxDurationMs: 900000}
+      improvement-writer:       # 改进建议
+        limits: {maxTurns: 40, maxDurationMs: 1200000}
+
+# 核心方法 options 的默认值(architecture/10 1.4)，键为方法编号。解析扩展点时依次取这里、project.yaml 的
+# methods.<方法编号> 与 extensions.<扩展点>.options，后者覆盖前者的同名键。
+methods:
+  core/openapi-url:
+    timeoutSeconds: 30          # 读取接口描述的 HTTP 请求超时秒数
+  core/openapi-file:
+    base: repo                  # path 的基准目录：repo 为仓库根目录(随 commit 取文件)，workspace 为工作区根目录
+  core/sentry:
+    baseUrl: https://sentry.io  # 自建 Sentry 或 GlitchTip 时改为其地址
+    projects: []                # 项目的 slug 或编号；为空时为组织下全部项目
+    environment: null           # 只看这个环境；为空时不限
+    retentionDays: 90           # 平台的数据保留天数，用于判断窗口是否超出保留期
+    limit: 100                  # 每次读取的问题条数上限
+    breadcrumbs: 10             # 前端错误保留的最近操作轨迹条数
+    timeoutSeconds: 30          # 每个请求的超时秒数
+  core/loki:
+    user: null                  # 基本认证的用户名(Grafana Cloud 为实例编号)；为空时令牌按 Bearer 发送
+    tenant: null                # 多租户时的 X-Scope-OrgID
+    keychainItem: null          # 存放访问令牌的钥匙串条目；为空时不带认证
+    retentionDays: 30           # 平台的数据保留天数
+    pageSize: 1000              # 每次请求的条数
+    timeoutSeconds: 30
+  core/alertmanager:
+    keychainItem: null          # 存放访问令牌的钥匙串条目；为空时不带认证
+    user: null                  # 基本认证的用户名；为空时令牌按 Bearer 发送
+    timeoutSeconds: 30
+  core/json-lines:
+    timeField: timestamp        # 时间字段；嵌套字段以 . 连接
+    levelField: level           # 级别字段
+    messageField: message       # 消息字段
+    categoryField: null         # 类别字段，为空时不取
+    eventIdField: null          # 事件编号字段，为空时不取
+    exceptionTypeField: null    # 异常类型字段，为空时不取
+    exceptionMessageField: null # 异常消息字段，为空时不取
+    timezone: UTC               # 不带时区的时间所用的时区(IANA 名称)
+    levels: &levels             # 原文中的级别写法(不区分大小写) → 归一化级别
+      trace: trace
+      trce: trace
+      verbose: trace
+      vrb: trace
+      debug: debug
+      dbug: debug
+      dbg: debug
+      information: information
+      info: information
+      inf: information
+      notice: information
+      warning: warning
+      warn: warning
+      wrn: warning
+      error: error
+      err: error
+      fail: error
+      critical: critical
+      crit: critical
+      crt: critical
+      fatal: critical
+      ftl: critical
+  core/regex:
+    timeFormat: null            # time 分组的 strptime 写法；为空时按 ISO 8601
+    timezone: UTC               # 不带时区的时间所用的时区(IANA 名称)
+    levels: *levels             # 与 json-lines 相同的级别映射
+    multiline: true             # 不以 pattern 开头的行是否并入上一条
+    rolloverToleranceMinutes: 30  # 只有时刻时，比上一条早超过这么多分钟视为跨过午夜
+  core/semgrep:
+    timeoutSeconds: 1500        # Semgrep 的超时秒数，应小于 static-tools 的超时(1800 秒)
+  core/command-sequence:
+    unavailable: []             # 不在本机启动的服务：name、reason
+    migrationPaths: []          # 迁移文件的路径模式，改动命中时启动前需要确认
+  core/github-deployments:
+    environment: null           # 只看这个环境的部署(GitHub Deployments 的 environment)；为空时不限
+    limit: 20                   # 每次读取的最近部署条数
+    timeoutSeconds: 60          # 每条 gh 命令的超时秒数，合计应小于 deploy-source 的超时(120 秒)
+  core/github-actions:
+    branch: null                # 部署工作流运行的分支；为空时取 project.mainBranch
+    limit: 20                   # 每次读取的最近运行条数
+    timeoutSeconds: 60          # gh 命令的超时秒数
+  core/vercel:
+    target: production          # Vercel 部署的 target：production 或 preview
+    teamId: null                # 团队项目的 teamId；个人项目为空
+    limit: 20                   # 每次读取的最近部署条数
+    timeoutSeconds: 30          # 请求 Vercel API 的超时秒数

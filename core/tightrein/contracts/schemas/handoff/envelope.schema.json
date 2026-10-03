@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/handoff/envelope.schema.json",
+  "title": "交接文档的统一外层",
+  "type": "object",
+  "required": ["schemaVersion", "runId", "stage", "subject", "status", "inputsRef", "outputs", "nextAction", "createdAt"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {"type": "integer", "minimum": 1},
+    "runId": {"$ref": "../common.schema.json#/$defs/runId"},
+    "stage": {"$ref": "../common.schema.json#/$defs/RunStage"},
+    "subject": {"$ref": "../common.schema.json#/$defs/subject"},
+    "status": {"$ref": "../common.schema.json#/$defs/HandoffStatus"},
+    "inputsRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "handoffs": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "records": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "commits": {"type": "array", "items": {"$ref": "../common.schema.json#/$defs/commit"}}
+      }
+    },
+    "outputs": {"type": "object"},
+    "nextAction": {"type": "string", "minLength": 1},
+    "blockedReason": {"type": ["string", "null"]},
+    "createdAt": {"$ref": "../common.schema.json#/$defs/timestamp"}
+  },
+  "if": {"properties": {"status": {"enum": ["blocked", "failed"]}}},
+  "then": {"required": ["blockedReason"], "properties": {"blockedReason": {"type": "string", "minLength": 1}}}
+}

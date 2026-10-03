@@ -1,0 +1,2881 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/config/project-config.schema.json",
+  "title": "project.yaml 的结构",
+  "type": "object",
+  "required": [
+    "project"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "project": {
+      "type": "object",
+      "required": [
+        "name",
+        "repo",
+        "mainBranch"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repo": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mainBranch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "language": {
+          "type": "string",
+          "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$"
+        }
+      }
+    },
+    "stacks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9-]*$"
+      },
+      "uniqueItems": true
+    },
+    "extensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "spec-export": {
+          "$ref": "#/$defs/replaceExtension"
+        },
+        "authz-endpoints": {
+          "$ref": "#/$defs/replaceExtension"
+        },
+        "authz-roles": {
+          "$ref": "#/$defs/replaceExtension"
+        },
+        "error-tracking": {
+          "$ref": "#/$defs/replaceExtension"
+        },
+        "log-platform": {
+          "$ref": "#/$defs/replaceExtension"
+        },
+        "log-parse": {
+          "$ref": "#/$defs/extension"
+        },
+        "alert-source": {
+          "$ref": "#/$defs/replaceExtension"
+        },
+        "static-tools": {
+          "$ref": "#/$defs/extension"
+        },
+        "page-routes": {
+          "$ref": "#/$defs/replaceExtension"
+        },
+        "local-run": {
+          "$ref": "#/$defs/extension"
+        },
+        "deploy-source": {
+          "$ref": "#/$defs/replaceExtension"
+        }
+      }
+    },
+    "methods": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$"
+      },
+      "additionalProperties": {
+        "type": "object"
+      }
+    },
+    "target": {
+      "type": "object",
+      "required": [
+        "baseUrl"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "baseUrl": {
+          "type": "string",
+          "minLength": 1
+        },
+        "healthcheck": {
+          "type": "string",
+          "minLength": 1
+        },
+        "environment": {
+          "enum": [
+            "staging",
+            "production"
+          ]
+        },
+        "healthTimeoutSeconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "manualDeployPaths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "accounts": {
+      "type": "object",
+      "required": [
+        "roles",
+        "login"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "roles": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "not": {
+              "const": "anonymous"
+            }
+          },
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "keychain"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "keychain": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "login": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": [
+                "token-endpoint",
+                "static-header"
+              ]
+            },
+            "endpoint": {
+              "type": "string",
+              "minLength": 1
+            },
+            "bodyTemplate": {
+              "type": "object"
+            },
+            "tokenPath": {
+              "type": "string",
+              "minLength": 1
+            },
+            "header": {
+              "type": "string",
+              "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"
+            },
+            "verify": {
+              "type": "object",
+              "required": [
+                "endpoint",
+                "bodyTemplate"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "endpoint": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "bodyTemplate": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "static-header"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "header"
+            ],
+            "properties": {
+              "endpoint": {
+                "not": {}
+              },
+              "bodyTemplate": {
+                "not": {}
+              },
+              "tokenPath": {
+                "not": {}
+              }
+            }
+          },
+          "else": {
+            "required": [
+              "endpoint",
+              "bodyTemplate",
+              "tokenPath"
+            ],
+            "properties": {
+              "header": {
+                "not": {}
+              },
+              "verify": {
+                "not": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "api-fuzz": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "exclude": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "levels": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "shallow": {
+                  "$ref": "#/$defs/apiFuzzLevel"
+                },
+                "deep": {
+                  "$ref": "#/$defs/apiFuzzLevel"
+                }
+              }
+            },
+            "workers": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "sanitizeKeys": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "timeoutMinutes": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "checks": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "检查项的开关(redesign/01-collect.md 第 5 节)",
+              "properties": {
+                "serverError": {
+                  "type": "boolean",
+                  "description": "服务器报错(5xx)"
+                },
+                "authorization": {
+                  "type": "boolean",
+                  "description": "越权(需要角色能力表)"
+                },
+                "statusCode": {
+                  "type": "boolean",
+                  "description": "状态码不符"
+                },
+                "responseSchema": {
+                  "enum": [
+                    true,
+                    false,
+                    "auto"
+                  ],
+                  "description": "响应结构不符；auto 时接口描述由框架导出才开启"
+                },
+                "responseTime": {
+                  "type": "boolean",
+                  "description": "响应过慢(阈值 thresholds.slowResponseSeconds)"
+                },
+                "unsupportedMethod": {
+                  "type": "boolean",
+                  "description": "不支持的方法"
+                }
+              }
+            },
+            "production": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "allow": {
+                  "type": "array",
+                  "description": "生产环境允许测试的接口路由(只测 GET)",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^/"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "static": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "semgrep": {
+              "type": "object",
+              "required": [
+                "configs"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "configs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "minItems": 1
+                }
+              }
+            },
+            "maxClaims": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "baseline": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "maxClaims": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "batchFiles": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "batchLines": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "exclude": {
+                  "$ref": "#/$defs/pathPatterns"
+                },
+                "exclude+": {
+                  "$ref": "#/$defs/pathPatterns"
+                }
+              }
+            }
+          }
+        },
+        "platform-errors": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "every": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*[mhd]$",
+              "description": "运行间隔，如 15m、1h、1d",
+              "examples": [
+                "1h"
+              ]
+            },
+            "initialLookbackHours": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "首次读取(没有读取位置)时向前读取的小时数"
+            },
+            "logQuery": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "集中日志平台上取应用运行报错的查询(如 LogQL)；为空时不读日志平台"
+            },
+            "logLimit": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "每次从日志平台读取的条数上限"
+            },
+            "levels": {
+              "type": "array",
+              "items": {
+                "$ref": "../common.schema.json#/$defs/LogLevel"
+              },
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "产出信号的归一化级别"
+            }
+          }
+        },
+        "access-log": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "every": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*[mhd]$",
+              "description": "运行间隔，如 15m、1h、1d",
+              "examples": [
+                "1h"
+              ]
+            },
+            "initialLookbackHours": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "首次读取(没有读取位置)时向前读取的小时数"
+            },
+            "query": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "集中日志平台上取访问日志的查询；为空时不启用"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "每次读取的条数上限"
+            },
+            "fields": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "JSON 访问日志的字段位置，嵌套以 . 连接",
+              "properties": {
+                "method": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "route": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "status": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "durationMs": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "pattern": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "纯文本访问日志的正则，命名分组 method、route、status、durationMs；给出时优先于 fields"
+            },
+            "minRequests": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "一个接口在窗口内至少这么多次请求才参与比较"
+            },
+            "latencyRatio": {
+              "type": "number",
+              "minimum": 1,
+              "description": "p95 耗时超过基线的这么多倍为退化"
+            },
+            "errorRateDelta": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "5xx 比例比基线高出这么多为退化"
+            },
+            "baselineWeight": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1,
+              "description": "基线按指数平均更新时本次窗口的权重"
+            }
+          }
+        },
+        "alerts": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "every": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*[mhd]$",
+              "description": "运行间隔，如 15m、1h、1d",
+              "examples": [
+                "1h"
+              ]
+            },
+            "exclude": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "不读取的基础设施类告警",
+              "properties": {
+                "names": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "description": "告警名的正则"
+                },
+                "labels": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "description": "标签名 → 取值清单，命中任一即排除"
+                }
+              }
+            }
+          }
+        },
+        "project-probes": {
+          "type": "array",
+          "description": "项目探针的登记(docs/how-to/write-project-probe.md)",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "command",
+              "every"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$",
+                "description": "探针名"
+              },
+              "command": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1,
+                "description": "运行命令，相对工作区；{python} 为核心的解释器"
+              },
+              "every": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]*[mhd]$",
+                "description": "运行间隔，如 15m、1h、1d",
+                "examples": [
+                  "1h"
+                ]
+              },
+              "keychain": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "探针需要读取的钥匙串条目(只读凭证)"
+              },
+              "timeoutSeconds": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "cwd",
+              "command"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "cwd": {
+                "type": "string",
+                "minLength": 1
+              },
+              "command": {
+                "type": "string",
+                "minLength": 1
+              },
+              "when": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "mustNotModify": {
+                "type": "boolean"
+              },
+              "affected": {
+                "type": "object",
+                "required": [
+                  "map",
+                  "command"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "map": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "pattern",
+                        "test"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "pattern": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "test": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    },
+                    "minItems": 1
+                  },
+                  "command": {
+                    "type": "string",
+                    "pattern": "\\{tests\\}"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "prepare": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "cwd",
+              "command"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "cwd": {
+                "type": "string",
+                "minLength": 1
+              },
+              "command": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "residuePatterns": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pages": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "验证环节的页面巡检与页面类复现检查(Playwright)",
+          "properties": {
+            "patrolGrep": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1,
+              "description": "巡检用例的 --grep 过滤"
+            },
+            "ignoreRequests": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "method",
+                  "pathPattern",
+                  "status"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "method": {
+                    "$ref": "../common.schema.json#/$defs/httpMethod"
+                  },
+                  "pathPattern": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "status": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            },
+            "locale": {
+              "type": "string",
+              "minLength": 1
+            },
+            "retries": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "timeoutMinutes": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      }
+    },
+    "localRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ports": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "api": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "backendForPages": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "frontend": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
+          }
+        },
+        "readyTimeoutSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "stopTimeoutSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "readyUrlTimeoutSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pollIntervalMs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "portProbeTimeoutSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "documents": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sectionMaxChars": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/count"
+          }
+        }
+      }
+    },
+    "loop": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "objectLockMinutes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "findLimit": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "lookbackDays": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxActiveFixes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "同时处于修复阶段的 Issue 上限"
+        },
+        "watchIntervalSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "tightrein watch 的刷新间隔(秒)"
+        }
+      }
+    },
+    "regressions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "apiTimeoutSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "staticTimeoutSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "loginTimeoutSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "testFailureExitCodes": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "envRetries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "testFailurePatterns": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "packaging": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "targets": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "claude": {
+              "type": "string",
+              "minLength": 1
+            },
+            "codex": {
+              "type": "string",
+              "minLength": 1
+            },
+            "agy": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "downloadTimeoutSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "skillBodyMaxLines": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "referenceTocLines": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "riskRules": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "schema": {
+              "$ref": "#/$defs/riskRule"
+            },
+            "authz": {
+              "$ref": "#/$defs/riskRule"
+            },
+            "contract": {
+              "$ref": "#/$defs/riskRule"
+            }
+          }
+        },
+        "deepTriggers": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "categories": {
+              "type": "array",
+              "items": {
+                "$ref": "../common.schema.json#/$defs/RiskCategory"
+              },
+              "uniqueItems": true
+            }
+          }
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "aggregate": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "titleMaxChars": {
+              "$ref": "#/$defs/count"
+            }
+          }
+        },
+        "keychain": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "timeoutSeconds": {
+              "$ref": "#/$defs/seconds"
+            }
+          }
+        },
+        "guards": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "minLiteralLength": {
+              "$ref": "#/$defs/count"
+            }
+          }
+        },
+        "store": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "busyTimeoutMs": {
+              "$ref": "#/$defs/count"
+            },
+            "lockPollSeconds": {
+              "$ref": "#/$defs/seconds"
+            },
+            "launchdLogMaxBytes": {
+              "$ref": "#/$defs/count"
+            },
+            "launchdLogBackups": {
+              "$ref": "#/$defs/count"
+            }
+          }
+        },
+        "observability": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "notifyTimeoutSeconds": {
+              "$ref": "#/$defs/seconds"
+            }
+          }
+        },
+        "runner": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "maxCalls": {
+              "$ref": "#/$defs/count"
+            },
+            "interruptGraceSeconds": {
+              "$ref": "#/$defs/seconds"
+            },
+            "terminateGraceSeconds": {
+              "$ref": "#/$defs/seconds"
+            },
+            "stderrTailLines": {
+              "$ref": "#/$defs/count"
+            },
+            "pollSeconds": {
+              "$ref": "#/$defs/seconds"
+            },
+            "retryOutputChars": {
+              "$ref": "#/$defs/count"
+            },
+            "toolOutputMaxChars": {
+              "$ref": "#/$defs/count"
+            },
+            "sessionClockSkewSeconds": {
+              "$ref": "#/$defs/seconds"
+            }
+          }
+        },
+        "extensions": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "maxStdoutBytes": {
+              "$ref": "#/$defs/count"
+            },
+            "maxStderrBytes": {
+              "$ref": "#/$defs/count"
+            },
+            "stderrTailLines": {
+              "$ref": "#/$defs/count"
+            },
+            "killGraceSeconds": {
+              "$ref": "#/$defs/seconds"
+            },
+            "pollSeconds": {
+              "$ref": "#/$defs/seconds"
+            },
+            "pointTimeoutSeconds": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "spec-export": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "authz-endpoints": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "authz-roles": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "error-tracking": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "log-platform": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "log-parse": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "alert-source": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "static-tools": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "page-routes": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "local-run": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "deploy-source": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          }
+        },
+        "tools": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "semgrep": {
+              "type": "string",
+              "pattern": "\\S"
+            }
+          }
+        },
+        "network": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "rerouteHost": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9.-]+$"
+            },
+            "errorPatterns": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "vcs": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "timeoutSeconds": {
+              "$ref": "#/$defs/seconds"
+            },
+            "fetchTimeoutSeconds": {
+              "$ref": "#/$defs/seconds"
+            },
+            "readRetryDelaysSeconds": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/seconds"
+              }
+            },
+            "stderrTailLines": {
+              "$ref": "#/$defs/count"
+            },
+            "operationExpireDays": {
+              "$ref": "#/$defs/count"
+            },
+            "issueListLimit": {
+              "$ref": "#/$defs/count"
+            }
+          }
+        },
+        "retrieval": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "lockMinutes": {
+              "$ref": "#/$defs/count"
+            },
+            "lockWaitSeconds": {
+              "$ref": "#/$defs/seconds"
+            },
+            "rrfK": {
+              "$ref": "#/$defs/count"
+            },
+            "columnWeights": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "title": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "summary": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "tags": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "body": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              }
+            },
+            "candidateFactor": {
+              "$ref": "#/$defs/count"
+            },
+            "indexMaxLines": {
+              "$ref": "#/$defs/count"
+            },
+            "indexPageSize": {
+              "$ref": "#/$defs/count"
+            },
+            "rootListingLimit": {
+              "$ref": "#/$defs/count"
+            },
+            "staleMinSharedTags": {
+              "$ref": "#/$defs/count"
+            },
+            "staleMaxGroupSize": {
+              "$ref": "#/$defs/count"
+            },
+            "dedupSimilarLimit": {
+              "$ref": "#/$defs/count"
+            }
+          }
+        },
+        "evaluation": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sandboxTimeoutSeconds": {
+              "$ref": "#/$defs/seconds"
+            },
+            "maxConsecutiveCrashes": {
+              "$ref": "#/$defs/count"
+            }
+          }
+        },
+        "sources": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "messageChars": {
+              "$ref": "#/$defs/count"
+            },
+            "contextBytes": {
+              "$ref": "#/$defs/count"
+            },
+            "reportErrorChars": {
+              "$ref": "#/$defs/count"
+            },
+            "responseExcerptChars": {
+              "$ref": "#/$defs/count"
+            },
+            "logExcerptChars": {
+              "$ref": "#/$defs/count"
+            },
+            "unlocatedExcerptChars": {
+              "$ref": "#/$defs/count"
+            },
+            "projectFrames": {
+              "$ref": "#/$defs/count"
+            },
+            "httpTimeoutSeconds": {
+              "$ref": "#/$defs/seconds"
+            },
+            "semgrepTimeoutSeconds": {
+              "$ref": "#/$defs/seconds"
+            },
+            "probeTimeoutSeconds": {
+              "$ref": "#/$defs/seconds"
+            }
+          }
+        }
+      }
+    },
+    "protectedPaths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "protectedPatterns": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "testPaths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "skipMarkers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "credentialFiles": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "git": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "conventions": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "工作区显式给出的格式，优先于项目文档中的约定与通用格式",
+          "properties": {
+            "branch": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1,
+              "description": "分支名格式，占位符 {prefix}{type}{issue}{slug}"
+            },
+            "commit": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1,
+              "description": "提交信息第一行格式，占位符 {type}{scope}{summary}"
+            },
+            "prTemplate": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1,
+              "description": "仓库内的 PR 模板路径"
+            }
+          }
+        },
+        "personalPrefix": {
+          "type": "boolean"
+        },
+        "branchTypes": {
+          "$ref": "#/$defs/typeMap"
+        },
+        "commitTypes": {
+          "$ref": "#/$defs/typeMap"
+        },
+        "inference": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sampleSize": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "minSamples": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "minRatio": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1
+            }
+          }
+        },
+        "forbiddenPrefixes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "splitThreshold": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "worktreeLinks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "stages": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "../common.schema.json#/$defs/Stage"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/stage"
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "required": [
+            "model",
+            "inputUsdPerMTok",
+            "outputUsdPerMTok"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "effort": {
+              "type": "string",
+              "minLength": 1
+            },
+            "inputUsdPerMTok": {
+              "type": "number",
+              "minimum": 0
+            },
+            "outputUsdPerMTok": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "notify": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "method": {
+          "enum": [
+            "macos",
+            "none"
+          ]
+        }
+      }
+    },
+    "issues": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tracker": {
+          "enum": [
+            "local",
+            "github"
+          ]
+        },
+        "github": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repo": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+            },
+            "labelPrefix": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            },
+            "privateOnly": {
+              "type": "boolean"
+            },
+            "labelColor": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{6}$"
+            }
+          }
+        }
+      }
+    },
+    "triage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "severityGuide": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "refute": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "severities": {
+              "type": "array",
+              "items": {
+                "$ref": "../common.schema.json#/$defs/Severity"
+              },
+              "uniqueItems": true
+            },
+            "taskTypes": {
+              "type": "array",
+              "items": {
+                "$ref": "../common.schema.json#/$defs/TaskType"
+              },
+              "uniqueItems": true
+            },
+            "impactKinds": {
+              "type": "array",
+              "items": {
+                "$ref": "../common.schema.json#/$defs/ImpactKind"
+              },
+              "uniqueItems": true
+            }
+          }
+        },
+        "treatment": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "rules": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": [
+                  "treatment"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "treatment": {
+                    "$ref": "../common.schema.json#/$defs/Treatment"
+                  },
+                  "verdicts": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "../common.schema.json#/$defs/Verdict"
+                    },
+                    "uniqueItems": true
+                  },
+                  "severities": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "../common.schema.json#/$defs/Severity"
+                    },
+                    "uniqueItems": true
+                  },
+                  "tiers": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "../common.schema.json#/$defs/SizeTier"
+                    },
+                    "uniqueItems": true
+                  },
+                  "worth": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "../common.schema.json#/$defs/WorthRecommendation"
+                    },
+                    "uniqueItems": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "fix": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lanes": {
+          "type": "object",
+          "propertyNames": {
+            "anyOf": [
+              {
+                "const": "default"
+              },
+              {
+                "$ref": "../common.schema.json#/$defs/TaskType"
+              }
+            ]
+          },
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "micro",
+              "small",
+              "medium",
+              "large"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "micro": {
+                "$ref": "../common.schema.json#/$defs/Lane"
+              },
+              "small": {
+                "$ref": "../common.schema.json#/$defs/Lane"
+              },
+              "medium": {
+                "$ref": "../common.schema.json#/$defs/Lane"
+              },
+              "large": {
+                "$ref": "../common.schema.json#/$defs/Lane"
+              }
+            }
+          }
+        },
+        "scout": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "taskTypes": {
+              "type": "array",
+              "items": {
+                "$ref": "../common.schema.json#/$defs/TaskType"
+              },
+              "uniqueItems": true
+            }
+          }
+        },
+        "repro": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "skipTypes": {
+              "type": "array",
+              "items": {
+                "$ref": "../common.schema.json#/$defs/TaskType"
+              },
+              "uniqueItems": true
+            },
+            "independentTypes": {
+              "type": "array",
+              "items": {
+                "$ref": "../common.schema.json#/$defs/TaskType"
+              },
+              "uniqueItems": true
+            },
+            "passOnBaseTypes": {
+              "type": "array",
+              "items": {
+                "$ref": "../common.schema.json#/$defs/TaskType"
+              },
+              "uniqueItems": true
+            },
+            "siblingTests": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "siblingLines": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "testFilePatterns": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            }
+          }
+        },
+        "review": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "skipMicro": {
+              "type": "boolean"
+            }
+          }
+        },
+        "manualTaskType": {
+          "$ref": "../common.schema.json#/$defs/TaskType"
+        }
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mergeMethod": {
+          "enum": [
+            "squash",
+            "merge"
+          ]
+        },
+        "autoMergeBlockPaths": {
+          "type": "array",
+          "description": "改动命中时不自动合并、写决策简报的路径(写法同 protectedPaths)",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "reviewComment": {
+          "type": "boolean",
+          "description": "把 AI 评审结论以评论写入 PR"
+        },
+        "deploy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "observationHours": {
+              "type": "number",
+              "minimum": 0,
+              "description": "没有部署来源时，合并后视为已部署的观察期"
+            }
+          }
+        }
+      }
+    },
+    "autonomy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "approve": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "maxComplexity": {
+              "$ref": "../common.schema.json#/$defs/Complexity"
+            },
+            "impactKinds": {
+              "type": "array",
+              "items": {
+                "$ref": "../common.schema.json#/$defs/ImpactKind"
+              },
+              "uniqueItems": true
+            },
+            "severities": {
+              "type": "array",
+              "items": {
+                "$ref": "../common.schema.json#/$defs/Severity"
+              },
+              "uniqueItems": true
+            }
+          }
+        }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "description": "审批关卡表(redesign/09-loop.md 第 2 节，config/gates.py)：user 交用户决定，auto 按规则由程序处理",
+      "additionalProperties": false,
+      "properties": {
+        "issue-approve": {
+          "enum": [
+            "user",
+            "auto"
+          ],
+          "description": "放行新建的 Issue"
+        },
+        "plan-confirm": {
+          "enum": [
+            "user",
+            "auto"
+          ],
+          "description": "确认 B 通道的修复计划"
+        },
+        "fix-session": {
+          "enum": [
+            "user",
+            "auto"
+          ],
+          "description": "修复会话"
+        },
+        "release-writes": {
+          "enum": [
+            "user",
+            "auto"
+          ],
+          "description": "发布的写操作"
+        },
+        "mirror-writes": {
+          "enum": [
+            "user",
+            "auto"
+          ],
+          "description": "GitHub Issue 镜像的写入"
+        },
+        "merge": {
+          "enum": [
+            "user",
+            "auto"
+          ],
+          "description": "合并 PR"
+        },
+        "high-risk-merge": {
+          "enum": [
+            "user"
+          ],
+          "description": "改动命中 release.autoMergeBlockPaths 的合并(必须交用户)"
+        },
+        "delete": {
+          "enum": [
+            "user"
+          ],
+          "description": "删除分支、worktree 或数据(必须交用户)"
+        },
+        "permissions-secrets": {
+          "enum": [
+            "user"
+          ],
+          "description": "修改权限与密钥配置(必须交用户)"
+        },
+        "over-task-limit": {
+          "enum": [
+            "user"
+          ],
+          "description": "超出单个任务上限(必须交用户)"
+        },
+        "needs-decision": {
+          "enum": [
+            "user"
+          ],
+          "description": "待决定的 Issue(必须交用户)"
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "description": "全部环节合计的费用上限(美元，null 为不限)：每次运行、每天、每周；每周上限可写为订阅额度的百分比与换算值",
+      "additionalProperties": false,
+      "properties": {
+        "perRunUsd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "perDayUsd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "perWeekUsd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "perWeekPercent": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0,
+          "maximum": 100
+        },
+        "subscriptionWeekUsd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "onboarding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "stackMarkers": {
+          "type": "object",
+          "description": "识别技术栈的标记文件：技术栈名 → 仓库根目录下的文件名或通配模式",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          }
+        },
+        "checkCommands": {
+          "type": "object",
+          "description": "没有配置检查命令时按技术栈推荐的命令(只作推荐答案)",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "defaultTool": {
+      "type": "string",
+      "minLength": 1
+    },
+    "roleCapabilities": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "schedule": {
+      "type": "object",
+      "required": [
+        "tick"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "tick": {
+          "type": "object",
+          "required": [
+            "weekdays",
+            "minutes"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "weekdays": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 7
+              },
+              "minItems": 1
+            },
+            "hours": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 23
+              }
+            },
+            "minutes": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 59
+              },
+              "minItems": 1
+            }
+          }
+        },
+        "runAt": {
+          "type": "array",
+          "description": "工作日完整运行的时刻；tick 在其余时刻只检查事件",
+          "items": {
+            "type": "string",
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+          },
+          "minItems": 1
+        },
+        "onDeploy": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "probe"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "probe": {
+                "$ref": "../common.schema.json#/$defs/Probe"
+              },
+              "level": {
+                "$ref": "../common.schema.json#/$defs/ProbeLevel"
+              }
+            }
+          }
+        },
+        "tasks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "days",
+              "at",
+              "command"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "days": {
+                "enum": [
+                  "workdays",
+                  "daily",
+                  "firstWorkdayOfWeek"
+                ]
+              },
+              "at": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                },
+                "minItems": 1
+              },
+              "command": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "weekly": {
+          "type": "object",
+          "required": [
+            "at"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "at": {
+              "type": "string",
+              "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+            }
+          }
+        },
+        "nonWorkingDays": {
+          "type": "array",
+          "items": {
+            "$ref": "../common.schema.json#/$defs/date"
+          }
+        },
+        "launchd": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "lang": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repeats": {
+          "type": "integer",
+          "minimum": 3
+        },
+        "judge": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "runner": {
+              "type": "string",
+              "minLength": 1
+            },
+            "capability": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "parallelism": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "budgetUsd": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tiers": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "micro": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "maxFiles": {
+                  "$ref": "#/$defs/tunable"
+                },
+                "maxLines": {
+                  "$ref": "#/$defs/tunable"
+                }
+              }
+            },
+            "small": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "maxFiles": {
+                  "$ref": "#/$defs/tunable"
+                },
+                "maxLines": {
+                  "$ref": "#/$defs/tunable"
+                }
+              }
+            },
+            "medium": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "maxFiles": {
+                  "$ref": "#/$defs/tunable"
+                },
+                "maxLines": {
+                  "$ref": "#/$defs/tunable"
+                }
+              }
+            },
+            "large": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "maxFiles": {
+                  "$ref": "#/$defs/tunable"
+                },
+                "maxLines": {
+                  "$ref": "#/$defs/tunable"
+                }
+              }
+            }
+          }
+        },
+        "slowResponseSeconds": {
+          "$ref": "#/$defs/tunable"
+        },
+        "reproduceAttempts": {
+          "$ref": "#/$defs/tunable"
+        },
+        "resolveCoveredRuns": {
+          "$ref": "#/$defs/tunable"
+        },
+        "suppressionDays": {
+          "$ref": "#/$defs/tunable"
+        },
+        "retention": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "signalsDays": {
+              "$ref": "#/$defs/tunable"
+            },
+            "rawDays": {
+              "$ref": "#/$defs/tunable"
+            },
+            "logsDays": {
+              "$ref": "#/$defs/tunable"
+            },
+            "fixesDays": {
+              "$ref": "#/$defs/tunable"
+            }
+          }
+        },
+        "triage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "perRun": {
+              "$ref": "#/$defs/tunable"
+            },
+            "complexityFiles": {
+              "$ref": "#/$defs/tunable"
+            },
+            "deferredReopenOccurrences": {
+              "$ref": "#/$defs/tunable"
+            },
+            "evidenceRetries": {
+              "$ref": "#/$defs/tunable"
+            },
+            "dedupCandidateDays": {
+              "$ref": "#/$defs/tunable"
+            },
+            "dedupCandidates": {
+              "$ref": "#/$defs/tunable"
+            },
+            "claimSamples": {
+              "$ref": "#/$defs/tunable"
+            },
+            "lockMinutes": {
+              "$ref": "#/$defs/tunable"
+            }
+          }
+        },
+        "issue": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "reviewReminderWorkdays": {
+              "$ref": "#/$defs/tunable"
+            },
+            "slugMaxLength": {
+              "$ref": "#/$defs/tunable"
+            },
+            "titleMaxLength": {
+              "$ref": "#/$defs/tunable"
+            }
+          }
+        },
+        "change": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "maxFiles": {
+              "$ref": "#/$defs/tunable"
+            },
+            "maxLines": {
+              "$ref": "#/$defs/tunable"
+            }
+          }
+        },
+        "fix": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "reviewRounds": {
+              "$ref": "#/$defs/tunable"
+            },
+            "planRounds": {
+              "$ref": "#/$defs/tunable"
+            },
+            "checkpointRollbackFindings": {
+              "$ref": "#/$defs/tunable"
+            }
+          }
+        },
+        "verify": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "maxConsecutiveFailures": {
+              "$ref": "#/$defs/tunable"
+            },
+            "stagingWaitDays": {
+              "$ref": "#/$defs/tunable"
+            },
+            "observationHours": {
+              "$ref": "#/$defs/tunable"
+            },
+            "localRunLockMinutes": {
+              "$ref": "#/$defs/tunable"
+            },
+            "readonlyLockMinutes": {
+              "$ref": "#/$defs/tunable"
+            }
+          }
+        },
+        "release": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "prReminderWorkdays": {
+              "$ref": "#/$defs/tunable"
+            },
+            "summaryItems": {
+              "$ref": "#/$defs/tunable"
+            },
+            "summaryScreenshots": {
+              "$ref": "#/$defs/tunable"
+            }
+          }
+        },
+        "retrieval": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "unusedDays": {
+              "$ref": "#/$defs/tunable"
+            },
+            "inlineFullTokens": {
+              "$ref": "#/$defs/tunable"
+            },
+            "contextLimits": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "static-review": {
+                  "$ref": "#/$defs/tunable"
+                },
+                "triage": {
+                  "$ref": "#/$defs/tunable"
+                },
+                "fix": {
+                  "$ref": "#/$defs/tunable"
+                }
+              }
+            }
+          }
+        },
+        "learn": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "noisyCheckRatio": {
+              "$ref": "#/$defs/tunable"
+            },
+            "minSamples": {
+              "$ref": "#/$defs/tunable"
+            },
+            "coverageGapWeeks": {
+              "$ref": "#/$defs/tunable"
+            },
+            "suggestionExpiryWeeks": {
+              "$ref": "#/$defs/tunable"
+            },
+            "lessonRetries": {
+              "$ref": "#/$defs/tunable"
+            },
+            "lessonReviewDays": {
+              "$ref": "#/$defs/tunable"
+            },
+            "falsePositiveCleanRuns": {
+              "$ref": "#/$defs/tunable"
+            },
+            "suppressionNoticeDays": {
+              "$ref": "#/$defs/tunable"
+            },
+            "regressionWindowDays": {
+              "$ref": "#/$defs/tunable"
+            },
+            "trendWeeks": {
+              "$ref": "#/$defs/tunable"
+            },
+            "thirdPartyMinStars": {
+              "$ref": "#/$defs/tunable"
+            },
+            "thirdPartyCommitDays": {
+              "$ref": "#/$defs/tunable"
+            },
+            "rules": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "lookbackDays": {
+                  "$ref": "#/$defs/tunable"
+                },
+                "maxRepoHits": {
+                  "$ref": "#/$defs/tunable"
+                }
+              }
+            },
+            "improve": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "lookbackDays": {
+                  "$ref": "#/$defs/tunable"
+                },
+                "minTroubles": {
+                  "$ref": "#/$defs/tunable"
+                },
+                "minHeldOutCases": {
+                  "$ref": "#/$defs/tunable"
+                },
+                "repeats": {
+                  "$ref": "#/$defs/tunable"
+                }
+              }
+            },
+            "controls": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "weeks": {
+                  "$ref": "#/$defs/tunable"
+                },
+                "firstPassFloor": {
+                  "$ref": "#/$defs/tunable"
+                },
+                "corrections": {
+                  "$ref": "#/$defs/tunable"
+                }
+              }
+            }
+          }
+        },
+        "health": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "missedWindowMinutes": {
+              "$ref": "#/$defs/tunable"
+            },
+            "deployToShallowMinutes": {
+              "$ref": "#/$defs/tunable"
+            },
+            "dataDirMaxBytes": {
+              "$ref": "#/$defs/tunable"
+            },
+            "lookbackDays": {
+              "$ref": "#/$defs/tunable"
+            },
+            "missedNotifyCount": {
+              "$ref": "#/$defs/tunable"
+            },
+            "idleRuns": {
+              "$ref": "#/$defs/tunable"
+            }
+          }
+        },
+        "autonomy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "planMaxFiles": {
+              "$ref": "#/$defs/tunable"
+            },
+            "planMaxLines": {
+              "$ref": "#/$defs/tunable"
+            }
+          }
+        },
+        "loop": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "breakerFailures": {
+              "$ref": "#/$defs/tunable"
+            },
+            "breakerRepeats": {
+              "$ref": "#/$defs/tunable"
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "typeMap": {
+      "type": "object",
+      "required": [
+        "default"
+      ],
+      "propertyNames": {
+        "enum": [
+          "default",
+          "bug",
+          "security",
+          "data",
+          "frontend",
+          "feature",
+          "refactor",
+          "dependency",
+          "docs-config"
+        ]
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-z]+$"
+      }
+    },
+    "apiFuzzLevel": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxExamples": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "phases": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "includeMethod": {
+          "anyOf": [
+            {
+              "$ref": "../common.schema.json#/$defs/httpMethod"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "extension": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "use": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$"
+        },
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "mode": {
+          "$ref": "../common.schema.json#/$defs/ExtensionMode"
+        },
+        "options": {
+          "type": "object"
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "if": {
+        "required": [
+          "mode"
+        ],
+        "properties": {
+          "mode": {
+            "const": "extend"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "command"
+        ]
+      }
+    },
+    "replaceExtension": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/extension"
+        },
+        {
+          "properties": {
+            "mode": {
+              "const": "replace"
+            }
+          }
+        }
+      ]
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "seconds": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "tunable": {
+      "type": "object",
+      "required": [
+        "value",
+        "min",
+        "max"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": "number"
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxTurns": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxDurationMs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxCostUsd": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "reviewer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "capability": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limits": {
+          "$ref": "#/$defs/limits"
+        }
+      }
+    },
+    "riskRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "patterns": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "complexityLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "low": {
+          "$ref": "#/$defs/limits"
+        },
+        "medium": {
+          "$ref": "#/$defs/limits"
+        },
+        "high": {
+          "$ref": "#/$defs/limits"
+        }
+      }
+    },
+    "pathPatterns": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "capability": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limits": {
+          "$ref": "#/$defs/limits"
+        },
+        "budgetPerDay": {
+          "type": "number",
+          "minimum": 0
+        },
+        "roles": {
+          "type": "object",
+          "properties": {
+            "frontend-designer": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "tool": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "model": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "capability": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "limits": {
+                  "$ref": "#/$defs/complexityLimits"
+                },
+                "paths": {
+                  "$ref": "#/$defs/pathPatterns"
+                },
+                "paths+": {
+                  "$ref": "#/$defs/pathPatterns"
+                }
+              }
+            }
+          },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "tool": {
+                "type": "string",
+                "minLength": 1
+              },
+              "model": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "capability": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "limits": {
+                "$ref": "#/$defs/complexityLimits"
+              }
+            }
+          }
+        },
+        "tasks": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "tool": {
+                "type": "string",
+                "minLength": 1
+              },
+              "model": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "capability": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "limits": {
+                "$ref": "#/$defs/limits"
+              }
+            }
+          }
+        },
+        "review": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "light": {
+              "$ref": "#/$defs/reviewer"
+            },
+            "deep": {
+              "$ref": "#/$defs/reviewer"
+            }
+          }
+        },
+        "screenshotReview": {
+          "$ref": "#/$defs/reviewer"
+        },
+        "refuter": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "tool": {
+              "type": "string",
+              "minLength": 1
+            },
+            "model": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "capability": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "session": {
+          "type": "object",
+          "required": [
+            "tool"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "tool": {
+              "type": "string",
+              "minLength": 1
+            },
+            "model": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "capability": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "budget": {
+          "type": "object",
+          "required": [
+            "low",
+            "high"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "low": {
+              "type": "number",
+              "minimum": 0
+            },
+            "high": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/data/eval-case.schema.json",
+  "title": "评测用例：以 kind 区分模块用例与检索用例",
+  "type": "object",
+  "required": ["kind"],
+  "properties": {"kind": {"enum": ["module", "retrieval"]}},
+  "if": {"properties": {"kind": {"const": "module"}}},
+  "then": {"$ref": "#/$defs/moduleCase"},
+  "else": {"$ref": "#/$defs/retrievalCase"},
+  "$defs": {
+    "moduleCase": {
+      "type": "object",
+      "required": ["schemaVersion", "id", "kind", "module", "title", "category", "source", "input"],
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {"type": "integer", "minimum": 1},
+        "id": {"$ref": "../common.schema.json#/$defs/evalCaseId"},
+        "kind": {"const": "module"},
+        "module": {"$ref": "../common.schema.json#/$defs/Stage", "enum": ["triage", "fix", "issue"]},
+        "title": {"type": "string", "minLength": 1},
+        "category": {"$ref": "../common.schema.json#/$defs/EvalCaseCategory"},
+        "source": {
+          "type": "object",
+          "required": ["runId", "subjectId"],
+          "additionalProperties": false,
+          "properties": {
+            "runId": {"$ref": "../common.schema.json#/$defs/runId"},
+            "subjectId": {"type": "string", "minLength": 1},
+            "correction": {"type": ["string", "null"]}
+          }
+        },
+        "input": {
+          "type": "object",
+          "required": ["handoff", "commit"],
+          "additionalProperties": false,
+          "properties": {
+            "handoff": {"type": "string", "minLength": 1},
+            "commit": {"$ref": "../common.schema.json#/$defs/commit"},
+            "args": {"type": "array", "items": {"enum": ["--review-only"]}, "uniqueItems": true}
+          }
+        },
+        "expected": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "excludeItems": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["itemId", "reason"],
+                "additionalProperties": false,
+                "properties": {"itemId": {"type": "string", "minLength": 1}, "reason": {"type": "string", "minLength": 1}}
+              }
+            },
+            "assertions": {"type": "array", "items": {"$ref": "#/$defs/assertion"}}
+          }
+        },
+        "replayExpectation": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["itemId", "result"],
+            "additionalProperties": false,
+            "properties": {
+              "itemId": {"type": "string", "minLength": 1},
+              "result": {"$ref": "../common.schema.json#/$defs/ScoreResult"}
+            }
+          }
+        }
+      },
+      "if": {"properties": {"category": {"const": "corrected"}}},
+      "then": {
+        "properties": {
+          "source": {"required": ["correction"], "properties": {"correction": {"type": "string", "minLength": 1}}}
+        }
+      }
+    },
+    "retrievalCase": {
+      "type": "object",
+      "required": ["id", "kind", "query", "filters", "expected", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "../common.schema.json#/$defs/evalCaseId"},
+        "kind": {"const": "retrieval"},
+        "query": {"type": "string", "minLength": 1},
+        "filters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "types": {"type": "array", "items": {"type": "string", "minLength": 1}},
+            "tags": {"type": "array", "items": {"type": "string", "minLength": 1}},
+            "status": {"enum": ["active", "superseded", "archived", "any"]},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 50}
+          }
+        },
+        "expected": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
+        "source": {"type": "string", "minLength": 1}
+      }
+    },
+    "assertion": {
+      "type": "object",
+      "required": ["path", "op", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "op": {"enum": ["equals", "in", "contains", "matches", "exists", "absent"]},
+        "value": {},
+        "description": {"type": "string", "minLength": 1}
+      },
+      "if": {"properties": {"op": {"enum": ["exists", "absent"]}}},
+      "then": {"not": {"required": ["value"]}},
+      "else": {"required": ["value"]}
+    }
+  }
+}

@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/handoff/outputs/triage.schema.json",
+  "title": "triage 交接文档的 outputs",
+  "type": "object",
+  "required": [
+    "problemId",
+    "claim",
+    "verdict",
+    "disposition",
+    "reason",
+    "triageCommit",
+    "rootCauses",
+    "introducedBy",
+    "labels",
+    "missingInfo",
+    "incidentalFindings",
+    "scores",
+    "attempts"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "problemId": {"$ref": "../../common.schema.json#/$defs/problemId"},
+    "claim": {
+      "type": "object",
+      "required": ["statement", "title", "facts", "entryPoints", "userNotes"],
+      "additionalProperties": false,
+      "properties": {
+        "statement": {"type": "string", "minLength": 1},
+        "title": {"type": "string", "minLength": 1},
+        "facts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["label", "value"],
+            "additionalProperties": false,
+            "properties": {"label": {"type": "string", "minLength": 1}, "value": {}}
+          }
+        },
+        "entryPoints": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "userNotes": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "verdict": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/Verdict"}, {"type": "null"}]},
+    "severity": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/Severity"}, {"type": "null"}]},
+    "complexity": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/Complexity"}, {"type": "null"}]},
+    "rootCauses": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/rootCause"}},
+    "introducedBy": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/introducedBy"}},
+    "disposition": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/Disposition"}, {"type": "null"}]},
+    "reason": {"type": "string", "minLength": 1},
+    "triageCommit": {"$ref": "../../common.schema.json#/$defs/commit"},
+    "refuterVerdict": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/Verdict"}, {"type": "null"}]},
+    "treatment": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/Treatment"}, {"type": "null"}]},
+    "taskType": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/TaskType"}, {"type": "null"}]},
+    "sizeTier": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/SizeTier"}, {"type": "null"}]},
+    "estimate": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/estimate"}, {"type": "null"}]},
+    "flags": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/flags"}, {"type": "null"}]},
+    "labels": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/IssueLabel"}, "uniqueItems": true},
+    "evidence": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["facts", "trigger", "counterEvidence", "impact", "sourceOfPhenomenon"],
+          "additionalProperties": false,
+          "properties": {
+            "facts": {"type": "array", "items": {"$ref": "../../runner/roles/claim-verifier.schema.json#/$defs/fact"}},
+            "trigger": {"type": ["string", "null"]},
+            "counterEvidence": {"type": "array", "items": {"$ref": "../../runner/roles/claim-verifier.schema.json#/$defs/counterEvidence"}},
+            "impact": {"anyOf": [{"$ref": "../../runner/roles/claim-verifier.schema.json#/$defs/impact"}, {"type": "null"}]},
+            "sourceOfPhenomenon": {
+              "anyOf": [{"$ref": "../../runner/roles/claim-verifier.schema.json#/$defs/sourceOfPhenomenon"}, {"type": "null"}]
+            }
+          }
+        },
+        {"type": "null"}
+      ]
+    },
+    "worth": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["recommendation", "reason", "direction", "reevaluateWhen"],
+          "additionalProperties": false,
+          "properties": {
+            "recommendation": {"$ref": "../../common.schema.json#/$defs/WorthRecommendation"},
+            "reason": {"type": "string", "minLength": 1},
+            "direction": {"type": "string", "minLength": 1},
+            "reevaluateWhen": {"type": ["string", "null"]}
+          }
+        },
+        {"type": "null"}
+      ]
+    },
+    "scope": {
+      "description": "取证给出的范围：明确不做的部分与必须保持不变的文件、接口与行为；旧的分诊交接文档没有",
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["outOfScope", "mustKeep"],
+          "additionalProperties": false,
+          "properties": {
+            "outOfScope": {"type": "array", "items": {"type": "string", "minLength": 1}},
+            "mustKeep": {"type": "array", "items": {"type": "string", "minLength": 1}}
+          }
+        },
+        {"type": "null"}
+      ]
+    },
+    "fixedOnMain": {"anyOf": [{"$ref": "../../runner/roles/claim-verifier.schema.json#/$defs/fixedOnMain"}, {"type": "null"}]},
+    "report": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/issueReport"}, {"type": "null"}]},
+    "tradeoffHit": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/knowledgeId"}, {"type": "null"}]},
+    "mergedInto": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/problemId"}, {"type": "null"}]},
+    "missingInfo": {"type": "array", "items": {"$ref": "../../runner/roles/claim-verifier.schema.json#/$defs/missingInfo"}},
+    "incidentalFindings": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/incidentalFinding"}},
+    "scores": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/scoreItem"}},
+    "attempts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["role", "statuses"],
+        "additionalProperties": false,
+        "properties": {
+          "role": {"type": "string", "minLength": 1},
+          "statuses": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/RunnerStatus"}, "minItems": 1}
+        }
+      }
+    }
+  }
+}

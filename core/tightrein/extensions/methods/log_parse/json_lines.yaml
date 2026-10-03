@@ -1,0 +1,34 @@
+name: json-lines
+point: log-parse
+summary: 解析每行一个 JSON 对象的结构化日志，字段位置可配置
+applicability: 服务以 JSON Lines 输出日志(常见于结构化日志库)
+optionsSchema:
+  type: object
+  required: [timeField, levelField, messageField, categoryField, eventIdField, exceptionTypeField,
+             exceptionMessageField, timezone, levels]
+  additionalProperties: false
+  properties:
+    timeField: {description: 时间字段，嵌套字段以 . 连接, type: string, minLength: 1}
+    levelField: {description: 级别字段, type: string, minLength: 1}
+    messageField: {description: 消息字段, type: string, minLength: 1}
+    categoryField: {description: 类别字段，可空, type: [string, 'null'], minLength: 1}
+    eventIdField: {description: 事件编号字段，可空, type: [string, 'null'], minLength: 1}
+    exceptionTypeField: {description: 异常类型字段，可空, type: [string, 'null'], minLength: 1}
+    exceptionMessageField: {description: 异常消息字段，可空, type: [string, 'null'], minLength: 1}
+    timezone: {description: 不带时区的时间所用的时区(IANA 名称), type: string, minLength: 1}
+    levels:
+      description: 级别映射，键为原文中的写法(不区分大小写)，值为归一化级别
+      type: object
+      additionalProperties: {enum: [trace, debug, information, warning, error, critical]}
+tools: []
+doc:
+  prerequisites:
+    - 日志平台(extensions.log-platform)取回的原文是每行一个 JSON 对象
+  output: 日志条目：时间(UTC)、归一化级别、类别、事件编号、消息、异常类型与消息、原文
+  limitations:
+    - 不解析堆栈帧；需要本项目帧时选用技术栈方法或以 extend 补充
+  example: |
+    extensions:
+      log-parse:
+        use: core/json-lines
+        options: {timeField: ts, levelField: level, messageField: msg, exceptionTypeField: error.type}

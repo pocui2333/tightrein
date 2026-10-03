@@ -1,0 +1,29 @@
+name: openapi-file
+point: spec-export
+summary: 读取现成的 OpenAPI 或 Swagger 接口描述文件(JSON 或 YAML)，文件在仓库或工作区中
+applicability: 仓库中提交了随代码更新的接口描述文件，或在工作区中维护了一份接口描述
+optionsSchema:
+  type: object
+  required: [path, base]
+  additionalProperties: false
+  properties:
+    path:
+      description: 接口描述文件相对基准目录(base)的路径
+      type: string
+      pattern: '^[^/\\][^\\]*$'
+    base:
+      description: path 的基准目录：repo 为仓库根目录(随 commit 取文件)，workspace 为工作区根目录
+      type: string
+      enum: [repo, workspace]
+tools: []
+doc:
+  prerequisites:
+    - 仓库中有随代码更新的接口描述文件，或工作区中有一份确认过的接口描述(可由 tightrein spec draft 起草)
+  output: 本 commit 的接口描述(写到 data/specs/<commit>/openapi.json)
+  limitations:
+    - 手写的接口描述视为不由框架导出，api-fuzz 的响应结构检查缺省关闭
+  example: |
+    extensions:
+      spec-export:
+        use: core/openapi-file
+        options: {path: openapi.yaml, base: workspace}

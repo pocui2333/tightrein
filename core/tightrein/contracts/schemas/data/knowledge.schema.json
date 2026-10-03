@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/data/knowledge.schema.json",
+  "title": "知识条目的 frontmatter",
+  "type": "object",
+  "required": ["id", "type", "summary", "tags", "status", "updated", "reviewBy"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {"$ref": "../common.schema.json#/$defs/knowledgeId"},
+    "type": {"$ref": "../common.schema.json#/$defs/KnowledgeType"},
+    "summary": {"type": "string", "minLength": 1},
+    "tags": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
+    "status": {"$ref": "../common.schema.json#/$defs/KnowledgeStatus"},
+    "supersededBy": {"anyOf": [{"$ref": "../common.schema.json#/$defs/knowledgeId"}, {"type": "null"}]},
+    "updated": {"$ref": "../common.schema.json#/$defs/date"},
+    "reviewBy": {"$ref": "../common.schema.json#/$defs/date"},
+    "related": {"type": "array", "items": {"$ref": "../common.schema.json#/$defs/knowledgeId"}},
+    "sourceRunId": {"anyOf": [{"$ref": "../common.schema.json#/$defs/runId"}, {"type": "null"}]}
+  },
+  "if": {"properties": {"status": {"const": "superseded"}}},
+  "then": {
+    "required": ["supersededBy"],
+    "properties": {"supersededBy": {"$ref": "../common.schema.json#/$defs/knowledgeId"}}
+  },
+  "else": {"properties": {"supersededBy": {"type": "null"}}}
+}

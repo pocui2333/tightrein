@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tightrein"
+version = "0.1.0"
+description = "Unattended defect discovery and repair pipeline driven by AI agents, with human-controlled boundaries and approvals"
+license = "MIT"
+authors = [{name = "Cui Ty"}]
+requires-python = ">=3.12"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+]
+dependencies = ["jsonschema==4.26.0", "mcp==2.2.0", "pyyaml==6.0.3", "rich==15.0.0", "schemathesis==4.28.0"]
+
+[project.urls]
+Homepage = "https://github.com/pocui2333/tightrein"
+Issues = "https://github.com/pocui2333/tightrein/issues"
+
+[project.scripts]
+tightrein = "tightrein.cli.main:entry"
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+include = ["tightrein*"]
+
+[tool.setuptools.package-data]
+"tightrein.contracts" = ["schemas/*.json", "schemas/*/*.json", "schemas/*/*/*.json"]
+"tightrein.store.migrations" = ["*.sql"]
+"tightrein.evaluation" = ["rubrics/*.json"]
+"tightrein.extensions.methods" = ["*/*.yaml"]
+"tightrein.config" = ["defaults.yaml"]
+"tightrein.sources.e2e" = ["runtime/*.ts", "runtime/package.json", "runtime/package-lock.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = ["slow: 依赖真实 git 仓库、真实子进程或耗时较长的测试；日常运行以 -m \"not slow\" 跳过"]

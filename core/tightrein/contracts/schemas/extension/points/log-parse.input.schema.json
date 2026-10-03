@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/extension/points/log-parse.input.schema.json",
+  "title": "log-parse 的 input",
+  "type": "object",
+  "required": ["chunks", "state"],
+  "additionalProperties": false,
+  "properties": {
+    "chunks": {"type": "array", "items": {"$ref": "log-platform.output.schema.json#/$defs/chunk"}},
+    "state": {"type": ["object", "null"]}
+  }
+}

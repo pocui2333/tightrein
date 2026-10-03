@@ -1,0 +1,25 @@
+name: manual-list
+point: page-routes
+summary: 读取工作区中手工维护的页面路由清单(YAML)
+applicability: 前端路由无法静态解析，页面数量不多，可以随页面变化手工维护
+optionsSchema:
+  type: object
+  required: [file]
+  additionalProperties: false
+  properties:
+    file:
+      description: 清单文件相对工作区根目录的路径，例如 e2e/routes.yaml
+      type: string
+      pattern: '^[^/\\][^\\]*$'
+tools: []
+doc:
+  prerequisites:
+    - 在工作区写一份页面路由清单
+  output: 页面路由模板清单，供验证环节判断改动影响的页面
+  limitations:
+    - 清单随页面变化需要手工更新
+  example: |
+    extensions:
+      page-routes:
+        use: core/manual-list
+        options: {file: pages.yaml}

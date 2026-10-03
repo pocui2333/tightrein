@@ -1,0 +1,23 @@
+name: openapi-security
+point: authz-endpoints
+summary: 从接口描述的 security 声明推出每个端点所需的能力，作用域名即能力名
+applicability: 接口描述为每个端点写明了 security 要求，并且用作用域(scope)表示所需的权限
+optionsSchema:
+  type: object
+  additionalProperties: false
+  properties:
+    path:
+      description: 接口描述文件相对仓库根目录的路径；省略时取本 commit 的 spec-export 结果
+      type: string
+      pattern: '^[^/\\][^\\]*$'
+tools: []
+doc:
+  prerequisites:
+    - 接口描述为每个端点写了 security 要求，作用域(scope)表示所需的权限
+  output: 每个端点所需的能力，作用域名即能力名；没有 security 的端点视为不需要能力
+  limitations:
+    - 只读接口描述，不看代码；接口描述与代码不一致时以接口描述为准
+  example: |
+    extensions:
+      authz-endpoints:
+        use: core/openapi-security

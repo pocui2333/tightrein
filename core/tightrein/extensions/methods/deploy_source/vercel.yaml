@@ -1,0 +1,43 @@
+name: vercel
+point: deploy-source
+summary: 读取 Vercel 项目最近的部署(Vercel REST API，只读)
+applicability: 项目部署在 Vercel，部署由 Git 集成触发(部署记录带 Git commit)
+optionsSchema:
+  type: object
+  required: [projectId, keychainItem, target, teamId, limit, timeoutSeconds]
+  additionalProperties: false
+  properties:
+    projectId:
+      description: Vercel 项目的 ID 或名称
+      type: string
+      minLength: 1
+    keychainItem:
+      description: 存放 Vercel 访问令牌的 macOS 钥匙串条目名(security add-generic-password -s <条目名> -w)
+      type: string
+      minLength: 1
+    target:
+      description: 部署的 target：production 或 preview
+      enum: [production, preview]
+    teamId:
+      description: 团队项目的 teamId；个人项目为空
+      type: [string, "null"]
+    limit:
+      description: 每次读取的最近部署条数
+      type: integer
+      minimum: 1
+    timeoutSeconds:
+      description: 请求 Vercel API 的超时秒数
+      type: integer
+      minimum: 1
+tools: []
+doc:
+  prerequisites:
+    - 在 Vercel 建一个只读的访问令牌，用 security add-generic-password -s <条目名> -a vercel -w 存进钥匙串
+  output: 最近的部署，每条含 commit、状态、target、地址与时间；没有 Git commit 的手动部署不计入
+  limitations:
+    - 只支持由 Git 集成触发的部署
+  example: |
+    extensions:
+      deploy-source:
+        use: core/vercel
+        options: {projectId: my-site, keychainItem: tightrein.my-site.vercel}

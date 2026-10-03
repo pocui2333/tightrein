@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/handoff/outputs/collect.schema.json",
+  "title": "collect 交接文档的 outputs",
+  "type": "object",
+  "required": ["probe", "level", "target", "runStatus", "environment", "signalCount", "notes"],
+  "additionalProperties": false,
+  "properties": {
+    "probe": {"$ref": "../../common.schema.json#/$defs/Probe"},
+    "level": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/ProbeLevel"}, {"type": "null"}]},
+    "target": {
+      "type": "object",
+      "required": ["environment", "baseUrl", "release", "worktreeHead"],
+      "additionalProperties": false,
+      "properties": {
+        "environment": {"enum": ["staging", "production", "local"]},
+        "baseUrl": {"type": ["string", "null"]},
+        "release": {"type": ["string", "null"]},
+        "worktreeHead": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/commit"}, {"type": "null"}]}
+      }
+    },
+    "runStatus": {"$ref": "../../common.schema.json#/$defs/RunStatus"},
+    "environment": {"$ref": "../../common.schema.json#/$defs/environmentDetail"},
+    "coverage": {
+      "type": "object",
+      "required": ["endpoints", "endpointsTotal", "files", "methods", "sources"],
+      "additionalProperties": false,
+      "properties": {
+        "endpoints": {"type": "integer", "minimum": 0},
+        "endpointsTotal": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]},
+        "files": {"type": "integer", "minimum": 0},
+        "methods": {"anyOf": [{"enum": ["GET", "all"]}, {"type": "null"}]},
+        "sources": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "signalsFile": {"type": ["string", "null"]},
+    "signalCount": {"type": "integer", "minimum": 0},
+    "signalsByCheck": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+    "stats": {
+      "type": "object",
+      "properties": {
+        "extensions": {
+          "type": "object",
+          "propertyNames": {"$ref": "../../common.schema.json#/$defs/ExtensionPoint"},
+          "additionalProperties": {
+            "type": "object",
+            "required": ["implementation", "cached"],
+            "additionalProperties": false,
+            "properties": {
+              "implementation": {"$ref": "../../common.schema.json#/$defs/ExtensionLayer"},
+              "cached": {"type": "boolean"}
+            }
+          }
+        }
+      },
+      "additionalProperties": {"type": "number"}
+    },
+    "regressions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["issue", "checkId", "result"],
+        "additionalProperties": false,
+        "properties": {
+          "issue": {"$ref": "../../common.schema.json#/$defs/issueId"},
+          "checkId": {"type": "string", "minLength": 1},
+          "result": {"$ref": "../../common.schema.json#/$defs/RegressionResult"}
+        }
+      }
+    },
+    "disabledSources": {
+      "description": "未启用的采集方法及原因(配置了才启用)",
+      "type": "object",
+      "additionalProperties": {"type": "string", "minLength": 1}
+    },
+    "rawDir": {"type": ["string", "null"]},
+    "skippedReason": {"type": ["string", "null"]},
+    "notes": {"type": "array", "items": {"type": "string", "minLength": 1}}
+  },
+  "if": {"properties": {"runStatus": {"const": "skipped"}}},
+  "then": {"required": ["skippedReason"], "properties": {"skippedReason": {"type": "string", "minLength": 1}}}
+}

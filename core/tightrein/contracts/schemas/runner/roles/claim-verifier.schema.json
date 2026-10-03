@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/runner/roles/claim-verifier.schema.json",
+  "title": "claim-verifier 的取证结论",
+  "type": "object",
+  "required": [
+    "analysis",
+    "verdict",
+    "facts",
+    "trigger",
+    "counterEvidence",
+    "impact",
+    "sourceOfPhenomenon",
+    "rootCauses",
+    "fixedOnMain",
+    "tradeoffHit",
+    "missingInfo",
+    "incidental",
+    "report",
+    "assessment"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "analysis": {"type": "string", "minLength": 1},
+    "verdict": {"$ref": "../../common.schema.json#/$defs/Verdict"},
+    "facts": {"type": "array", "items": {"$ref": "#/$defs/fact"}},
+    "trigger": {"type": ["string", "null"]},
+    "counterEvidence": {"type": "array", "items": {"$ref": "#/$defs/counterEvidence"}},
+    "impact": {"anyOf": [{"$ref": "#/$defs/impact"}, {"type": "null"}]},
+    "sourceOfPhenomenon": {"anyOf": [{"$ref": "#/$defs/sourceOfPhenomenon"}, {"type": "null"}]},
+    "rootCauses": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/rootCause"}},
+    "fixedOnMain": {"anyOf": [{"$ref": "#/$defs/fixedOnMain"}, {"type": "null"}]},
+    "tradeoffHit": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/knowledgeId"}, {"type": "null"}]},
+    "missingInfo": {"type": "array", "items": {"$ref": "#/$defs/missingInfo"}},
+    "incidental": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/incidentalFinding"}},
+    "report": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/issueReport"}, {"type": "null"}]},
+    "assessment": {"anyOf": [{"$ref": "#/$defs/assessment"}, {"type": "null"}]}
+  },
+  "$defs": {
+    "assessment": {
+      "type": "object",
+      "required": ["worth", "worthReason", "taskType", "estimate", "direction", "flags", "reevaluateWhen",
+                   "outOfScope", "mustKeep"],
+      "additionalProperties": false,
+      "properties": {
+        "worth": {"$ref": "../../common.schema.json#/$defs/WorthRecommendation"},
+        "worthReason": {"type": "string", "minLength": 1},
+        "taskType": {"$ref": "../../common.schema.json#/$defs/TaskType"},
+        "estimate": {"$ref": "../../common.schema.json#/$defs/estimate"},
+        "direction": {"type": "string", "minLength": 1},
+        "flags": {"$ref": "../../common.schema.json#/$defs/flags"},
+        "reevaluateWhen": {"type": ["string", "null"]},
+        "outOfScope": {"type": "array", "items": {"type": "string", "minLength": 1},
+                       "description": "明确不在本次修复范围内的部分(Issue「范围」)"},
+        "mustKeep": {"type": "array", "items": {"type": "string", "minLength": 1},
+                     "description": "不能改的文件、接口与必须保持不变的行为(Issue「注意事项」与验收标准)"}
+      }
+    },
+    "fact": {
+      "type": "object",
+      "required": ["location", "observation"],
+      "additionalProperties": false,
+      "properties": {
+        "location": {"$ref": "../../common.schema.json#/$defs/codeLocation"},
+        "observation": {"type": "string", "minLength": 1}
+      }
+    },
+    "counterEvidence": {
+      "type": "object",
+      "required": ["check", "entry", "upstreamValidation", "result"],
+      "additionalProperties": false,
+      "properties": {
+        "check": {"type": "string", "minLength": 1},
+        "entry": {"type": "string", "minLength": 1},
+        "upstreamValidation": {
+          "type": "object",
+          "required": ["status", "location"],
+          "additionalProperties": false,
+          "properties": {
+            "status": {"enum": ["present", "absent"]},
+            "location": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/codeLocation"}, {"type": "null"}]}
+          }
+        },
+        "result": {"type": "string", "minLength": 1}
+      }
+    },
+    "sourceOfPhenomenon": {
+      "type": "object",
+      "required": ["location", "factRef", "explanation"],
+      "additionalProperties": false,
+      "properties": {
+        "location": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/codeLocation"}, {"type": "null"}]},
+        "factRef": {"anyOf": [{"type": "integer", "minimum": 1}, {"type": "null"}]},
+        "explanation": {"type": "string", "minLength": 1}
+      }
+    },
+    "impact": {
+      "type": "object",
+      "required": ["kind", "roles", "data", "callSites", "consequence"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"$ref": "../../common.schema.json#/$defs/ImpactKind"},
+        "roles": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "data": {"type": "string"},
+        "callSites": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/codeLocation"}},
+        "consequence": {"type": "string", "minLength": 1}
+      }
+    },
+    "fixedOnMain": {
+      "type": "object",
+      "required": ["commit", "basis"],
+      "additionalProperties": false,
+      "properties": {"commit": {"$ref": "../../common.schema.json#/$defs/commit"}, "basis": {"type": "string", "minLength": 1}}
+    },
+    "missingInfo": {
+      "type": "object",
+      "required": ["item", "source"],
+      "additionalProperties": false,
+      "properties": {"item": {"type": "string", "minLength": 1}, "source": {"enum": ["code", "user"]}}
+    }
+  }
+}

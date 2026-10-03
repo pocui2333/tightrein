@@ -1,0 +1,31 @@
+name: semgrep
+point: static-tools
+summary: 以 Semgrep 按给定的规则扫描改动文件(full 档位扫描整个仓库)
+applicability: 需要在 static 探针自带的 Semgrep 之外，以另一组规则作为确定性工具运行
+optionsSchema:
+  type: object
+  required: [configs, timeoutSeconds]
+  additionalProperties: false
+  properties:
+    configs:
+      description: Semgrep 的 --config 取值，例如规则文件路径或 p/<规则集>
+      type: array
+      items: {type: string, minLength: 1}
+      minItems: 1
+    timeoutSeconds:
+      description: Semgrep 的超时秒数，应小于 static-tools 的超时
+      type: integer
+      minimum: 1
+tools:
+  - {tool: semgrep, minVersion: null, install: "core/.venv/bin/python -m venv local/semgrep && local/semgrep/bin/pip install semgrep"}
+doc:
+  prerequisites:
+    - 本机可以运行 Semgrep(runtime.tools.semgrep 或本机用户配置的 tools.semgrep.path)
+  output: 确定性工具的结果，交给静态巡检的审查
+  limitations:
+    - 只扫描改动文件(full 档位扫描整个仓库)
+  example: |
+    extensions:
+      static-tools:
+        use: core/semgrep
+        options: {configs: [p/python]}

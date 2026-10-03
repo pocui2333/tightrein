@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/data/eval-report.schema.json",
+  "title": "评测报告 report.json：以 kind 区分模块评测与检索评测",
+  "type": "object",
+  "required": ["kind"],
+  "properties": {"kind": {"enum": ["module", "retrieval"]}},
+  "if": {"properties": {"kind": {"const": "module"}}},
+  "then": {"$ref": "#/$defs/moduleReport"},
+  "else": {"$ref": "#/$defs/retrievalReport"},
+  "$defs": {
+    "moduleReport": {
+      "type": "object",
+      "required": [
+        "kind",
+        "evaluationId",
+        "plan",
+        "manifestSha256",
+        "evalsTree",
+        "caseStats",
+        "variantStats",
+        "comparisons",
+        "verdict"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"const": "module"},
+        "evaluationId": {"$ref": "../common.schema.json#/$defs/evalId"},
+        "plan": {
+          "type": "object",
+          "required": ["module", "caseIds", "variants", "repeats", "purpose"],
+          "additionalProperties": false,
+          "properties": {
+            "module": {"$ref": "../common.schema.json#/$defs/Stage"},
+            "caseIds": {"type": "array", "items": {"$ref": "../common.schema.json#/$defs/evalCaseId"}},
+            "variants": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["label", "version", "runner", "model"],
+                "additionalProperties": false,
+                "properties": {
+                  "label": {"type": "string", "minLength": 1},
+                  "version": {
+                    "type": "object",
+                    "required": ["label", "commit", "patch", "useWorktree"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "label": {"type": "string", "minLength": 1},
+                      "commit": {"type": "string", "minLength": 1},
+                      "patch": {"type": ["string", "null"]},
+                      "useWorktree": {"type": "boolean"}
+                    }
+                  },
+                  "runner": {"type": "string", "minLength": 1},
+                  "model": {"type": ["string", "null"]}
+                }
+              },
+              "minItems": 1
+            },
+            "repeats": {"type": "integer", "minimum": 3},
+            "purpose": {"enum": ["version", "tool-model"]}
+          }
+        },
+        "manifestSha256": {"$ref": "../common.schema.json#/$defs/sha256"},
+        "evalsTree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "caseStats": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["caseId", "variant", "scores", "mean", "variance", "passRate", "itemPassCounts", "unstable"],
+            "additionalProperties": false,
+            "properties": {
+              "caseId": {"$ref": "../common.schema.json#/$defs/evalCaseId"},
+              "variant": {"type": "string", "minLength": 1},
+              "scores": {"type": "array", "items": {"type": "number", "minimum": 0, "maximum": 1}, "minItems": 1},
+              "mean": {"type": "number"},
+              "variance": {"type": "number", "minimum": 0},
+              "passRate": {"type": "number", "minimum": 0, "maximum": 1},
+              "itemPassCounts": {
+                "type": "object",
+                "additionalProperties": {"type": "array", "items": {"type": "integer", "minimum": 0}, "minItems": 2, "maxItems": 2}
+              },
+              "unstable": {"type": "boolean"}
+            }
+          }
+        },
+        "variantStats": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["variant", "mean", "passRate", "costUsd", "durationMs"],
+            "additionalProperties": false,
+            "properties": {
+              "variant": {"type": "string", "minLength": 1},
+              "mean": {"type": "number"},
+              "passRate": {"type": "number", "minimum": 0},
+              "costUsd": {"anyOf": [{"type": "number", "minimum": 0}, {"type": "null"}]},
+              "durationMs": {"anyOf": [{"type": "number", "minimum": 0}, {"type": "null"}]}
+            }
+          }
+        },
+        "comparisons": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["caseId", "variant", "baselineMean", "mean", "delta", "itemChanges"],
+            "additionalProperties": false,
+            "properties": {
+              "caseId": {"$ref": "../common.schema.json#/$defs/evalCaseId"},
+              "variant": {"type": "string", "minLength": 1},
+              "baselineMean": {"type": "number"},
+              "mean": {"type": "number"},
+              "delta": {"type": "number"},
+              "itemChanges": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["itemId", "baseline", "candidate"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "itemId": {"type": "string", "minLength": 1},
+                    "baseline": {
+                      "type": "array",
+                      "items": {"type": "integer", "minimum": 0},
+                      "minItems": 2,
+                      "maxItems": 2
+                    },
+                    "candidate": {
+                      "type": "array",
+                      "items": {"type": "integer", "minimum": 0},
+                      "minItems": 2,
+                      "maxItems": 2
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "verdict": {"anyOf": [{"$ref": "../common.schema.json#/$defs/EvalVerdict"}, {"type": "null"}]}
+      },
+      "if": {"properties": {"plan": {"properties": {"purpose": {"const": "version"}}}}},
+      "then": {"properties": {"verdict": {"$ref": "../common.schema.json#/$defs/EvalVerdict"}}}
+    },
+    "retrievalReport": {
+      "type": "object",
+      "required": ["kind", "evaluationId", "casesSha256", "metrics", "cases", "skippedCases", "baseline"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"const": "retrieval"},
+        "evaluationId": {"$ref": "../common.schema.json#/$defs/evalId"},
+        "casesSha256": {"$ref": "../common.schema.json#/$defs/sha256"},
+        "metrics": {
+          "type": "object",
+          "required": ["recallAt5", "recallAt10", "mrr", "caseCount"],
+          "additionalProperties": false,
+          "properties": {
+            "recallAt5": {"type": "number", "minimum": 0, "maximum": 1},
+            "recallAt10": {"type": "number", "minimum": 0, "maximum": 1},
+            "mrr": {"type": "number", "minimum": 0, "maximum": 1},
+            "caseCount": {"type": "integer", "minimum": 0}
+          }
+        },
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["caseId", "rank", "hits"],
+            "additionalProperties": false,
+            "properties": {
+              "caseId": {"$ref": "../common.schema.json#/$defs/evalCaseId"},
+              "rank": {"anyOf": [{"type": "integer", "minimum": 1}, {"type": "null"}]},
+              "hits": {"type": "array", "items": {"type": "string", "minLength": 1}}
+            }
+          }
+        },
+        "skippedCases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["caseId", "reason"],
+            "additionalProperties": false,
+            "properties": {
+              "caseId": {"$ref": "../common.schema.json#/$defs/evalCaseId"},
+              "reason": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "baseline": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["evaluationId", "adopted", "worseCases"],
+              "additionalProperties": false,
+              "properties": {
+                "evaluationId": {"$ref": "../common.schema.json#/$defs/evalId"},
+                "adopted": {"type": "boolean"},
+                "worseCases": {"type": "array", "items": {"$ref": "../common.schema.json#/$defs/evalCaseId"}}
+              }
+            },
+            {"type": "null"}
+          ]
+        }
+      }
+    }
+  }
+}

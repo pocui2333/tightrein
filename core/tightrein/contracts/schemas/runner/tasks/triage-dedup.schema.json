@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/runner/tasks/triage-dedup.schema.json",
+  "title": "分诊查重",
+  "type": "object",
+  "required": ["sameRootCause", "target", "evidence", "reason"],
+  "additionalProperties": false,
+  "properties": {
+    "sameRootCause": {"type": "boolean"},
+    "target": {
+      "anyOf": [
+        {
+          "anyOf": [
+            {"$ref": "../../common.schema.json#/$defs/problemId"},
+            {"$ref": "../../common.schema.json#/$defs/issueId"}
+          ]
+        },
+        {"type": "null"}
+      ]
+    },
+    "evidence": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/codeLocation"}},
+    "reason": {"type": "string", "minLength": 1}
+  },
+  "if": {"properties": {"sameRootCause": {"const": true}}},
+  "then": {
+    "properties": {
+      "target": {
+        "anyOf": [{"$ref": "../../common.schema.json#/$defs/problemId"}, {"$ref": "../../common.schema.json#/$defs/issueId"}]
+      },
+      "evidence": {"minItems": 1}
+    }
+  }
+}

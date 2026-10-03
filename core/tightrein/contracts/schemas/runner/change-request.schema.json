@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/runner/change-request.schema.json",
+  "title": "agent 提交的写操作请求",
+  "type": "object",
+  "required": ["kind", "subjectId", "reason", "arguments"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {"$ref": "../common.schema.json#/$defs/OperationKind"},
+    "subjectId": {"type": "string", "minLength": 1},
+    "reason": {"type": "string", "minLength": 1},
+    "arguments": {"type": "object"}
+  }
+}

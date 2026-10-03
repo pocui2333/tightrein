@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/extension/points/authz-endpoints.output.schema.json",
+  "title": "authz-endpoints 的 output：端点到所需能力",
+  "type": "object",
+  "required": ["endpoints", "unresolved"],
+  "additionalProperties": false,
+  "properties": {
+    "endpoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["method", "route", "requires", "anonymous", "symbol", "sourceFile"],
+        "additionalProperties": false,
+        "properties": {
+          "method": {"$ref": "../../common.schema.json#/$defs/httpMethod"},
+          "route": {"type": "string", "pattern": "^/"},
+          "requires": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+          "anonymous": {"type": "boolean"},
+          "symbol": {"type": "string", "minLength": 1},
+          "sourceFile": {"anyOf": [{"$ref": "../extension-request.schema.json#/$defs/relativePath"}, {"type": "null"}]}
+        }
+      }
+    },
+    "unresolved": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["symbol", "reason"],
+        "additionalProperties": false,
+        "properties": {"symbol": {"type": "string", "minLength": 1}, "reason": {"type": "string", "minLength": 1}}
+      }
+    }
+  }
+}

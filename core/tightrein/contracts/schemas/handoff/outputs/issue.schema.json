@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/handoff/outputs/issue.schema.json",
+  "title": "issue 交接文档的 outputs",
+  "type": "object",
+  "required": ["issueId", "action", "path", "problems", "severity", "treatment", "labels", "acceptance", "notified"],
+  "additionalProperties": false,
+  "properties": {
+    "issueId": {"$ref": "../../common.schema.json#/$defs/issueId"},
+    "action": {"enum": ["created", "appended"]},
+    "path": {"type": "string", "minLength": 1},
+    "problems": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/problemId"}, "minItems": 1},
+    "severity": {"$ref": "../../common.schema.json#/$defs/Severity"},
+    "treatment": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/Treatment"}, {"type": "null"}]},
+    "labels": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/IssueLabel"}, "uniqueItems": true},
+    "acceptance": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
+    "notified": {"type": "boolean"},
+    "autonomy": {
+      "description": "gates.issue-approve 为 auto 时新建 Issue 的放行决定：approved 为真时 reasons 是满足的条件，为假时是需要用户决定的原因",
+      "type": "object",
+      "required": ["approved", "reasons"],
+      "additionalProperties": false,
+      "properties": {
+        "approved": {"type": "boolean"},
+        "reasons": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1}
+      }
+    }
+  }
+}

@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/runner/roles/frontend-designer.schema.json",
+  "title": "frontend-designer 的前端设计说明",
+  "type": "object",
+  "required": [
+    "pages",
+    "layout",
+    "interactions",
+    "states",
+    "styling",
+    "mobile",
+    "copy",
+    "planConflicts"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "pages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "location",
+          "structure"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "location": {
+            "type": "string",
+            "minLength": 1
+          },
+          "structure": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "layout": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "interactions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "target",
+          "behavior"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "target": {
+            "type": "string",
+            "minLength": 1
+          },
+          "behavior": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "states": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "target",
+          "loading",
+          "empty",
+          "error"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "target": {
+            "type": "string",
+            "minLength": 1
+          },
+          "loading": {
+            "type": "string",
+            "minLength": 1
+          },
+          "empty": {
+            "type": "string",
+            "minLength": 1
+          },
+          "error": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "styling": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "target",
+          "value",
+          "source"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "target": {
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "mobile": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "copy": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "location",
+          "text",
+          "key"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "location": {
+            "type": "string",
+            "minLength": 1
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "planConflicts": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/extension/extension-request.schema.json",
+  "title": "扩展调用请求的外层",
+  "type": "object",
+  "required": ["protocol", "point", "workspace", "repo", "commit", "options", "scratchDir", "base", "input"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol": {"const": 1},
+    "point": {"$ref": "../common.schema.json#/$defs/ExtensionPoint"},
+    "workspace": {"$ref": "#/$defs/absolutePath"},
+    "repo": {"anyOf": [{"$ref": "#/$defs/absolutePath"}, {"type": "null"}]},
+    "commit": {"anyOf": [{"$ref": "../common.schema.json#/$defs/commit"}, {"type": "null"}]},
+    "options": {"type": "object"},
+    "scratchDir": {"$ref": "#/$defs/absolutePath"},
+    "base": {"type": ["object", "null"]},
+    "input": {"type": "object"}
+  },
+  "if": {"properties": {"point": {"enum": ["error-tracking", "log-platform", "log-parse", "alert-source"]}}},
+  "then": {"properties": {"repo": {"type": "null"}, "commit": {"type": "null"}}},
+  "else": {
+    "properties": {"commit": {"$ref": "../common.schema.json#/$defs/commit"}},
+    "if": {"properties": {"point": {"const": "spec-export"}}},
+    "then": {"$comment": "接口描述不来自仓库(core/openapi-file 的 base: workspace)时 repo 为空"},
+    "else": {"properties": {"repo": {"$ref": "#/$defs/absolutePath"}}}
+  },
+  "$defs": {
+    "absolutePath": {"type": "string", "pattern": "^/"},
+    "relativePath": {"type": "string", "pattern": "^[^/\\\\][^\\\\]*$"}
+  }
+}

@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/handoff/outputs/aggregate.schema.json",
+  "title": "aggregate 交接文档的 outputs：运行级与问题级",
+  "type": "object",
+  "if": {"required": ["problem"]},
+  "then": {"$ref": "#/$defs/problemLevel"},
+  "else": {"$ref": "#/$defs/runLevel"},
+  "$defs": {
+    "runLevel": {
+      "type": "object",
+      "required": [
+        "processedRuns",
+        "counts",
+        "forTriage",
+        "statusChanges",
+        "reopenedIssues",
+        "notes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "processedRuns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["runId", "probe", "grouped", "suppressed"],
+            "additionalProperties": false,
+            "properties": {
+              "runId": {"$ref": "../../common.schema.json#/$defs/runId"},
+              "probe": {"$ref": "../../common.schema.json#/$defs/Probe"},
+              "grouped": {"type": "integer", "minimum": 0},
+              "suppressed": {"type": "integer", "minimum": 0}
+            }
+          }
+        },
+        "counts": {
+          "type": "object",
+          "required": ["new", "regressed", "resolved", "ongoing", "pending"],
+          "additionalProperties": false,
+          "properties": {
+            "new": {"type": "integer", "minimum": 0},
+            "regressed": {"type": "integer", "minimum": 0},
+            "resolved": {"type": "integer", "minimum": 0},
+            "ongoing": {"type": "integer", "minimum": 0},
+            "pending": {"type": "integer", "minimum": 0}
+          }
+        },
+        "forTriage": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["problemId", "handoff"],
+            "additionalProperties": false,
+            "properties": {
+              "problemId": {"$ref": "../../common.schema.json#/$defs/problemId"},
+              "handoff": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "statusChanges": {"type": "array", "items": {"$ref": "#/$defs/statusChange"}},
+        "reopenedIssues": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/issueId"}},
+        "rebuild": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["inherited", "split", "merged"],
+              "additionalProperties": false,
+              "properties": {
+                "inherited": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["problemId", "previousId"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "problemId": {"$ref": "../../common.schema.json#/$defs/problemId"},
+                      "previousId": {"$ref": "../../common.schema.json#/$defs/problemId"}
+                    }
+                  }
+                },
+                "split": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["previousId", "problemIds"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "previousId": {"$ref": "../../common.schema.json#/$defs/problemId"},
+                      "problemIds": {
+                        "type": "array",
+                        "items": {"$ref": "../../common.schema.json#/$defs/problemId"},
+                        "minItems": 2
+                      }
+                    }
+                  }
+                },
+                "merged": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["problemId", "previousIds"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "problemId": {"$ref": "../../common.schema.json#/$defs/problemId"},
+                      "previousIds": {
+                        "type": "array",
+                        "items": {"$ref": "../../common.schema.json#/$defs/problemId"},
+                        "minItems": 2
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {"type": "null"}
+          ]
+        },
+        "notes": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "problemLevel": {
+      "type": "object",
+      "required": ["problem", "transition", "latestSignal", "samples", "reproduction", "issueId"],
+      "additionalProperties": false,
+      "properties": {
+        "problem": {"$ref": "../../data/problem.schema.json"},
+        "transition": {"$ref": "#/$defs/statusChange"},
+        "latestSignal": {"$ref": "../../data/signal.schema.json"},
+        "samples": {"type": "array", "items": {"$ref": "../../data/signal.schema.json"}, "maxItems": 5},
+        "reproduction": {
+          "type": "object",
+          "required": ["strategy", "attempts", "reproduced"],
+          "additionalProperties": false,
+          "properties": {
+            "strategy": {"$ref": "../../common.schema.json#/$defs/ReproduceStrategy"},
+            "attempts": {"type": "integer", "minimum": 0},
+            "reproduced": {"type": ["boolean", "null"]}
+          }
+        },
+        "issueId": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/issueId"}, {"type": "null"}]}
+      }
+    },
+    "statusChange": {
+      "type": "object",
+      "required": ["problemId", "from", "to", "event"],
+      "additionalProperties": false,
+      "properties": {
+        "problemId": {"$ref": "../../common.schema.json#/$defs/problemId"},
+        "from": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/ProblemStatus"}, {"type": "null"}]},
+        "to": {"$ref": "../../common.schema.json#/$defs/ProblemStatus"},
+        "event": {"$ref": "../../common.schema.json#/$defs/ProblemEvent"}
+      }
+    }
+  }
+}

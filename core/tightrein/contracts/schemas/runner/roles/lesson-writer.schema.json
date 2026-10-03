@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/runner/roles/lesson-writer.schema.json",
+  "title": "lesson-writer 的经验草稿与矛盾比对",
+  "type": "object",
+  "required": ["mode", "draft", "contradictions", "duplicates"],
+  "additionalProperties": false,
+  "properties": {
+    "mode": {"enum": ["lesson", "compare"]},
+    "draft": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["type", "slug", "title", "summary", "tags", "body", "related"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {"enum": ["triage-lesson", "fix-lesson"]},
+            "slug": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+            "title": {"type": "string", "minLength": 1},
+            "summary": {"type": "string", "minLength": 1},
+            "tags": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
+            "body": {"type": "string", "minLength": 1},
+            "related": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/knowledgeId"}}
+          }
+        },
+        {"type": "null"}
+      ]
+    },
+    "contradictions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ids", "facts"],
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {"$ref": "../../common.schema.json#/$defs/knowledgeId"},
+            "minItems": 2,
+            "uniqueItems": true
+          },
+          "facts": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "duplicates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ids", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {"$ref": "../../common.schema.json#/$defs/knowledgeId"},
+            "minItems": 2,
+            "uniqueItems": true
+          },
+          "reason": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  },
+  "if": {"properties": {"mode": {"const": "lesson"}}},
+  "then": {"properties": {"draft": {"type": "object"}}}
+}

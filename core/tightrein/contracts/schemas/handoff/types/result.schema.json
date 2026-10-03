@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/handoff/types/result.schema.json",
+  "title": "result：下游回报执行结果",
+  "description": "result 类型交接文档的数据块：每个 $defs 项是一个标签为 data:<名称> 的 YAML 代码块",
+  "$defs": {
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "description": "「证据」小节中每项检查的结论",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "verdict"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "检查名称或命令",
+            "examples": [
+              "pytest tests/unit"
+            ]
+          },
+          "verdict": {
+            "enum": [
+              "passed",
+              "failed",
+              "skipped"
+            ],
+            "description": "检查结论",
+            "examples": [
+              "passed"
+            ]
+          },
+          "summary": {
+            "type": "string",
+            "description": "输出摘要；完整输出放在附件，由「引用」给出路径",
+            "examples": [
+              "2590 passed"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

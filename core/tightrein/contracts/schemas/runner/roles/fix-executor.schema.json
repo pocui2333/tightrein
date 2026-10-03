@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/runner/roles/fix-executor.schema.json",
+  "title": "fix-executor 的实施结果",
+  "type": "object",
+  "required": ["analysis", "status", "changedFiles", "verification", "deviations", "bigIssue", "incidental", "outOfScope",
+               "release"],
+  "additionalProperties": false,
+  "properties": {
+    "analysis": {"type": "string", "minLength": 1},
+    "status": {"enum": ["completed", "aborted"]},
+    "changedFiles": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "verification": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["command", "output"],
+        "additionalProperties": false,
+        "properties": {"command": {"type": "string", "minLength": 1}, "output": {"type": "string"}}
+      }
+    },
+    "deviations": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "bigIssue": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["description", "locations"],
+          "additionalProperties": false,
+          "properties": {
+            "description": {"type": "string", "minLength": 1},
+            "locations": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/codeLocation"}}
+          }
+        },
+        {"type": "null"}
+      ]
+    },
+    "incidental": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/incidentalFinding"}},
+    "outOfScope": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "release": {
+      "description": "发布用的文字(项目语言)，由程序按项目约定写进提交信息与 PR；status 为 aborted 时为 null",
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["scope", "subject", "why", "prTitle", "problem", "approach", "limitations"],
+          "additionalProperties": false,
+          "properties": {
+            "scope": {"type": ["string", "null"], "description": "提交信息的范围(模块或功能名)；没有合适的范围时为 null"},
+            "subject": {"type": "string", "minLength": 1, "description": "提交信息第一行的一句话"},
+            "why": {"type": "string", "minLength": 1, "description": "为什么这样改(提交信息正文)"},
+            "prTitle": {"type": "string", "minLength": 1, "description": "PR 标题：一句祈使语气的完整话，说清做了什么"},
+            "problem": {"type": "string", "minLength": 1, "description": "PR 描述：解决什么问题"},
+            "approach": {"type": "string", "minLength": 1, "description": "PR 描述：为什么选这个做法"},
+            "limitations": {"type": "string", "minLength": 1, "description": "PR 描述：这个做法的不足与局限；没有时写明没有"}
+          }
+        },
+        {"type": "null"}
+      ]
+    }
+  },
+  "if": {"properties": {"status": {"const": "aborted"}}},
+  "then": {"properties": {"bigIssue": {"type": "object"}}}
+}

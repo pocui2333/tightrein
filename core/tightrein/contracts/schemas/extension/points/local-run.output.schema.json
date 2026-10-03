@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/extension/points/local-run.output.schema.json",
+  "title": "local-run 的 output：本机启动计划",
+  "type": "object",
+  "required": ["services", "unavailable", "migrationPaths"],
+  "additionalProperties": false,
+  "properties": {
+    "services": {"type": "array", "items": {"$ref": "#/$defs/service"}},
+    "unavailable": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "reason"],
+        "additionalProperties": false,
+        "properties": {"name": {"$ref": "#/$defs/serviceName"}, "reason": {"type": "string", "minLength": 1}}
+      }
+    },
+    "migrationPaths": {"type": "array", "items": {"$ref": "../extension-request.schema.json#/$defs/relativePath"}}
+  },
+  "$defs": {
+    "serviceName": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+    "service": {
+      "type": "object",
+      "required": ["name", "argv", "cwd", "env", "port", "readyUrl", "readyPatterns", "failPatterns", "after"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"$ref": "#/$defs/serviceName"},
+        "argv": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
+        "cwd": {"anyOf": [{"$ref": "../extension-request.schema.json#/$defs/relativePath"}, {"const": "."}]},
+        "env": {"type": "object", "additionalProperties": {"type": "string"}},
+        "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "readyUrl": {"type": ["string", "null"]},
+        "readyPatterns": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "failPatterns": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "after": {"anyOf": [{"$ref": "#/$defs/serviceName"}, {"type": "null"}]}
+      }
+    }
+  }
+}

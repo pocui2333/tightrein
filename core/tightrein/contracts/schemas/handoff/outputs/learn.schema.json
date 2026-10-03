@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/handoff/outputs/learn.schema.json",
+  "title": "learn 交接文档的 outputs",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "metrics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["metric", "dimension", "value", "numerator", "denominator", "sampleSize"],
+        "additionalProperties": false,
+        "properties": {
+          "metric": {"type": "string", "minLength": 1},
+          "dimension": {"type": "string", "minLength": 1},
+          "value": {"type": ["number", "null"]},
+          "numerator": {"type": ["number", "null"]},
+          "denominator": {"type": ["number", "null"]},
+          "sampleSize": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "attention": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "subjectId", "summary", "command"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {"type": "string", "minLength": 1},
+          "subjectId": {"type": "string", "minLength": 1},
+          "summary": {"type": "string", "minLength": 1},
+          "command": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "suggestions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "subject", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"$ref": "../../common.schema.json#/$defs/suggestionId"},
+          "kind": {"$ref": "../../common.schema.json#/$defs/SuggestionKind"},
+          "subject": {"type": "string", "minLength": 1},
+          "status": {"$ref": "../../common.schema.json#/$defs/SuggestionStatus"},
+          "document": {"type": ["string", "null"], "description": "决定文档(控制措施与改进建议)"},
+          "advice": {
+            "type": "object",
+            "required": ["recommendation", "reason"],
+            "additionalProperties": false,
+            "properties": {"recommendation": {"type": "string"}, "reason": {"type": "string"}}
+          }
+        }
+      }
+    },
+    "health": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["check", "passed", "notify", "detail"],
+        "additionalProperties": false,
+        "properties": {
+          "check": {"type": "string", "minLength": 1},
+          "passed": {"type": "boolean"},
+          "notify": {"type": "boolean"},
+          "detail": {"type": "string"}
+        }
+      }
+    },
+    "rules": {
+      "type": "array",
+      "description": "缺陷变规则的结果：收入规则库的路径，或没有收录的原因与写入的缺陷模式条目",
+      "items": {
+        "type": "object",
+        "required": ["issueId", "accepted", "path", "reason", "knowledgeId"],
+        "additionalProperties": false,
+        "properties": {
+          "issueId": {"$ref": "../../common.schema.json#/$defs/issueId"},
+          "accepted": {"type": "boolean"},
+          "path": {"type": ["string", "null"]},
+          "reason": {"type": ["string", "null"]},
+          "knowledgeId": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/knowledgeId"}, {"type": "null"}]},
+          "check": {
+            "type": "object",
+            "required": ["accepted", "reason", "ruleId", "beforeHits", "afterHits", "repoHits"],
+            "additionalProperties": false,
+            "properties": {
+              "accepted": {"type": "boolean"},
+              "reason": {"type": ["string", "null"]},
+              "ruleId": {"type": ["string", "null"]},
+              "beforeHits": {"type": ["integer", "null"]},
+              "afterHits": {"type": ["integer", "null"]},
+              "repoHits": {"type": ["integer", "null"]}
+            }
+          }
+        }
+      }
+    },
+    "cleanup": {
+      "type": "array",
+      "description": "经验类条目的自动归档与续期",
+      "items": {
+        "type": "object",
+        "required": ["id", "action"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"$ref": "../../common.schema.json#/$defs/knowledgeId"},
+          "action": {"enum": ["archived", "renewed"]}
+        }
+      }
+    },
+    "improve": {
+      "type": "object",
+      "description": "learn improve 的结果",
+      "required": ["troubles", "suggestionId", "evaluationId", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "troubles": {"type": "integer", "minimum": 0},
+        "suggestionId": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/suggestionId"}, {"type": "null"}]},
+        "evaluationId": {"type": ["string", "null"]},
+        "reason": {"type": ["string", "null"]},
+        "recommended": {"type": "boolean"},
+        "summary": {"type": "object"}
+      }
+    },
+    "yields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["stage", "role", "calls", "inputTokens", "outputTokens", "costUsd", "useful", "noYield", "pending",
+                     "tokensPerUseful", "callsSinceUseful"],
+        "additionalProperties": false,
+        "properties": {
+          "stage": {"$ref": "../../common.schema.json#/$defs/Stage"},
+          "role": {"type": "string", "minLength": 1},
+          "calls": {"type": "integer", "minimum": 0},
+          "inputTokens": {"type": "integer", "minimum": 0},
+          "outputTokens": {"type": "integer", "minimum": 0},
+          "costUsd": {"type": "number", "minimum": 0},
+          "useful": {"type": "integer", "minimum": 0},
+          "noYield": {"type": "integer", "minimum": 0},
+          "pending": {"type": "integer", "minimum": 0},
+          "tokensPerUseful": {"type": ["number", "null"]},
+          "callsSinceUseful": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "thirdParty": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "source", "passed", "detail"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "source": {"type": "string", "minLength": 1},
+          "passed": {"type": "boolean"},
+          "detail": {"type": "string"}
+        }
+      }
+    },
+    "lessons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "knowledgeId", "decision"],
+        "additionalProperties": false,
+        "properties": {
+          "source": {"type": "string", "minLength": 1},
+          "knowledgeId": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/knowledgeId"}, {"type": "null"}]},
+          "decision": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/KnowledgeWriteDecision"}, {"type": "null"}]}
+        }
+      }
+    },
+    "outcomes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["problemId", "attempt", "outcome"],
+        "additionalProperties": false,
+        "properties": {
+          "problemId": {"$ref": "../../common.schema.json#/$defs/problemId"},
+          "attempt": {"type": "integer", "minimum": 1},
+          "outcome": {"$ref": "../../common.schema.json#/$defs/TriageOutcome"}
+        }
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["item", "reason"],
+        "additionalProperties": false,
+        "properties": {"item": {"type": "string", "minLength": 1}, "reason": {"type": "string", "minLength": 1}}
+      }
+    }
+  }
+}

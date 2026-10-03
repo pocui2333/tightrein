@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/data/regression.schema.json",
+  "title": "复现检查清单 check.yaml",
+  "type": "object",
+  "required": ["issue", "problems", "checks"],
+  "additionalProperties": false,
+  "properties": {
+    "issue": {"$ref": "../common.schema.json#/$defs/issueId"},
+    "problems": {"type": "array", "items": {"$ref": "../common.schema.json#/$defs/fingerprint"}},
+    "checks": {"type": "array", "items": {"$ref": "#/$defs/check"}, "minItems": 1}
+  },
+  "$defs": {
+    "check": {
+      "type": "object",
+      "required": ["id", "kind", "file", "location"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^(api|page|static|test)-\\d+$"},
+        "kind": {"$ref": "../common.schema.json#/$defs/RegressionKind"},
+        "role": {"type": ["string", "null"]},
+        "file": {"type": "string", "minLength": 1},
+        "location": {"type": "string", "minLength": 1},
+        "targets": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "command": {"type": "string", "minLength": 1},
+        "expectedSignature": {"type": "string", "minLength": 1},
+        "requires": {
+          "type": "array",
+          "items": {"$ref": "../extension/points/local-run.output.schema.json#/$defs/serviceName"},
+          "uniqueItems": true
+        },
+        "precondition": {"type": ["string", "null"]}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"kind": {"const": "api"}}},
+          "then": {
+            "required": ["role", "requires"],
+            "properties": {"id": {"pattern": "^api-"}, "role": {"type": "string", "minLength": 1}}
+          }
+        },
+        {
+          "if": {"properties": {"kind": {"const": "page"}}},
+          "then": {
+            "required": ["role", "requires"],
+            "properties": {"id": {"pattern": "^page-"}, "role": {"type": "string", "minLength": 1}}
+          }
+        },
+        {
+          "if": {"properties": {"kind": {"const": "static"}}},
+          "then": {
+            "required": ["targets", "requires"],
+            "properties": {"id": {"pattern": "^static-"}, "targets": {"minItems": 1}}
+          }
+        },
+        {
+          "if": {"properties": {"kind": {"const": "test"}}},
+          "then": {"required": ["command"], "properties": {"id": {"pattern": "^test-"}}}
+        }
+      ]
+    }
+  }
+}

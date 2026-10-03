@@ -1,0 +1,92 @@
+{
+  "status": "ok",
+  "errorType": null,
+  "output": {
+    "analysis": "OrderService.Get 按编号直接查询订单，控制器入口没有校验订单归属，其他账号的订单可被读到。",
+    "verdict": "confirmed",
+    "facts": [
+      {
+        "location": "src/Services/OrderService.src:12",
+        "observation": "按编号直接查询订单，没有按当前账号过滤"
+      }
+    ],
+    "trigger": "已登录账号传入不属于自己的订单编号",
+    "counterEvidence": [
+      {
+        "check": "控制器入口是否校验订单归属",
+        "entry": "src/Controllers/OrderController.src:8",
+        "upstreamValidation": {
+          "status": "absent",
+          "location": null
+        },
+        "result": "入口没有校验"
+      }
+    ],
+    "impact": {
+      "kind": "non-core-error",
+      "roles": [
+        "Admin"
+      ],
+      "data": "订单",
+      "callSites": [],
+      "consequence": "能读到其他账号的订单"
+    },
+    "sourceOfPhenomenon": null,
+    "rootCauses": [
+      {
+        "file": "src/Services/OrderService.src",
+        "line": 12,
+        "symbol": "OrderService.Get"
+      }
+    ],
+    "fixedOnMain": null,
+    "tradeoffHit": null,
+    "missingInfo": [],
+    "incidental": [],
+    "report": null,
+    "assessment": {
+      "worth": "fix",
+      "worthReason": "能读到其他账号的订单",
+      "taskType": "bug",
+      "estimate": {
+        "files": [
+          {
+            "path": "src/Services/OrderService.src",
+            "isNew": false
+          }
+        ],
+        "lines": 6
+      },
+      "direction": "在 OrderService.Get 中按当前账号过滤",
+      "flags": {
+        "design": {
+          "flagged": false
+        },
+        "dataStructure": {
+          "flagged": false
+        },
+        "publicContract": {
+          "flagged": false
+        }
+      },
+      "reevaluateWhen": null,
+      "outOfScope": [],
+      "mustKeep": []
+    }
+  },
+  "usage": {
+    "inputTokens": 1200,
+    "outputTokens": 300,
+    "cachedInputTokens": 0,
+    "costUsd": 0.02,
+    "costEstimated": false
+  },
+  "durationMs": 1000,
+  "attempts": 1,
+  "tool": "claude",
+  "model": null,
+  "sessionId": null,
+  "transcriptPath": null,
+  "guardReport": null,
+  "violations": []
+}

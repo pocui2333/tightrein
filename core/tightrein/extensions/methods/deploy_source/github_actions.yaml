@@ -1,0 +1,37 @@
+name: github-actions
+point: deploy-source
+summary: 读取部署工作流(GitHub Actions)最近的运行，作为部署记录
+applicability: 项目用一个 GitHub Actions 工作流部署，没有使用 GitHub Deployments
+optionsSchema:
+  type: object
+  required: [workflow, branch, limit, timeoutSeconds]
+  additionalProperties: false
+  properties:
+    workflow:
+      description: 部署工作流的文件名或名称，例如 deploy-staging.yml
+      type: string
+      minLength: 1
+    branch:
+      description: 部署工作流运行的分支；为空时取请求中的分支(project.mainBranch)
+      type: [string, "null"]
+    limit:
+      description: 每次读取的最近运行条数
+      type: integer
+      minimum: 1
+    timeoutSeconds:
+      description: gh 命令的超时秒数
+      type: integer
+      minimum: 1
+tools:
+  - {tool: gh, minVersion: null, install: "安装 GitHub CLI 并执行 gh auth login"}
+doc:
+  prerequisites:
+    - 本机已安装并登录 GitHub CLI(gh auth login)，账号对仓库有读权限
+  output: 部署工作流最近的运行，每条含编号、commit、状态(succeeded、failed、running、skipped)、地址与时间
+  limitations:
+    - 只看指定的工作流；同一工作流内多个环境的部署无法区分
+  example: |
+    extensions:
+      deploy-source:
+        use: core/github-actions
+        options: {workflow: deploy.yml}

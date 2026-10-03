@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/runner/transcript-event.schema.json",
+  "title": "会话记录的统一事件",
+  "type": "object",
+  "required": ["seq", "timestamp", "runId", "role", "subjectId", "attempt", "tool", "type", "actor"],
+  "additionalProperties": false,
+  "properties": {
+    "seq": {"type": "integer", "minimum": 1},
+    "timestamp": {"$ref": "../common.schema.json#/$defs/timestamp"},
+    "runId": {"$ref": "../common.schema.json#/$defs/runId"},
+    "role": {"type": "string", "minLength": 1},
+    "subjectId": {"type": "string", "minLength": 1},
+    "attempt": {"type": "integer", "minimum": 1},
+    "tool": {"type": "string", "minLength": 1},
+    "model": {"type": ["string", "null"]},
+    "sessionId": {"type": ["string", "null"]},
+    "type": {"enum": ["session-start", "message", "tool-call", "tool-result", "usage", "error", "result"]},
+    "actor": {"enum": ["user", "assistant", "system"]},
+    "text": {"type": ["string", "null"]},
+    "toolName": {"type": ["string", "null"]},
+    "toolInput": {},
+    "toolCallId": {"type": ["string", "null"]},
+    "toolOutput": {"anyOf": [{"type": "string", "maxLength": 16384}, {"type": "null"}]},
+    "isError": {"type": ["boolean", "null"]},
+    "usage": {"anyOf": [{"$ref": "../common.schema.json#/$defs/usage"}, {"type": "null"}]}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"type": {"const": "tool-call"}}},
+      "then": {
+        "required": ["toolName", "toolCallId"],
+        "properties": {"toolName": {"type": "string", "minLength": 1}, "toolCallId": {"type": "string", "minLength": 1}}
+      }
+    },
+    {
+      "if": {"properties": {"type": {"const": "tool-result"}}},
+      "then": {"required": ["toolCallId"], "properties": {"toolCallId": {"type": "string", "minLength": 1}}}
+    }
+  ]
+}

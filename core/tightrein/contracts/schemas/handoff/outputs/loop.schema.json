@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/handoff/outputs/loop.schema.json",
+  "title": "运行摘要交接文档的 outputs",
+  "type": "object",
+  "required": ["conclusion", "waiting", "steps", "anomalies"],
+  "additionalProperties": false,
+  "properties": {
+    "conclusion": {"type": "string", "minLength": 1},
+    "waiting": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "subjectId", "summary", "command"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "pending-operation",
+              "issue-approval",
+              "fix-plan",
+              "interactive-fix",
+              "pr-review",
+              "manual-queue",
+              "candidate-choice",
+              "awaiting-deploy",
+              "merge-decision",
+              "ci-failed",
+              "onboarding"
+            ]
+          },
+          "subjectId": {"type": "string", "minLength": 1},
+          "summary": {"type": "string", "minLength": 1},
+          "command": {"type": "string", "minLength": 1},
+          "recommendation": {"type": "string", "minLength": 1, "description": "推荐做法(收件箱，redesign/09-loop.md 第 4 节)"},
+          "reason": {"type": "string", "minLength": 1, "description": "推荐的理由"},
+          "treatment": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/Treatment"}, {"type": "null"}]},
+          "severity": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/Severity"}, {"type": "null"}]}
+        }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["order", "name", "executed", "reason", "runId", "status", "durationMs"],
+        "additionalProperties": false,
+        "properties": {
+          "order": {"type": "integer", "minimum": 1},
+          "name": {"type": "string", "minLength": 1},
+          "executed": {"type": "boolean"},
+          "reason": {"type": ["string", "null"]},
+          "runId": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/runId"}, {"type": "null"}]},
+          "status": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/RunStatus"}, {"type": "null"}]},
+          "durationMs": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]}
+        }
+      }
+    },
+    "produced": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "newProblems": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/problemId"}},
+        "regressed": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/problemId"}},
+        "resolved": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/problemId"}},
+        "triage": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["problemId", "title", "verdict", "severity", "disposition"],
+            "additionalProperties": false,
+            "properties": {
+              "problemId": {"$ref": "../../common.schema.json#/$defs/problemId"},
+              "title": {"type": "string", "minLength": 1},
+              "verdict": {"$ref": "../../common.schema.json#/$defs/Verdict"},
+              "severity": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/Severity"}, {"type": "null"}]},
+              "disposition": {"$ref": "../../common.schema.json#/$defs/Disposition"}
+            }
+          }
+        },
+        "issues": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/issueId"}},
+        "pulls": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "autonomy": {
+          "description": "本次的自动决定：自动放行、需要用户决定、自动合并、未自动合并及其理由",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["subjectId", "decision", "reasons"],
+            "additionalProperties": false,
+            "properties": {
+              "subjectId": {"$ref": "../../common.schema.json#/$defs/issueId"},
+              "decision": {"enum": ["auto-approved", "needs-decision", "auto-merged", "merge-waiting"]},
+              "reasons": {"type": "array", "items": {"type": "string", "minLength": 1}}
+            }
+          }
+        }
+      }
+    },
+    "unsynced": {
+      "description": "未同步到 GitHub 的 Issue 镜像项(issues.tracker 为 github 时)",
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "halted": {
+      "description": "本次运行停下的原因：pause(暂停)、budget(预算到达)",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {"pause": {"type": "string", "minLength": 1}, "budget": {"type": "string", "minLength": 1}}
+    },
+    "reroutes": {
+      "description": "本次 git、gh 遇到网络类错误换路重试的记录(命令、原路线、新路线、原错误与结果)",
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "anomalies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "reason", "log"],
+        "additionalProperties": false,
+        "properties": {
+          "source": {"type": "string", "minLength": 1},
+          "reason": {"type": "string", "minLength": 1},
+          "log": {"type": ["string", "null"]}
+        }
+      }
+    }
+  }
+}

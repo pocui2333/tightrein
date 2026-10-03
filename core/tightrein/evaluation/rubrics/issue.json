@@ -1,0 +1,34 @@
+{
+  "stage": "issue",
+  "items": [
+    {
+      "id": "issue.sections",
+      "text": "必需小节齐全(交接文档版式，按小节键，标题为任一语言)",
+      "method": "code",
+      "scorer": "document-sections",
+      "params": {
+        "document": "path",
+        "keyed": true,
+        "sections": ["conclusion", "problem", "impact", "reproduce", "cause", "scope", "notes", "acceptance", "direction",
+                     "references", "history"]
+      }
+    },
+    {
+      "id": "issue.evidence-location",
+      "text": "引用中的完整证据带「文件路径:行号」且真实存在",
+      "method": "code",
+      "scorer": "document-locations",
+      "params": {"document": "path", "keyed": true, "section": "references"}
+    },
+    {
+      "id": "issue.absolute-dates",
+      "text": "日期为绝对日期",
+      "method": "code",
+      "scorer": "absolute-dates",
+      "params": {
+        "document": "path",
+        "words": ["今天", "昨天", "前天", "明天", "本周", "上周", "下周", "本月", "上个月", "最近", "刚才"]
+      }
+    }
+  ]
+}

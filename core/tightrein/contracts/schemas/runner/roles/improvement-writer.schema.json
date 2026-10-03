@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/runner/roles/improvement-writer.schema.json",
+  "title": "improvement-writer 从近期出问题的来源归纳的一条改进建议",
+  "type": "object",
+  "required": ["suggestion", "reason"],
+  "additionalProperties": false,
+  "properties": {
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "description": "suggestion 为 null 时写为什么归纳不出可改的规律；有建议时写一句话的依据"
+    },
+    "suggestion": {
+      "anyOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "required": ["stage", "target", "patch", "capability", "rationale", "addresses", "expected"],
+          "additionalProperties": false,
+          "properties": {
+            "stage": {"enum": ["triage", "issue", "fix"], "description": "要改进的环节，评测按这个环节的用例运行"},
+            "target": {"enum": ["prompt", "model"], "description": "prompt 为修改角色说明，model 为该环节改用另一个能力档"},
+            "patch": {
+              "type": ["string", "null"],
+              "description": "target 为 prompt 时，相对本工具仓库根目录的统一格式补丁，只改 skills/ 下的文件；否则为 null"
+            },
+            "capability": {
+              "enum": ["light", "standard", "strong", null],
+              "description": "target 为 model 时建议的能力档；否则为 null"
+            },
+            "rationale": {"type": "string", "minLength": 1, "description": "这些失败的共同原因与改动为什么能避免它们"},
+            "addresses": {
+              "type": "array",
+              "items": {"type": "string", "minLength": 1},
+              "minItems": 1,
+              "description": "这条建议针对的出问题对象编号(Issue 或问题编号)"
+            },
+            "expected": {"type": "string", "minLength": 1, "description": "预期改善什么，怎样从评测结果看出来"}
+          }
+        }
+      ]
+    }
+  }
+}

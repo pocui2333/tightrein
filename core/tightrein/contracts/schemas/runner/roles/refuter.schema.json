@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/runner/roles/refuter.schema.json",
+  "title": "refuter 的证伪复核结论，字段与 claim-verifier 相同",
+  "$ref": "claim-verifier.schema.json"
+}

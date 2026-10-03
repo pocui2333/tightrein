@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/extension/points/page-routes.input.schema.json",
+  "title": "page-routes 的 input：空对象",
+  "type": "object",
+  "additionalProperties": false
+}

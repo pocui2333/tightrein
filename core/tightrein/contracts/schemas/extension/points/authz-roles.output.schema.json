@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/extension/points/authz-roles.output.schema.json",
+  "title": "authz-roles 的 output：角色到能力",
+  "type": "object",
+  "required": ["capabilities", "roles", "sourceFiles"],
+  "additionalProperties": false,
+  "properties": {
+    "capabilities": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "roles": {
+      "type": "object",
+      "additionalProperties": {"type": "object", "additionalProperties": {"type": "boolean"}}
+    },
+    "sourceFiles": {"type": "array", "items": {"$ref": "../extension-request.schema.json#/$defs/relativePath"}}
+  }
+}

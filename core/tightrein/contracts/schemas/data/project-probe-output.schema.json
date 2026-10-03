@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/data/project-probe-output.schema.json",
+  "title": "项目探针的输出",
+  "description": "探针经标准输出返回的 JSON；不合格时本次输出作废、状态不保存",
+  "type": "object",
+  "required": [
+    "signals"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "signals": {
+      "type": "array",
+      "description": "发现的异常，每条一个信号；没有异常时为空数组",
+      "items": {
+        "type": "object",
+        "required": [
+          "location",
+          "symptom",
+          "evidence",
+          "severityHint",
+          "fingerprint"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "location": {
+            "type": "string",
+            "minLength": 1,
+            "description": "异常所在的位置：业务对象、任务名、接口或代码位置",
+            "examples": [
+              "job:daily-import"
+            ]
+          },
+          "symptom": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "description": "现象，一句话，写观察到的事实不写原因",
+            "examples": [
+              "昨天的导入任务没有在 02:00 前完成"
+            ]
+          },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "证据：可核对的事实(数值、时间、查询与结果)，不含凭证",
+            "examples": [
+              [
+                "最近一次完成时间 2026-09-30T01:58:00Z",
+                "今天 03:00 查询 status=done 的记录为 0 条"
+              ]
+            ]
+          },
+          "severityHint": {
+            "anyOf": [
+              {
+                "$ref": "../common.schema.json#/$defs/Severity"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "严重度提示(P0 到 P3)，分诊参考；不确定时为 null",
+            "examples": [
+              "P1"
+            ]
+          },
+          "fingerprint": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "同一个问题每次给出相同的值(例如「检查项:对象」)，核心与探针名一起计算问题指纹",
+            "examples": [
+              "missed-run:daily-import"
+            ]
+          },
+          "occurredAt": {
+            "$ref": "../common.schema.json#/$defs/timestamp",
+            "description": "发生时间；省略时为本次运行的时间",
+            "examples": [
+              "2026-10-02T02:00:00Z"
+            ]
+          },
+          "context": {
+            "type": "object",
+            "description": "给分诊看的补充数据(不含凭证与个人信息)",
+            "examples": [
+              {
+                "expectedAt": "02:00"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "state": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "留给下次运行的状态，下次原样放进输入的 state",
+      "examples": [
+        {
+          "lastBatch": "2026-10-02"
+        }
+      ]
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "写进运行摘要的说明",
+      "examples": [
+        [
+          "跳过了 3 条测试数据"
+        ]
+      ]
+    }
+  }
+}

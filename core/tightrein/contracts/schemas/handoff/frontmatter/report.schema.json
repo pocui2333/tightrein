@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/handoff/frontmatter/report.schema.json",
+  "title": "报告类人读文档的 frontmatter：发现报告、修复报告、验证报告",
+  "type": "object",
+  "required": ["type", "id", "summary", "tags", "runId", "createdAt"],
+  "additionalProperties": false,
+  "properties": {
+    "type": {"enum": ["finding", "fix-report", "verify-report"]},
+    "id": {"type": "string", "minLength": 1},
+    "status": {"type": "string", "minLength": 1},
+    "summary": {"type": "string", "minLength": 1},
+    "tags": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
+    "runId": {"$ref": "../../common.schema.json#/$defs/runId"},
+    "createdAt": {"$ref": "../../common.schema.json#/$defs/timestamp"},
+    "updatedAt": {"$ref": "../../common.schema.json#/$defs/timestamp"},
+    "problemId": {"$ref": "../../common.schema.json#/$defs/problemId"},
+    "issueId": {"$ref": "../../common.schema.json#/$defs/issueId"},
+    "verdict": {"$ref": "../../common.schema.json#/$defs/Verdict"},
+    "severity": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/Severity"}, {"type": "null"}]},
+    "disposition": {"$ref": "../../common.schema.json#/$defs/Disposition"},
+    "treatment": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/Treatment"}, {"type": "null"}]},
+    "triageCommit": {"$ref": "../../common.schema.json#/$defs/commit"},
+    "branch": {"type": "string", "minLength": 1},
+    "baseCommit": {"$ref": "../../common.schema.json#/$defs/commit"},
+    "phase": {"$ref": "../../common.schema.json#/$defs/VerifyPhase"},
+    "commit": {"$ref": "../../common.schema.json#/$defs/commit"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"type": {"const": "finding"}}},
+      "then": {
+        "required": ["problemId", "status", "verdict", "disposition", "triageCommit", "updatedAt"],
+        "properties": {
+          "id": {"pattern": "^triage-P-\\d{4,}$"},
+          "status": {"$ref": "../../common.schema.json#/$defs/Disposition"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"type": {"const": "fix-report"}}},
+      "then": {
+        "required": ["issueId", "status", "branch", "baseCommit", "updatedAt"],
+        "properties": {"id": {"pattern": "^fix-\\d{4,}$"}, "status": {"$ref": "../../common.schema.json#/$defs/HandoffStatus"}}
+      }
+    },
+    {
+      "if": {"properties": {"type": {"const": "verify-report"}}},
+      "then": {
+        "required": ["issueId", "phase", "status", "commit"],
+        "properties": {
+          "id": {"pattern": "^verify-(reproduce|local|staging)-\\d{4,}$"},
+          "status": {"$ref": "../../common.schema.json#/$defs/HandoffStatus"}
+        }
+      }
+    }
+  ]
+}

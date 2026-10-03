@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/runner/replay-index.schema.json",
+  "title": "回放录制集的 index.json",
+  "type": "object",
+  "required": ["recordings"],
+  "additionalProperties": false,
+  "properties": {
+    "recordings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["role", "subjectId", "attempt", "dir", "taskSha256"],
+        "additionalProperties": false,
+        "properties": {
+          "role": {"type": "string", "minLength": 1},
+          "subjectId": {"type": "string", "minLength": 1},
+          "attempt": {"type": "integer", "minimum": 1},
+          "dir": {"type": "string", "minLength": 1},
+          "taskSha256": {"$ref": "../common.schema.json#/$defs/sha256"}
+        }
+      },
+      "minItems": 1
+    }
+  }
+}

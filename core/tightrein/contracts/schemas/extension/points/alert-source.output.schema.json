@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/extension/points/alert-source.output.schema.json",
+  "title": "alert-source 的 output：已触发、未静默的告警",
+  "type": "object",
+  "required": [
+    "alerts"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "alerts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "fingerprint",
+          "name",
+          "labels",
+          "annotations",
+          "startsAt",
+          "generatorUrl"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "fingerprint": {
+            "type": "string",
+            "minLength": 1,
+            "description": "平台给出的告警分组编号"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "labels": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "annotations": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "startsAt": {
+            "$ref": "../../common.schema.json#/$defs/timestamp"
+          },
+          "generatorUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

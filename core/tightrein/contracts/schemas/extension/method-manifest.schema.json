@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/extension/method-manifest.schema.json",
+  "title": "方法清单：核心方法的 <方法>.yaml 与技术栈方法的 method.yaml",
+  "type": "object",
+  "required": ["name", "point", "summary", "applicability", "optionsSchema"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+    "point": {"$ref": "../common.schema.json#/$defs/ExtensionPoint"},
+    "summary": {"type": "string", "minLength": 1},
+    "applicability": {"type": "string", "minLength": 1},
+    "command": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
+    "options": {"type": "object"},
+    "optionsSchema": {"type": "object"},
+    "tools": {"type": "array", "items": {"$ref": "#/$defs/tool"}},
+    "doc": {"$ref": "#/$defs/doc"}
+  },
+  "$defs": {
+    "doc": {
+      "description": "方法参考(docs/reference/methods.md)中参数表以外的部分",
+      "type": "object",
+      "required": ["prerequisites", "output", "limitations", "example"],
+      "additionalProperties": false,
+      "properties": {
+        "prerequisites": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "output": {"type": "string", "minLength": 1},
+        "limitations": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "example": {"type": "string", "minLength": 1}
+      }
+    },
+    "tool": {
+      "type": "object",
+      "required": ["tool"],
+      "additionalProperties": false,
+      "properties": {
+        "tool": {"type": "string", "minLength": 1},
+        "minVersion": {"type": ["string", "null"]},
+        "install": {"type": ["string", "null"]}
+      }
+    }
+  }
+}

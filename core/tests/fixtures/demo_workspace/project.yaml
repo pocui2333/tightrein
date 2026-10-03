@@ -1,0 +1,36 @@
+# 演示工作区：通用的项目名与地址，只供冒烟测试使用。project.repo 与定时任务中的归档目录由测试改写为临时目录。
+project:
+  name: demo
+  repo: ./repo
+  mainBranch: main
+target:
+  baseUrl: https://staging.example.test
+  healthcheck: /health
+accounts:
+  roles:
+    Admin:
+      keychain: tightrein.demo.admin
+  login:
+    endpoint: /login
+    bodyTemplate: {}
+    tokenPath: token
+stages:
+  collect:
+    budgetPerDay: 2
+evaluation:
+  judge:
+    runner: claude
+  budgetUsd: 5
+thresholds:
+  suppressionDays: {value: 30, min: 7, max: 90}
+  triage:
+    deferredReopenOccurrences: {value: 3, min: 1, max: 10}
+schedule:
+  tick:
+    weekdays: [1, 2, 3, 4, 5]
+    minutes: [0, 30]
+  tasks:
+    - name: archive-import
+      days: daily
+      at: ["08:00"]
+      command: collect --probe incidental --import-archive ARCHIVE

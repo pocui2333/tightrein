@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/extension/points/spec-export.output.schema.json",
+  "title": "spec-export 的 output",
+  "type": "object",
+  "required": ["specFile", "format", "operationCount", "tool", "logFile"],
+  "additionalProperties": false,
+  "properties": {
+    "specFile": {"$ref": "../extension-request.schema.json#/$defs/absolutePath"},
+    "format": {"enum": ["openapi-3.0", "openapi-3.1", "swagger-2.0"]},
+    "operationCount": {"type": "integer", "minimum": 0},
+    "tool": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {"name": {"type": "string", "minLength": 1}, "version": {"type": ["string", "null"]}}
+    },
+    "logFile": {"anyOf": [{"$ref": "../extension-request.schema.json#/$defs/absolutePath"}, {"type": "null"}]}
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/runner/roles/rule-writer.schema.json",
+  "title": "rule-writer 从一个已修复的缺陷写出的 Semgrep 规则与缺陷模式描述",
+  "type": "object",
+  "required": [
+    "slug",
+    "title",
+    "summary",
+    "tags",
+    "phenomenon",
+    "rootCausePattern",
+    "detection",
+    "counterExamples",
+    "directories",
+    "rule"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "slug": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+    "title": {"type": "string", "minLength": 1},
+    "summary": {"type": "string", "minLength": 1},
+    "tags": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
+    "phenomenon": {"type": "string", "minLength": 1},
+    "rootCausePattern": {"type": "string", "minLength": 1},
+    "detection": {"type": "string", "minLength": 1},
+    "counterExamples": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
+    "directories": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
+    "rule": {
+      "type": "object",
+      "required": ["yaml", "reason"],
+      "additionalProperties": false,
+      "description": "yaml 为只含一条规则的 Semgrep 规则文件；规则表达不了这个缺陷时 yaml 为 null，reason 写原因",
+      "properties": {
+        "yaml": {"type": ["string", "null"], "minLength": 1},
+        "reason": {"type": ["string", "null"]}
+      }
+    }
+  }
+}

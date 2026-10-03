@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/extension/points/local-run.input.schema.json",
+  "title": "local-run 的 input",
+  "type": "object",
+  "required": ["mode", "ports"],
+  "additionalProperties": false,
+  "properties": {
+    "mode": {"enum": ["api", "page"]},
+    "ports": {
+      "type": "object",
+      "required": ["backend", "frontend"],
+      "additionalProperties": false,
+      "properties": {
+        "backend": {"$ref": "#/$defs/port"},
+        "frontend": {"anyOf": [{"$ref": "#/$defs/port"}, {"type": "null"}]}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"mode": {"const": "api"}}},
+      "then": {"properties": {"ports": {"properties": {"frontend": {"type": "null"}}}}}
+    },
+    {
+      "if": {"properties": {"mode": {"const": "page"}}},
+      "then": {"properties": {"ports": {"properties": {"frontend": {"$ref": "#/$defs/port"}}}}}
+    }
+  ],
+  "$defs": {"port": {"type": "integer", "minimum": 1, "maximum": 65535}}
+}

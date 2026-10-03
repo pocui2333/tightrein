@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/handoff/types/task.schema.json",
+  "title": "task：上游向下游下达任务",
+  "description": "task 类型交接文档的数据块：每个 $defs 项是一个标签为 data:<名称> 的 YAML 代码块",
+  "$defs": {
+    "acceptance": {
+      "type": "array",
+      "minItems": 1,
+      "description": "「验收标准」小节中逐条可对照的验收项",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "text"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^A\\d+$",
+            "description": "验收项编号，结果与计划按它对照",
+            "examples": [
+              "A1"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "description": "可观察、可验证的验收条件",
+            "examples": [
+              "复现测试修复前失败、修复后通过"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

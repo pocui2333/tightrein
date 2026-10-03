@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/runner/runner-task.schema.json",
+  "title": "执行器任务",
+  "type": "object",
+  "required": [
+    "runId",
+    "stage",
+    "role",
+    "subject",
+    "attempt",
+    "instructions",
+    "workdir",
+    "outputSchema",
+    "access",
+    "allowedCommands",
+    "limits",
+    "interactive",
+    "tool",
+    "model",
+    "capability",
+    "approvedProtectedPaths",
+    "web",
+    "readPaths"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "runId": {"$ref": "../common.schema.json#/$defs/runId"},
+    "stage": {"$ref": "../common.schema.json#/$defs/Stage"},
+    "role": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+    "subject": {"$ref": "../common.schema.json#/$defs/subject"},
+    "attempt": {"type": "integer", "minimum": 1},
+    "instructions": {
+      "type": "object",
+      "required": ["prompt", "skills", "context"],
+      "additionalProperties": false,
+      "properties": {
+        "prompt": {"type": "string", "minLength": 1},
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "references"],
+            "additionalProperties": false,
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "references": {"type": "array", "items": {"type": "string", "minLength": 1}}
+            }
+          }
+        },
+        "context": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "type", "summary", "path", "reason"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {"type": "string", "minLength": 1},
+              "type": {"type": "string", "minLength": 1},
+              "summary": {"type": "string", "minLength": 1},
+              "path": {"type": "string", "minLength": 1},
+              "reason": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    },
+    "workdir": {"type": "string", "minLength": 1},
+    "outputSchema": {"anyOf": [{"type": "string", "pattern": "^[a-z0-9-]+(/[a-z0-9-]+)*\\.schema\\.json$"}, {"type": "null"}]},
+    "access": {"$ref": "../common.schema.json#/$defs/Access"},
+    "allowedCommands": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "limits": {
+      "type": "object",
+      "required": ["maxTurns", "maxDurationMs", "maxCostUsd"],
+      "additionalProperties": false,
+      "properties": {
+        "maxTurns": {"anyOf": [{"type": "integer", "minimum": 1}, {"type": "null"}]},
+        "maxDurationMs": {"anyOf": [{"type": "integer", "minimum": 1}, {"type": "null"}]},
+        "maxCostUsd": {"anyOf": [{"type": "number", "minimum": 0}, {"type": "null"}]}
+      }
+    },
+    "interactive": {"type": "boolean"},
+    "tool": {"type": ["string", "null"]},
+    "model": {"type": ["string", "null"]},
+    "capability": {"type": ["string", "null"]},
+    "effort": {"type": ["string", "null"]},
+    "approvedProtectedPaths": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "web": {"type": "boolean"},
+    "testsOnly": {"type": "boolean"},
+    "readPaths": {"type": "array", "items": {"type": "string", "minLength": 1}}
+  },
+  "if": {"properties": {"interactive": {"const": false}}},
+  "then": {"properties": {"outputSchema": {"type": "string"}}}
+}

@@ -1,0 +1,34 @@
+name: github-deployments
+point: deploy-source
+summary: 读取 GitHub Deployments 中最近的部署与各自最新的状态
+applicability: 部署平台或工作流会写 GitHub Deployments(GitHub 页面上的 Environments)
+optionsSchema:
+  type: object
+  required: [environment, limit, timeoutSeconds]
+  additionalProperties: false
+  properties:
+    environment:
+      description: 只看这个环境的部署；为空时不限
+      type: [string, "null"]
+    limit:
+      description: 每次读取的最近部署条数
+      type: integer
+      minimum: 1
+    timeoutSeconds:
+      description: 每条 gh 命令的超时秒数
+      type: integer
+      minimum: 1
+tools:
+  - {tool: gh, minVersion: null, install: "安装 GitHub CLI 并执行 gh auth login"}
+doc:
+  prerequisites:
+    - 本机已安装并登录 GitHub CLI，账号对仓库有读权限
+    - 部署平台或工作流会写 GitHub Deployments
+  output: 最近的部署与各自最新的状态
+  limitations:
+    - 没有写 Deployments 的部署方式读不到
+  example: |
+    extensions:
+      deploy-source:
+        use: core/github-deployments
+        options: {environment: production}

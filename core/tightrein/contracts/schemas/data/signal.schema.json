@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/data/signal.schema.json",
+  "title": "信号",
+  "type": "object",
+  "required": [
+    "id",
+    "runId",
+    "source",
+    "probe",
+    "check",
+    "environment",
+    "occurredAt",
+    "release",
+    "location",
+    "message",
+    "context",
+    "actor"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {"$ref": "../common.schema.json#/$defs/signalId"},
+    "runId": {"$ref": "../common.schema.json#/$defs/runId"},
+    "source": {"$ref": "../common.schema.json#/$defs/Source"},
+    "probe": {"$ref": "../common.schema.json#/$defs/Probe"},
+    "check": {"type": "string", "minLength": 1},
+    "environment": {"enum": ["staging", "production", "local"]},
+    "occurredAt": {"$ref": "../common.schema.json#/$defs/timestamp"},
+    "release": {"type": ["string", "null"]},
+    "location": {"type": "string", "minLength": 1},
+    "message": {"type": "string", "maxLength": 1000},
+    "context": {"type": "object"},
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {"id": {"type": "string", "minLength": 1}, "role": {"type": "string", "minLength": 1}}
+    },
+    "normalizedMessage": {"type": ["string", "null"]},
+    "fingerprint": {"anyOf": [{"$ref": "../common.schema.json#/$defs/fingerprint"}, {"type": "null"}]},
+    "suppressed": {"type": "boolean"},
+    "aggregateState": {"$ref": "../common.schema.json#/$defs/SignalAggregateState"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"check": {"const": "regression"}}},
+      "then": {
+        "properties": {
+          "context": {
+            "required": ["issue", "checkId", "targetFingerprints", "detail"],
+            "properties": {
+              "issue": {"$ref": "../common.schema.json#/$defs/issueId"},
+              "checkId": {"type": "string", "minLength": 1},
+              "targetFingerprints": {
+                "type": "array",
+                "items": {"$ref": "../common.schema.json#/$defs/fingerprint"},
+                "minItems": 1
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

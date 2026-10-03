@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/runner/roles/knowledge-curator.schema.json",
+  "title": "知识写入去重的判断",
+  "type": "object",
+  "required": ["decision", "targetIds", "supersedes", "reason"],
+  "additionalProperties": false,
+  "properties": {
+    "decision": {"$ref": "../../common.schema.json#/$defs/KnowledgeWriteDecision"},
+    "targetIds": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/knowledgeId"}},
+    "supersedes": {"type": "array", "items": {"$ref": "../../common.schema.json#/$defs/knowledgeId"}},
+    "result": {
+      "type": "object",
+      "required": ["title", "summary", "tags", "body"],
+      "additionalProperties": false,
+      "properties": {
+        "title": {"type": "string", "minLength": 1},
+        "summary": {"type": "string", "minLength": 1},
+        "tags": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "body": {"type": "string", "minLength": 1}
+      }
+    },
+    "reason": {"type": "string", "minLength": 1}
+  },
+  "if": {"properties": {"decision": {"enum": ["update", "merge"]}}},
+  "then": {"required": ["result"]},
+  "else": {"not": {"required": ["result"]}}
+}

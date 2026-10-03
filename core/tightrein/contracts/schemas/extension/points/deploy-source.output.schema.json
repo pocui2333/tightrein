@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/extension/points/deploy-source.output.schema.json",
+  "title": "deploy-source 的 output：最近的部署记录",
+  "description": "按平台只读读取的最近部署，按创建时间从早到晚；包含某个合并提交的部署由核心按 git 祖先关系判断。",
+  "type": "object",
+  "required": ["deployments"],
+  "additionalProperties": false,
+  "properties": {
+    "deployments": {"type": "array", "items": {"$ref": "#/$defs/deployment"}}
+  },
+  "$defs": {
+    "deployment": {
+      "type": "object",
+      "required": ["id", "commit", "status", "environment", "url", "createdAt"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "description": "平台上的部署编号"},
+        "commit": {"$ref": "../../common.schema.json#/$defs/commit", "description": "部署的 commit"},
+        "status": {"enum": ["running", "succeeded", "failed", "skipped"]},
+        "environment": {"type": ["string", "null"]},
+        "url": {"type": ["string", "null"]},
+        "createdAt": {"$ref": "../../common.schema.json#/$defs/timestamp"}
+      }
+    }
+  }
+}

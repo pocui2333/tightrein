@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/runner/roles/static-review.schema.json",
+  "title": "静态巡检增量审查、全量扫描与基线审查的候选主张",
+  "type": "object",
+  "required": ["claims", "excluded"],
+  "additionalProperties": false,
+  "properties": {
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "line", "ruleOrPattern", "layer", "statement", "trigger"],
+        "additionalProperties": false,
+        "properties": {
+          "file": {"type": "string", "minLength": 1},
+          "line": {"type": "integer", "minimum": 1},
+          "ruleOrPattern": {"type": "string", "minLength": 1},
+          "layer": {"enum": ["deterministic", "incremental", "full", "baseline"]},
+          "severity": {"enum": ["high", "medium", "low"]},
+          "statement": {"type": "string", "minLength": 1},
+          "trigger": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "excluded": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "line", "statement", "tradeoffId"],
+        "additionalProperties": false,
+        "properties": {
+          "file": {"type": "string", "minLength": 1},
+          "line": {"type": "integer", "minimum": 1},
+          "statement": {"type": "string", "minLength": 1},
+          "tradeoffId": {"$ref": "../../common.schema.json#/$defs/knowledgeId"}
+        }
+      }
+    }
+  }
+}

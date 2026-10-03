@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/runner/roles/repro-test.schema.json",
+  "title": "写复现测试(fix-executor 第一轮与 repro-writer)的结果",
+  "type": "object",
+  "required": ["analysis", "status", "file", "command", "location", "covers", "reason"],
+  "additionalProperties": false,
+  "properties": {
+    "analysis": {"type": "string", "minLength": 1},
+    "status": {"enum": ["written", "cannot-write"]},
+    "file": {"type": ["string", "null"], "minLength": 1},
+    "command": {"type": ["string", "null"], "minLength": 1},
+    "location": {"anyOf": [{"$ref": "../../common.schema.json#/$defs/codeLocation"}, {"type": "null"}]},
+    "covers": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "expectedSignature": {"type": ["string", "null"]},
+    "reason": {"type": ["string", "null"]}
+  },
+  "if": {"properties": {"status": {"const": "written"}}},
+  "then": {
+    "properties": {
+      "file": {"type": "string"},
+      "command": {"type": "string"},
+      "location": {"$ref": "../../common.schema.json#/$defs/codeLocation"}
+    }
+  },
+  "else": {"properties": {"reason": {"type": "string", "minLength": 1}}}
+}

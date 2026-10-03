@@ -1,0 +1,70 @@
+name: command-sequence
+point: local-run
+summary: 按列出的顺序启动一组命令，逐个等待就绪信号；端口按模式取自 localRun.ports
+applicability: 被测服务可以用固定的命令在 worktree 中启动，并能从日志或 HTTP 地址判断就绪
+optionsSchema:
+  type: object
+  required: [services, unavailable, migrationPaths]
+  additionalProperties: false
+  properties:
+    services:
+      type: array
+      minItems: 1
+      items:
+        type: object
+        required: [name, argv, port]
+        additionalProperties: false
+        properties:
+          name: {description: 服务名, type: string, pattern: '^[a-z0-9][a-z0-9-]*$'}
+          argv:
+            description: 启动命令的参数数组，可含 {port}、{backendPort}、{frontendPort}
+            type: array
+            items: {type: string, minLength: 1}
+            minItems: 1
+          cwd: {description: 工作目录，相对仓库根目录, type: string, pattern: '^([^/\\][^\\]*|\.)$'}
+          env:
+            description: 追加的非敏感环境变量，值可含端口占位符
+            type: object
+            additionalProperties: {type: string}
+          port:
+            description: backend、frontend 或端口号；frontend 的服务只在 page 模式启动
+            anyOf:
+              - {enum: [backend, frontend]}
+              - {type: integer, minimum: 1, maximum: 65535}
+          readyPath: {description: 就绪检查的路径, type: string, pattern: '^/'}
+          readyPatterns: {type: array, items: {type: string, minLength: 1}}
+          failPatterns: {type: array, items: {type: string, minLength: 1}}
+          after:
+            description: 须先就绪的服务；省略时为上一个服务，null 表示不等待
+            anyOf:
+              - {type: string, pattern: '^[a-z0-9][a-z0-9-]*$'}
+              - {type: 'null'}
+    unavailable:
+      description: 不在本机启动的服务
+      type: array
+      items:
+        type: object
+        required: [name, reason]
+        additionalProperties: false
+        properties:
+          name: {type: string, pattern: '^[a-z0-9][a-z0-9-]*$'}
+          reason: {type: string, minLength: 1}
+    migrationPaths:
+      description: 迁移文件的路径模式
+      type: array
+      items: {type: string, pattern: '^[^/\\][^\\]*$'}
+tools: []
+doc:
+  prerequisites:
+    - 被测服务可以用固定的命令在 worktree 中启动，localRun.ports 给出各模式的端口
+  output: 启动计划：服务的命令、工作目录、非敏感的环境变量、端口与就绪信号
+  limitations:
+    - 改动命中 migrationPaths 时启动前需要用户确认；环境变量不能含凭证
+  example: |
+    extensions:
+      local-run:
+        use: core/command-sequence
+        options:
+          services:
+            - {name: api, argv: [dotnet, run, --urls, "http://localhost:{port}"], port: backend,
+               readyPatterns: ["Now listening"]}

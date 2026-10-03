@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/data/project-probe-input.schema.json",
+  "title": "项目探针的输入",
+  "description": "核心经标准输入交给探针的 JSON(docs/how-to/write-project-probe.md)",
+  "type": "object",
+  "required": [
+    "name",
+    "lastRunAt",
+    "state",
+    "window",
+    "workspace",
+    "environment",
+    "baseUrl"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "探针名(project.yaml 中登记的 name)",
+      "examples": [
+        "daily-import"
+      ]
+    },
+    "lastRunAt": {
+      "anyOf": [
+        {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "上次成功运行的时间；第一次运行为 null",
+      "examples": [
+        "2026-10-01T01:00:00Z"
+      ]
+    },
+    "state": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "上次运行输出的 state，原样交回；第一次运行为 null",
+      "examples": [
+        {
+          "lastBatch": "2026-10-01"
+        }
+      ]
+    },
+    "window": {
+      "type": "object",
+      "required": [
+        "since",
+        "until"
+      ],
+      "additionalProperties": false,
+      "description": "本次应检查的时间范围：上次运行时间(第一次为 sources 的首次回看)到现在",
+      "properties": {
+        "since": {
+          "$ref": "../common.schema.json#/$defs/timestamp",
+          "description": "起点(含)",
+          "examples": [
+            "2026-10-01T01:00:00Z"
+          ]
+        },
+        "until": {
+          "$ref": "../common.schema.json#/$defs/timestamp",
+          "description": "终点(不含)",
+          "examples": [
+            "2026-10-02T01:00:00Z"
+          ]
+        }
+      }
+    },
+    "workspace": {
+      "type": "string",
+      "pattern": "^/",
+      "description": "工作区的绝对路径",
+      "examples": [
+        "/Users/me/tightrein/workspaces/demo"
+      ]
+    },
+    "environment": {
+      "enum": [
+        "staging",
+        "production",
+        "local"
+      ],
+      "description": "被测地址所在的环境(target.environment)",
+      "examples": [
+        "production"
+      ]
+    },
+    "baseUrl": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "被测地址(target.baseUrl)；没有配置时为 null",
+      "examples": [
+        "https://demo.example.com"
+      ]
+    }
+  }
+}
