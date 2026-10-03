@@ -499,7 +499,8 @@ class GithubMirror:
                                              "relations": relations_key(relations)},
                           {"issue-body.md": self._body(slug, issue)})
 
-    def _update_steps(self, slug: str, issue: Issue, number: int) -> list[MirrorStep]:
+    def _update_steps(self, slug: str, issue: Issue, number: int, labels: set[str]) -> list[MirrorStep]:
+        """labels 为仓库现有的标签：只移除其中存在的旧标签，gh 移除不存在的标签会整条失败。"""
         state = github_mirror.get(self.conn, issue.id)
         steps = []
         if issue.id in self.refreshing:
@@ -507,7 +508,8 @@ class GithubMirror:
                                      "更新标题与正文", {"kind": "edited"}, {"issue-body.md": self._body(slug, issue)}))
         if state.labelled_status != labelled_key(issue):
             wanted = self._labels(issue)
-            previous = [name for name in self.settings.labels_of(state.labelled_status) if name not in wanted]
+            previous = [name for name in self.settings.labels_of(state.labelled_status)
+                        if name not in wanted and name in labels]
             if wanted or previous:
                 steps.append(MirrorStep(gh_issues.edit_labels_args(slug, number, wanted, previous),
                                         f"标签改为 {'、'.join(wanted) or '无'}",
@@ -565,7 +567,7 @@ class GithubMirror:
             else:
                 self._link(issue.id, link, labelled_key(issue), slug)
             issue = transitions.record_of(self.env, issue.id).issue
-        steps = self._update_steps(slug, issue, issue.github.number) if issue.github is not None else []
+        steps = self._update_steps(slug, issue, issue.github.number, labels) if issue.github is not None else []
         if steps:
             steps = [*self._label_steps(slug, labels), *steps]
             self._execute(issue.id, steps, labels)
@@ -598,7 +600,7 @@ class GithubMirror:
                 self._link(issue.id, link, labelled_key(issue), slug)
                 issue = transitions.record_of(self.env, issue.id).issue
         main = ([self._create_step(slug, issue)] if issue.github is None
-                else self._update_steps(slug, issue, issue.github.number))
+                else self._update_steps(slug, issue, issue.github.number, labels))
         if not main:
             return
         steps = [*self._label_steps(slug, labels), *main]

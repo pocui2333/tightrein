@@ -75,8 +75,11 @@ class FakeGithub:
             item["parent"] = self._optional(argv, "--parent") or item.get("parent")
             item["blockedBy"] = self._optional(argv, "--add-blocked-by") or item.get("blockedBy")
         elif name == "issue edit":
+            removed = set((self._optional(argv, "--remove-label") or "").split(",")) - {""}
+            if removed - self.labels:
+                return Completed(command.argv, 1, "", f"'{sorted(removed - self.labels)[0]}' not found")
             item["labels"] |= set((self._optional(argv, "--add-label") or "").split(",")) - {""}
-            item["labels"] -= set((self._optional(argv, "--remove-label") or "").split(","))
+            item["labels"] -= removed
         elif name == "issue comment":
             item["comments"].append(self._read(argv, "--body-file"))
         elif name == "issue close":
@@ -343,6 +346,20 @@ def test_labels_from_the_eight_status_version_are_replaced(tmp_path):
     state = github_mirror.get(mirrored.world.conn, "0001")
     github_mirror.save(mirrored.world.conn, replace(state, labelled_status="in-review+needs-decision"))
     mirrored.gh.issues[1]["labels"] = {"tightrein:in-review", "tightrein:needs-decision"}
+    mirrored.gh.labels |= mirrored.gh.issues[1]["labels"]
+    mirrored.service.sync()
+    assert mirrored.gh.issues[1]["labels"] == set()
+
+
+def test_history_labels_missing_from_the_repo_are_not_removed(tmp_path):
+    from dataclasses import replace
+
+    mirrored = Mirrored(tmp_path)
+    mirrored.create()
+    state = github_mirror.get(mirrored.world.conn, "0001")
+    github_mirror.save(mirrored.world.conn, replace(state, labelled_status="in-review+needs-decision"))
+    mirrored.gh.issues[1]["labels"] = {"tightrein:in-review"}
+    mirrored.gh.labels = (mirrored.gh.labels | {"tightrein:in-review"}) - {"needs-decision"}
     mirrored.service.sync()
     assert mirrored.gh.issues[1]["labels"] == set()
 
