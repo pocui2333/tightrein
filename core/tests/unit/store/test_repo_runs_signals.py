@@ -1,5 +1,5 @@
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
@@ -7,6 +7,7 @@ import pytest
 from tightrein.contracts.validate import SchemaValidationError
 from tightrein.domain.enums import Probe, RunStage, RunStatus, SignalAggregateState, Stage
 from tightrein.domain.run import Coverage, Run
+from tightrein.store import locks
 from tightrein.store.repos import runs, signals
 from tightrein.store.repos.table import DATE, JSON, TIME, Table, enum_codec, given, where
 
@@ -54,9 +55,28 @@ def test_run_round_trip(conn):
 
 
 def test_run_without_probe_uses_defaults(conn):
-    aggregate = Run("R-20260929-030000-aggregate", RunStage.AGGREGATE, T0, RunStatus.RUNNING)
+    aggregate = Run("R-20260929-030000-aggregate", RunStage.AGGREGATE, T0, RunStatus.OK)
     runs.save(conn, aggregate)
     assert runs.get(conn, aggregate.id) == aggregate
+
+
+def test_a_new_running_run_records_the_process_that_started_it(conn):
+    holder = locks.current_holder()
+    started = Run("R-20260929-030000-aggregate", RunStage.AGGREGATE, T0, RunStatus.RUNNING)
+    runs.save(conn, started)
+    saved = runs.get(conn, started.id)
+    assert (saved.holder_pid, saved.holder_host) == (holder.pid, holder.host)
+    assert saved == replace(started, holder_pid=holder.pid, holder_host=holder.host)
+    # 之后以内存中没有进程号的对象保存(模块结束运行时)不会清掉进程号
+    runs.save(conn, replace(started, status=RunStatus.OK, ended_at=T0))
+    assert runs.get(conn, started.id).holder_pid == holder.pid
+    assert [item.id for item in runs.find(conn, holder_pid=holder.pid, holder_host=holder.host)] == [started.id]
+    assert runs.find(conn, holder_pid=holder.pid + 1) == []
+
+
+def test_runs_saved_finished_or_from_before_the_migration_have_no_process(conn):
+    runs.save(conn, run())
+    assert (runs.get(conn, RUN_ID).holder_pid, runs.get(conn, RUN_ID).holder_host) == (None, None)
 
 
 def test_saving_again_updates_the_run(conn):

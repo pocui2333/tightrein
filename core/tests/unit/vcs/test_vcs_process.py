@@ -1,3 +1,4 @@
+import os
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -232,3 +233,21 @@ def test_other_failures_and_local_commands_do_not_switch_route(tmp_path):
     with pytest.raises(NetworkError):
         without_proxy.git(tmp_path, "fetch", "origin")
     assert without_proxy.reroutes == []
+
+
+def test_an_interrupt_kills_the_process_group_of_the_subprocess_executor(tmp_path, monkeypatch):
+    started = []
+    original = subprocess.Popen.communicate
+
+    def interrupted(self, *args, **kwargs):
+        if not started:
+            started.append(self.pid)
+            raise KeyboardInterrupt
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess.Popen, "communicate", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        subprocess_executor(Command(("sh", "-c", "sleep 30 & wait"), tmp_path, {"PATH": "/usr/bin:/bin"}, 30))
+    time.sleep(0.2)
+    with pytest.raises(ProcessLookupError):
+        os.killpg(started[0], 0)

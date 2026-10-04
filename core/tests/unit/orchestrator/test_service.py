@@ -22,7 +22,8 @@ def orchestrator(world, modules):
 def test_a_run_records_the_loop_run_its_children_and_the_summary(tmp_path):
     world = make_world(tmp_path)
     save_issue(world.conn, "0007", IssueStatus.NEEDS_DECISION)
-    runs.save(world.conn, Run("R-20261005-020000-loop", RunStage.LOOP, NOW, RunStatus.RUNNING))
+    runs.save(world.conn, Run("R-20261005-020000-loop", RunStage.LOOP, NOW, RunStatus.RUNNING, holder_pid=4001,
+                              holder_host="this-host"))
     locks.acquire(world.conn, "R-20261005-020000-loop", world.clock, timedelta(hours=1),
                   run_id="R-20261005-020000-loop", holder=Holder(4001, "this-host"))
 

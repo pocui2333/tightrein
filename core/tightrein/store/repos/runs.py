@@ -1,4 +1,8 @@
-"""runs 表：运行记录与覆盖范围。coverage 与 environment_detail 写入前按 common.schema.json 中的定义校验。"""
+"""runs 表：运行记录与覆盖范围。coverage 与 environment_detail 写入前按 common.schema.json 中的定义校验。
+
+新建状态为进行中的运行时记下开始它的进程号与主机(holder_pid、holder_host，只在插入时写入，之后不再改)，
+供中断识别(orchestrator/recovery)判断它是否仍在执行。
+"""
 
 from __future__ import annotations
 
@@ -12,10 +16,12 @@ from tightrein.domain import ids
 from tightrein.domain.clock import format_iso
 from tightrein.domain.enums import Probe, ProbeLevel, RunStage, RunStatus
 from tightrein.domain.run import Coverage, EnvironmentDetail, Run
+from tightrein.store import locks
 from tightrein.store.repos.table import JSON, TIME, enum_codec, given, select, upsert
 
 TABLE = "runs"
 _ORDER = "started_at, id"
+HOLDER_COLUMNS = ("holder_pid", "holder_host")
 
 
 def to_row(run: Run) -> dict[str, Any]:
@@ -37,6 +43,8 @@ def to_row(run: Run) -> dict[str, Any]:
         "status": run.status.value,
         "aggregated_at": TIME.to_column(run.aggregated_at),
         "trace_id": run.trace_id,
+        "holder_pid": run.holder_pid,
+        "holder_host": run.holder_host,
     }
 
 
@@ -55,11 +63,17 @@ def from_row(row: sqlite3.Row) -> Run:
         environment_detail=EnvironmentDetail.from_dict(JSON.decode(row["environment_detail"])),
         aggregated_at=TIME.from_column(row["aggregated_at"]),
         trace_id=row["trace_id"],
+        holder_pid=row["holder_pid"],
+        holder_host=row["holder_host"],
     )
 
 
 def save(conn: sqlite3.Connection, run: Run) -> None:
-    upsert(conn, TABLE, to_row(run), ("id",))
+    row = to_row(run)
+    if run.status is RunStatus.RUNNING and run.holder_pid is None:
+        holder = locks.current_holder()
+        row.update(holder_pid=holder.pid, holder_host=holder.host)
+    upsert(conn, TABLE, row, ("id",), keep=HOLDER_COLUMNS)
 
 
 def free_id(conn: sqlite3.Connection, started: datetime, stage: RunStage, probe: Probe | None = None) -> str:
@@ -84,6 +98,8 @@ def find(
     probe: Probe | None = None,
     status: RunStatus | None = None,
     parent_run_id: str | None = None,
+    holder_pid: int | None = None,
+    holder_host: str | None = None,
 ) -> list[Run]:
     """按给出的条件等值过滤，未给出的条件不参与过滤；按开始时间升序。"""
     filters = {
@@ -91,6 +107,8 @@ def find(
         "probe": enum_codec(Probe).to_column(probe),
         "status": enum_codec(RunStatus).to_column(status),
         "parent_run_id": parent_run_id,
+        "holder_pid": holder_pid,
+        "holder_host": holder_host,
     }
     return [from_row(row) for row in select(conn, TABLE, given(filters), _ORDER)]
 

@@ -4,16 +4,21 @@
 标准输出写一个 JSON 对象。每个命令的处理函数接收 Invocation、返回 Outcome；异常按 exit_codes.for_error 映射，
 未映射的异常为 1，并给出事件日志路径。main 不调用 sys.exit，console script 的入口是 entry。
 dispatch 以已打开的 App 执行一条子命令，供编排执行定时任务的 command。
+中断：entry 把 SIGTERM、SIGHUP 转成 exit_codes.Terminated，与 Ctrl+C 的 KeyboardInterrupt 一样沿调用栈向上抛出(沿途的
+finally 与上下文管理器照常执行，子进程启动器终止子进程组)；main 输出「被中断」，退出码 130 或 128 + 信号编号。
+main 在关闭数据库前调用 recovery.close_own 收尾本进程仍为进行中的运行并释放本进程的对象锁(architecture/09 3.5)。
 """
 
 from __future__ import annotations
 
 import argparse
+import signal
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
+from types import FrameType
 from typing import NoReturn, TextIO
 
 from tightrein import __version__
@@ -22,7 +27,10 @@ from tightrein.cli.assemble import App, Externals, Options
 from tightrein.cli.commands import COMMAND_GROUPS
 from tightrein.cli.exit_codes import UsageError
 from tightrein.cli.output import Outcome, emit, error
+from tightrein.domain.enums import RunStatus
+from tightrein.orchestrator import recovery
 from tightrein.runner.roles import Overrides
+from tightrein.store import locks
 
 PROG = "tightrein"
 
@@ -78,6 +86,8 @@ class Invocation:
     stderr: TextIO
     shared: App | None = None
     _app: App | None = field(default=None, repr=False)
+    # 命令以什么结束：None 为正常返回，否则为捕获到的异常或中断(close 据此决定收尾的状态)
+    failure: BaseException | None = field(default=None, repr=False)
 
     @property
     def app(self) -> App:
@@ -105,7 +115,24 @@ class Invocation:
 
     def close(self) -> None:
         if self._app is not None:
+            self._close_own_runs(self._app)
             self._app.close()
+
+    def _close_own_runs(self, app: App) -> None:
+        if app.output_mode:
+            return
+        failure = self.failure
+        if isinstance(failure, (KeyboardInterrupt, exit_codes.Terminated)):
+            status, reason = RunStatus.INTERRUPTED, "命令被中断"
+        elif failure is not None:
+            status, reason = RunStatus.FAILED, f"命令出错：{type(failure).__name__}"
+        else:
+            status, reason = RunStatus.FAILED, "命令结束时运行仍为进行中"
+        try:
+            recovery.close_own(app.conn, app.clock, app.events, holder=locks.current_holder(), status=status,
+                               reason=reason)
+        except Exception as problem:  # noqa: BLE001 收尾失败不覆盖原来的结果，下一次 run 的中断恢复兜底
+            self.stderr.write(f"收尾本进程的运行失败：{type(problem).__name__}: {problem}\n")
 
 
 def _checked(args: argparse.Namespace) -> None:
@@ -127,6 +154,7 @@ def execute(invocation: Invocation) -> Outcome:
         _checked(args)
         return args.handler(invocation)
     except Exception as failure:  # noqa: BLE001 命令的最外层：映射为退出码并输出，不向终端抛出堆栈
+        invocation.failure = failure
         code = exit_codes.for_error(failure)
         hint = None
         if code == exit_codes.FAILED and invocation._app is not None:
@@ -151,6 +179,10 @@ def main(argv: Sequence[str] | None = None, externals: Externals | None = None, 
     invocation = Invocation(args, externals or Externals(), stdin or sys.stdin, out, err)
     try:
         outcome = execute(invocation)
+    except (KeyboardInterrupt, exit_codes.Terminated) as stopped:
+        invocation.failure = stopped
+        name = getattr(args, "command_name", args.command)
+        outcome = Outcome(name, exit_codes.for_interrupt(stopped), [f"{name} 被中断"])
     finally:
         invocation.close()
     emit(outcome, invocation.json, out)
@@ -171,6 +203,13 @@ def dispatch(app: App, argv: Sequence[str]) -> int:
     return outcome.exit_code
 
 
+def _terminate(signum: int, _frame: FrameType | None) -> None:
+    raise exit_codes.Terminated(signum)
+
+
 def entry() -> None:
+    """SIGTERM、SIGHUP 只在这里转成异常：测试直接调用 main，不改变测试进程的信号处理。"""
+    for number in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(number, _terminate)
     sys.exit(main())
 

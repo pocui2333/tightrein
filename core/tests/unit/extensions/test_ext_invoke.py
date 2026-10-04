@@ -16,6 +16,7 @@ from tightrein.extensions.invoke import (
     ENV_PROTOCOL,
     OVERFLOW_MESSAGE,
     Invoker,
+    ProcessRequest,
     SubprocessRunner,
 )
 from tightrein.extensions.resolve import Implementation, default
@@ -263,3 +264,33 @@ def test_each_process_writes_a_run_script_span(world):
     }
     assert isinstance(ok["durationMs"], int)
     assert (failed["status"], failed["errorCode"], written[1].status) == ("error", "parse-failed", "error")
+
+
+def test_an_interrupt_while_waiting_terminates_the_process_group(tmp_path):
+    child_file = tmp_path / "child.pid"
+    code = ("import subprocess, sys, time\n"
+            "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])\n"
+            f"open({str(child_file)!r}, 'w').write(str(child.pid))\n"
+            "time.sleep(30)\n")
+    calls = []
+
+    def monotonic():
+        calls.append(1)
+        if len(calls) > 1 and child_file.exists() and child_file.read_text(encoding="utf-8"):
+            raise KeyboardInterrupt
+        return time.monotonic()
+
+    runner = SubprocessRunner(kill_grace_seconds=0.3, monotonic=monotonic)
+    request = ProcessRequest((PYTHON, "-c", code), tmp_path, {"PATH": os.environ.get("PATH", "")}, b"", 30)
+    with pytest.raises(KeyboardInterrupt):
+        runner(request)
+    child = int(child_file.read_text(encoding="utf-8"))
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        try:
+            os.kill(child, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.05)
+    else:
+        pytest.fail(f"子进程 {child} 仍在运行")

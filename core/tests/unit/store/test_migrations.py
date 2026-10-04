@@ -36,7 +36,7 @@ def write_migration(directory, name, sql):
 
 def test_migrate_from_an_empty_database_records_the_version(conn):
     assert applied(conn) == {}
-    assert migrate(conn, FixedClock(NOW)) == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+    assert migrate(conn, FixedClock(NOW)) == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
     rows = conn.execute("SELECT version, name, applied_at FROM schema_migrations ORDER BY version").fetchall()
     assert [tuple(row) for row in rows] == [
         (1, "initial", "2026-10-05T03:00:00Z"), (2, "server_log_cursors", "2026-10-05T03:00:00Z"),
@@ -45,7 +45,7 @@ def test_migrate_from_an_empty_database_records_the_version(conn):
         (7, "issue_depends_on", "2026-10-05T03:00:00Z"), (8, "triage_treatment", "2026-10-05T03:00:00Z"),
         (9, "issue_status", "2026-10-05T03:00:00Z"), (10, "loop_onboarding", "2026-10-05T03:00:00Z"),
         (11, "collect_sources", "2026-10-05T03:00:00Z"), (12, "learn", "2026-10-05T03:00:00Z"),
-        (13, "drop_prioritize_label", "2026-10-05T03:00:00Z")]
+        (13, "drop_prioritize_label", "2026-10-05T03:00:00Z"), (14, "run_holder", "2026-10-05T03:00:00Z")]
 
 
 def test_migrate_again_does_nothing(conn):
@@ -56,7 +56,8 @@ def test_migrate_again_does_nothing(conn):
     assert applied(conn) == {1: "initial", 2: "server_log_cursors", 3: "stage_yield", 4: "triage_urgency",
                              5: "issue_origin", 6: "issue_github", 7: "issue_depends_on",
                              8: "triage_treatment", 9: "issue_status",
-                             10: "loop_onboarding", 11: "collect_sources", 12: "learn", 13: "drop_prioritize_label"}
+                             10: "loop_onboarding", 11: "collect_sources", 12: "learn", 13: "drop_prioritize_label",
+                             14: "run_holder"}
 
 
 def test_open_database_migrates_once(tmp_path):
@@ -66,7 +67,8 @@ def test_open_database_migrates_once(tmp_path):
     assert applied(second) == {1: "initial", 2: "server_log_cursors", 3: "stage_yield", 4: "triage_urgency",
                              5: "issue_origin", 6: "issue_github", 7: "issue_depends_on",
                              8: "triage_treatment", 9: "issue_status",
-                             10: "loop_onboarding", 11: "collect_sources", 12: "learn", 13: "drop_prioritize_label"}
+                             10: "loop_onboarding", 11: "collect_sources", 12: "learn", 13: "drop_prioritize_label",
+                             14: "run_holder"}
     second.close()
 
 
@@ -140,7 +142,7 @@ def test_discover_rejects_bad_names_and_duplicates(tmp_path):
     assert [migration.name for migration in discover()] == [
         "initial", "server_log_cursors", "stage_yield", "triage_urgency", "issue_origin", "issue_github", "issue_depends_on",
         "triage_treatment", "issue_status", "loop_onboarding", "collect_sources", "learn",
-        "drop_prioritize_label"]
+        "drop_prioritize_label", "run_holder"]
 
 
 def test_migrate_refuses_to_run_inside_a_transaction(conn):
@@ -156,7 +158,7 @@ def test_cursor_table_of_the_first_version_is_rebuilt(tmp_path, conn):
     shutil.copy(MIGRATIONS_DIR / "001_initial.sql", first / "001_initial.sql")
     assert migrate(conn, FixedClock(NOW), first) == [1]
     conn.execute("INSERT INTO server_log_cursors VALUES ('app.log', 'h', 10, NULL, 'x')")
-    assert migrate(conn, FixedClock(NOW)) == [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+    assert migrate(conn, FixedClock(NOW)) == [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
     assert columns(conn, "source_cursors") == ["source", "cursor", "parse_state", "updated_at"]
     assert conn.execute("SELECT COUNT(*) FROM source_cursors").fetchone()[0] == 0
 
@@ -184,7 +186,7 @@ def test_issue_statuses_are_converged_to_six(tmp_path, conn):
                      (issue_id, f"issues/{issue_id}-s.md", status, reason, hold))
     conn.execute("INSERT INTO issue_events (issue_id, at, event, from_status, to_status, actor) "
                  "VALUES ('0002', 'x', 'approve', 'in-review', 'todo', 'user')")
-    assert migrate(conn, FixedClock(NOW)) == [9, 10, 11, 12, 13]
+    assert migrate(conn, FixedClock(NOW)) == [9, 10, 11, 12, 13, 14]
     found = {row[0]: tuple(row[1:]) for row in conn.execute(
         "SELECT id, status, phase, close_reason, hold IS NOT NULL FROM issues")}
     assert found == {"0001": ("done", "deploy-check", "fixed", 0), "0002": ("needs-decision", None, None, 0),
@@ -205,7 +207,7 @@ def test_existing_workspaces_run_and_old_reproductions_are_dropped(tmp_path, con
     for phase in ("reproduce", "local"):
         conn.execute("INSERT INTO handoffs (run_id, stage, phase, subject_id, attempt, status, path, schema_version, "
                      "created_at) VALUES ('R-1', 'verify', ?, '0001', 1, 'ok', 'p', 1, 'x')", (phase,))
-    assert migrate(conn, FixedClock(NOW)) == [10, 11, 12, 13]
+    assert migrate(conn, FixedClock(NOW)) == [10, 11, 12, 13, 14]
     assert [row[0] for row in conn.execute("SELECT phase FROM handoffs")] == ["local"]
     assert conn.execute("SELECT value FROM workspace_meta WHERE key = 'phase'").fetchone()[0] == "running"
 
@@ -241,7 +243,7 @@ def test_collect_sources_rewrites_old_probes_statuses_and_coverage(tmp_path, con
         conn.execute(problem, (*row, scope))
     conn.execute("INSERT INTO problem_events (problem_id, at, event, from_status, to_status, operation, detail) "
                  "VALUES ('P-0004', 'x', 'not-reproduced', 'pending', 'flaky', 'auto', '{}')")
-    assert migrate(conn, FixedClock(NOW)) == [11, 12, 13]
+    assert migrate(conn, FixedClock(NOW)) == [11, 12, 13, 14]
     found = {row["id"]: (row["probe"], row["status"], row["intermittent"]) for row in conn.execute(
         "SELECT id, probe, status, intermittent FROM problems ORDER BY id")}
     assert found == {"P-0001": ("platform-errors", "new", 0), "P-0003": ("incidental", "ongoing", 0),
@@ -276,7 +278,7 @@ def test_learn_adds_tool_and_model_and_drops_the_improve_tables(tmp_path, conn):
                  "'{}', 0)")
     conn.execute(operation, ("OP-0001", "apply-proposal", "k1"))
     conn.execute(operation, ("OP-0002", "push", "k2"))
-    assert migrate(conn, FixedClock(NOW)) == [12, 13]
+    assert migrate(conn, FixedClock(NOW)) == [12, 13, 14]
     assert {"tool", "model"} <= set(columns(conn, "stage_yield"))
     tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     assert not {"proposals", "failures", "improve_state"} & tables
@@ -297,6 +299,6 @@ def test_the_retired_prioritize_label_is_dropped_from_triage_results(tmp_path, c
         conn.execute("INSERT INTO triage_results (problem_id, attempt, run_id, verdict, root_causes, disposition, "
                      "reason, triage_commit, flags, labels, created_at) "
                      "VALUES (?, 1, 'R-1', 'confirmed', '[]', 'issue', 'r', 'c', '{}', ?, 'x')", (problem_id, labels))
-    assert migrate(conn, FixedClock(NOW)) == [13]
+    assert migrate(conn, FixedClock(NOW)) == [13, 14]
     found = dict(conn.execute("SELECT problem_id, labels FROM triage_results"))
     assert found == {"P-1": "[]", "P-2": '["discuss-with-author"]', "P-3": '["discuss-with-author"]'}
