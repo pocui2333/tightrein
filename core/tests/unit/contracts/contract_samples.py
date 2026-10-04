@@ -207,6 +207,11 @@ def fix_plan():
     return {
         "analysis": "Query 没有校验 pageSize，入口加校验即可。",
         "summary": "在 OrderService.Query 入口校验分页参数",
+        "hypothesis": {
+            "cause": "pageSize 为 0 时 → Query 直接以它做除数计算页数 → 抛出除零异常返回 500",
+            "evidence": [{"location": "src/Services/OrderService.cs:42", "fact": "页数为 total / pageSize，之前没有校验"}],
+            "edits": [{"location": "src/Services/OrderService.cs:40", "change": "入口校验 pageSize 不小于 1"}],
+        },
         "steps": [{"file": "src/Services/OrderService.cs", "change": "pageSize 小于 1 时抛出参数错误",
                    "verification": "dotnet build SampleApp.sln"}],
         "files": [{"path": "src/Services/OrderService.cs", "isNew": False, "reason": None}],

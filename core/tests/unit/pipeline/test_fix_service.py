@@ -97,6 +97,12 @@ def plan_output(world, **changes):
         "notDoing": [], "userDecisions": [],
     }
     output.update(changes)
+    # 根因假说的修改位置按文件清单给出(每个要修改的已有文件一处)，测试按需整体替换
+    output.setdefault("hypothesis", {
+        "cause": "其他公司的用户请求订单 → Get 只按编号查询 → 返回了不属于该公司的订单",
+        "evidence": [{"location": f"{SERVICE_PATH}:1", "fact": "查询条件只有编号"}],
+        "edits": [{"location": f"{item['path']}:1", "change": "加过滤条件"} for item in output["files"]
+                  if not item["isNew"]]})
     return output
 
 
@@ -150,6 +156,11 @@ def test_lane_a_writes_a_failing_test_then_the_code_in_the_same_session(tmp_path
     assert route.load(world.layout.fixes_dir(world.issue_id)).lane.value == "fast"
     assert fix.resume_point(world.issue_id) is ResumePoint.APPLY
     assert documents.read(world.layout.fixes_dir(world.issue_id) / "plan.md").header["kind"] == "plan"
+    hypothesis = json.loads((world.layout.fixes_dir(world.issue_id) / "plan.json").read_text(encoding="utf-8"))[
+        "hypothesis"]
+    issue_root = list(context.load(world.conn, world.layout, world.issue_id).issue.root_cause)
+    assert issue_root and hypothesis["cause"] and [item["location"] for item in hypothesis["evidence"]] == issue_root
+    assert [item["location"] for item in hypothesis["edits"]] == issue_root
     world.runner.edits += [{TEST_FILE: TEST_CODE}, {SERVICE_PATH: FIXED}]
     world.runner.add("fix-executor", WRITTEN, EXECUTED)
     applied = fix.apply(world.issue_id)

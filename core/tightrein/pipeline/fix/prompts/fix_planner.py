@@ -35,7 +35,8 @@ class PlanInputs:
 
 PLAN_RULES = ("## 计划与验收标准对应要求\n\n"
               "计划中的每一步都必须对应 Issue 验收标准的至少一条(在 acceptanceMapping 中明确指定对应步骤编号)；"
-              "无法对应到验收标准的步骤会被程序判为未授权的额外改动并打回。notDoing(不做什么)为必填项，不得省略。")
+              "无法对应到验收标准的步骤会被程序判为未授权的额外改动并打回。notDoing(不做什么)为必填项，不得省略。"
+              "hypothesis 必填：一条因果链、代码证据与精确到行的修改位置；位置会被程序核对。")
 
 
 def task(prompt: FixPrompt, context: FixContext, inputs: PlanInputs, attempt: int,

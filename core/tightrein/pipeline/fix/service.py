@@ -56,6 +56,7 @@ from tightrein.domain.handoff import sections
 from tightrein.domain.handoff.document import Reference
 from tightrein.domain.sizing import TIER_ORDER
 from tightrein.domain.issue import Hold, Issue, IssueContext
+from tightrein.domain.issue_sections import CAUSE
 from tightrein.guards import diff_rules
 from tightrein.guards.policy import GuardSettings
 from tightrein.guards.protected import matching_pattern
@@ -544,8 +545,12 @@ class FixService:
         acceptance = ctx.acceptance or [ctx.issue.title]
         flag = {"flagged": False}
         all_steps = list(range(1, len(files) + 1))
+        cause = (ctx.section(CAUSE) or "").strip() or direction
+        hypothesis = {"cause": cause,
+                      "evidence": [{"location": location, "fact": cause} for location in ctx.issue.root_cause],
+                      "edits": [{"location": location, "change": direction} for location in ctx.issue.root_cause]}
         return {
-            "summary": direction, "steps": [{"file": item["path"], "change": direction, "verification": "复现测试与项目检查"}
+            "summary": direction, "hypothesis": hypothesis, "steps": [{"file": item["path"], "change": direction, "verification": "复现测试与项目检查"}
                                             for item in files],
             "files": files, "estimate": {"files": len(files), "lines": lines}, "split": None, "protectedTouches": [],
             "flags": {"design": flag, "dataStructure": flag, "publicContract": flag}, "migration": None,
@@ -605,7 +610,8 @@ class FixService:
             worktree=self.worktree(issue_id), config=deps.config, protected=tuple(guard.protected_paths),
             max_files=guard.max_files, max_lines=guard.max_lines, rounds=deps.config.whole_threshold("fix.planRounds"),
             endpoints=self._endpoint_files(issue_id), review_notes=review_notes,
-            design_accepted=decided.design_accepted, scout=scout, large=route.lane is Lane.LARGE)
+            design_accepted=decided.design_accepted, scout=scout, large=route.lane is Lane.LARGE,
+            test_paths=tuple(guard.test_paths))
         proposal = propose(self._calls(run, issue_id), ctx, settings)
         if proposal.scouting is not None:
             writer = self.writer(issue_id)

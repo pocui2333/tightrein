@@ -97,6 +97,19 @@ def scout(writer: Writer, now: datetime, output: Mapping[str, Any]) -> HandoffDo
          "deviations": deviations}, history=(Event(now, "fix-scout 完成勘察"),))
 
 
+def _hypothesis(planned: Mapping[str, Any]) -> str:
+    """根因假说写进「做法」小节；之前保存的计划没有这一项时为空。"""
+    hypothesis = planned.get("hypothesis")
+    if not hypothesis:
+        return ""
+    parts = [f"根因假说：{hypothesis['cause']}"]
+    if hypothesis["evidence"]:
+        parts.append("证据：\n" + _lines([f"{item['location']}：{item['fact']}" for item in hypothesis["evidence"]]))
+    if hypothesis["edits"]:
+        parts.append("修改位置：\n" + _lines([f"{item['location']}：{item['change']}" for item in hypothesis["edits"]]))
+    return "\n".join(parts)
+
+
 def plan(writer: Writer, now: datetime, planned: Mapping[str, Any], *, status: DocumentStatus,
          attention: Sequence[str], decisions: Sequence[Decision] = ()) -> HandoffDocument:
     estimate = planned["estimate"]
@@ -115,7 +128,7 @@ def plan(writer: Writer, now: datetime, planned: Mapping[str, Any], *, status: D
     files += [{"path": item["path"], "change": "delete", "reason": item["reason"]} for item in planned["deletions"]]
     design = planned.get("frontendDesign")
     frontend = "前端设计说明：\n" + _lines([*design["layout"], *design["mobile"]]) if design else ""
-    approach = "\n\n".join(part for part in (planned.get("analysis") or "", planned["summary"],
+    approach = "\n\n".join(part for part in (planned.get("analysis") or "", _hypothesis(planned), planned["summary"],
                                             "需要特别关注：\n" + _lines(attention) if attention else "", frontend)
                            if part)
     return HandoffDocument(
