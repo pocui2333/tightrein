@@ -31,7 +31,11 @@ def scouting(**changes):
 def fix_plan(ctx, **changes):
     output = {
         "analysis": "根因在 Get 没有按公司过滤，只改这一处即可。",
-        "summary": "在 OrderService.Get 中按公司过滤", "steps": [{"file": SERVICE_PATH, "change": "加过滤条件",
+        "summary": "在 OrderService.Get 中按公司过滤",
+        "hypothesis": {"cause": "其他公司的用户请求订单 → Get 只按编号查询 → 返回了不属于该公司的订单",
+                       "evidence": [{"location": f"{SERVICE_PATH}:12", "fact": "查询条件只有编号"}],
+                       "edits": [{"location": f"{SERVICE_PATH}:12", "change": "加公司过滤条件"}]},
+        "steps": [{"file": SERVICE_PATH, "change": "加过滤条件",
                                                                  "verification": "运行受影响的测试"}],
         "files": [{"path": SERVICE_PATH, "isNew": False, "reason": None}], "estimate": {"files": 1, "lines": 4},
         "split": None, "protectedTouches": [], "flags": FLAGS, "migration": None, "newDependencies": [],
@@ -96,12 +100,14 @@ def test_plan_checks(tmp_path):
     world, ctx, calls = setup(tmp_path)
 
     def problems(**changes):
-        return plan.check(fix_plan(ctx, **changes), ctx, world.worktree, ("src/Auth/",), 5, 150).problems
+        return plan.check(fix_plan(ctx, **changes), ctx, world.worktree, ("src/Auth/",), 5, 150, ("tests/",)).problems
 
     assert problems() == ()
-    assert problems(files=[{"path": "src/Missing.src", "isNew": False, "reason": None}]) == (
-        "计划中的已有文件 src/Missing.src 不存在",)
-    assert problems(files=[{"path": "src/Auth/Matrix.src", "isNew": True, "reason": "新建"}]) == (
+    # 换掉文件清单时根因假说的对应关系也会报问题，这里只看文件本身的那一条
+    assert problems(files=[{"path": "src/Missing.src", "isNew": False, "reason": None}])[0] == (
+        "计划中的已有文件 src/Missing.src 不存在")
+    assert problems(files=[{"path": SERVICE_PATH, "isNew": False, "reason": None},
+                           {"path": "src/Auth/Matrix.src", "isNew": True, "reason": "新建"}]) == (
         "src/Auth/Matrix.src 是受保护文件，须写进 protectedTouches 并说明改什么、为什么",)
     assert "超出上限 5 个文件、150 行(不含测试)：拆分" in problems(estimate={"files": 6, "lines": 10})[0]
     later = {"title": "清理旧调用", "goal": "删去旧接口的调用方", "files": ["src/A.src"],
@@ -112,7 +118,30 @@ def test_plan_checks(tmp_path):
         "各自单独成立的子任务，本计划只做第一个，其余写进 split",)
     assert "没有出现在 acceptanceMapping 中" in problems(acceptanceMapping=[])[0]
     design = dict(FLAGS, design={"flagged": True, "reason": "状态机缺一种状态", "locations": [f"{SERVICE_PATH}:3"]})
-    assert plan.check(fix_plan(ctx, flags=design), ctx, world.worktree, (), 5, 150).design
+    assert plan.check(fix_plan(ctx, flags=design), ctx, world.worktree, (), 5, 150, ()).design
+
+
+def test_the_root_cause_hypothesis_is_checked_against_the_code_and_the_files(tmp_path):
+    world, ctx, calls = setup(tmp_path)
+
+    def problems(**changes):
+        planned = fix_plan(ctx)
+        planned["hypothesis"] = {**planned["hypothesis"], **changes.pop("hypothesis", {})}
+        planned.update(changes)
+        return plan.check(planned, ctx, world.worktree, (), 5, 150, ("tests/",)).problems
+
+    planned_edit = {"location": f"{SERVICE_PATH}:12", "change": "加公司过滤条件"}
+    assert problems(hypothesis={"evidence": [{"location": f"{SERVICE_PATH}:99", "fact": "越界"}]}) == (
+        f"根因假说中的位置不存在或越界：{SERVICE_PATH} 只有 40 行，引用了第 99 行",)
+    assert problems(hypothesis={"edits": [planned_edit, {"location": f"{CONTROLLER_PATH}:8", "change": "改"}]}) == (
+        f"修改位置 {CONTROLLER_PATH}:8 的文件不在 files 中",)
+    controller = {"path": CONTROLLER_PATH, "isNew": False, "reason": "联动"}
+    service = {"path": SERVICE_PATH, "isNew": False, "reason": None}
+    assert problems(files=[service, controller]) == (
+        f"计划修改 {CONTROLLER_PATH} 但根因假说没有给出修改位置(hypothesis.edits)",)
+    test_file = {"path": "tests/test_order.src", "isNew": True, "reason": "复现"}
+    assert problems(files=[service, test_file]) == ()
+    assert problems(hypothesis={"edits": []}, files=[{"path": "src/New.src", "isNew": True, "reason": "新模块"}]) == ()
 
 
 def test_replanning_stops_at_the_limit_and_design_issues_are_not_replanned(tmp_path):
@@ -121,8 +150,8 @@ def test_replanning_stops_at_the_limit_and_design_issues_are_not_replanned(tmp_p
         {"path": "src/Missing.src", "isNew": False, "reason": None}]))
     proposal = plan.propose(calls, ctx, settings(world, rounds=1))
     assert proposal.plan is None and world.runner.roles() == ["fix-scout", "fix-planner", "fix-planner"]
-    assert proposal.problems == ["fix-planner：执行器返回 schema-invalid(fake-error)",
-                                 "计划中的已有文件 src/Missing.src 不存在"]
+    assert proposal.problems[:2] == ["fix-planner：执行器返回 schema-invalid(fake-error)",
+                                     "计划中的已有文件 src/Missing.src 不存在"]
     world, ctx, calls = setup(tmp_path / "design")
     issue = {"rootCause": "状态机缺一种状态", "reason": "每个入口都要补判断", "locations": [f"{SERVICE_PATH}:3"]}
     world.runner.add("fix-scout", scouting(designIssue=issue))
@@ -169,6 +198,12 @@ def test_plan_files_confirmation_and_rendering(tmp_path):
     text = document_files.render(document, "zh")
     assert document_files.check(text) == []
     assert "受保护文件 src/Auth/Matrix.src：加一行(理由：授权)" in text and "### 文件与步骤" in text
+    assert "根因假说：其他公司的用户请求订单" in text and f"- {SERVICE_PATH}:12：查询条件只有编号" in text
+    assert f"修改位置：\n- {SERVICE_PATH}:12：加公司过滤条件" in text
+    older = {key: value for key, value in planned.items() if key != "hypothesis"}
+    older_text = document_files.render(documents.plan(writer, world.clock.now(), older, status=DocumentStatus.PENDING,
+                                                      attention=[]), "zh")
+    assert document_files.check(older_text) == [] and "根因假说" not in older_text
     path = plan_gate.save(directory, planned, text)
     first = plan_gate.request(world.conn, world.clock, repo="/repo", issue_id=world.issue_id,
                               plan_sha=plan_gate.sha256(path), text="确认计划")
@@ -193,6 +228,7 @@ def test_prompts_carry_the_rules_and_the_deep_review_hides_the_executor(tmp_path
     assert "# 修复规则" in planner and "## 验收标准" in planner and "改动文件不超过 5 个" in planner
     assert "- 改动满足 Issue 的验收标准，根因被修掉，没有破坏已有调用方" in planner
     assert "[fix.acceptance]" not in planner and "评分表" not in planner
+    assert "hypothesis 必填" in planner and "13. **根因假说**" in planner
     judged = risk_step.plan_risk(ctx, scouting(), world.config, set())
     review = fix_reviewer.task(calls.prompt, ctx, fix_plan(ctx), "+x", [], ReviewMode.DEEP, 1, risk=judged)
     assert (review.role, review.capability, review.access.value) == ("fix-reviewer-deep", "strong", "read-only")

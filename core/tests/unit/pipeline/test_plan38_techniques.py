@@ -179,8 +179,9 @@ def test_plan_check_requires_all_steps_mapped_to_acceptance(tmp_path):
         "protectedTouches": [],
         "acceptanceMapping": [{"criterion": "只显示当天订单", "steps": [1]}],
         "notDoing": ["不修改其它文件"],
+        "hypothesis": {"cause": "只按日期范围查询", "evidence": [], "edits": []},
     }
-    checked = plan.check(plan_data, context, tmp_path, (), 10, 100)
+    checked = plan.check(plan_data, context, tmp_path, (), 10, 100, ())
     assert any("第 2 步" in p and "没有对应任何验收标准" in p for p in checked.problems)
 
 

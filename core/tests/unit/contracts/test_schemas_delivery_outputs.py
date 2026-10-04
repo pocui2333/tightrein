@@ -82,6 +82,7 @@ LEARN_OUTPUTS = {
 }
 VALID = [
     (FIX_PLAN, fix_plan()),
+    (FIX_PLAN, changed(fix_plan(), hypothesis=changed(fix_plan()["hypothesis"], edits=[]))),
     (FIX_PLAN, changed(fix_plan(), migration={"entries": ["ChangeSet 42"], "reversible": True, "revertMethod": "回滚 42"})),
     (FIX_REVIEW, REVIEW),
     (FIX_REVIEW, {"mode": "screenshot", "items": [], "blockers": [], "unverified": [],
@@ -108,6 +109,12 @@ INVALID = [
     (FIX_PLAN, changed(fix_plan(), acceptanceMapping=[{"criterion": "x", "steps": [0]}]),
      "$.acceptanceMapping[0].steps[0]"),
     (FIX_PLAN, without(fix_plan(), "notDoing"), "$"),
+    (FIX_PLAN, without(fix_plan(), "hypothesis"), "$"),
+    (FIX_PLAN, changed(fix_plan(), hypothesis=changed(fix_plan()["hypothesis"], evidence=[])), "$.hypothesis.evidence"),
+    (FIX_PLAN, changed(fix_plan(), hypothesis=changed(fix_plan()["hypothesis"], cause="")), "$.hypothesis.cause"),
+    (FIX_PLAN, changed(fix_plan(), hypothesis=changed(fix_plan()["hypothesis"],
+                                                      edits=[{"location": "OrderService.cs", "change": "改"}])),
+     "$.hypothesis.edits[0].location"),
     (FIX_REVIEW, changed(REVIEW, blockers=[changed(REVIEW["blockers"][0], category="minor")]), "$.blockers[0].category"),
     (FIX_REVIEW, changed(REVIEW, mode="ui"), "$.mode"),
     (FIX_REVIEW, changed(REVIEW, mode="screenshot"), "$"),

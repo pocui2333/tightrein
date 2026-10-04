@@ -3,7 +3,8 @@
 propose 依次：需要时 fix-scout 勘察(位置检查不通过时带原因重做) → 风险判定 → fix-planner 出计划 → 代码检查(不通过时
 带原因重出) → 计划含前端文件时 frontend-designer 出前端设计说明(写进计划的 frontendDesign，作为写代码的输入；没有产出时
 计划照常给出，原因记在 Proposal.frontend)。预估改动(本计划与拆分出的每个子任务)超出单个 PR 的上限 thresholds.change 时
-不通过，要求拆分。勘察与出计划共用 thresholds.fix.planRounds 次重做；执行器没有返回 ok 同样计为一次未通过的尝试。
+不通过，要求拆分。根因假说(hypothesis)的证据与修改位置须在 worktree 中真实存在；每处修改位置的文件须在 files 中，
+files 中要修改的已有非测试文件须至少有一处修改位置(只新建文件时可以没有)。勘察与出计划共用 thresholds.fix.planRounds 次重做；执行器没有返回 ok 同样计为一次未通过的尝试。
 勘察给出 designIssue、计划标记 design 时不再重出，按「设计问题」停下(用户已同意按设计层面修复时照常出计划)。
 """
 
@@ -17,6 +18,7 @@ from typing import Any
 from tightrein.config.project import ProjectConfig
 from tightrein.domain.enums import RunnerStatus
 from tightrein.domain.fix import FixRisk
+from tightrein.evaluation.scorers.code import location_problem
 from tightrein.guards.protected import matching_pattern
 from tightrein.pipeline.fix.prompts import fix_planner, fix_scout, frontend_designer
 from tightrein.pipeline.fix.prompts.common import FixCalls
@@ -44,8 +46,27 @@ def _size_problems(what: str, estimate: Mapping[str, int], max_files: int, max_l
             f"{max_lines} 行(不含测试)：拆分为有先后顺序、各自单独成立的子任务，本计划只做第一个，其余写进 split"]
 
 
+def _location_file(location: str) -> str:
+    return location.rsplit(":", 1)[0]
+
+
+def _hypothesis_problems(plan: Mapping[str, Any], worktree: Path, test_paths: Sequence[str]) -> list[str]:
+    hypothesis = plan["hypothesis"]
+    locations = [item["location"] for item in [*hypothesis["evidence"], *hypothesis["edits"]]]
+    problems = [f"根因假说中的位置不存在或越界：{problem}" for location in locations
+                if (problem := location_problem(worktree, location))]
+    planned = {item["path"] for item in plan["files"]}
+    edited = {_location_file(item["location"]) for item in hypothesis["edits"]}
+    problems += [f"修改位置 {item['location']} 的文件不在 files 中" for item in hypothesis["edits"]
+                 if _location_file(item["location"]) not in planned]
+    problems += [f"计划修改 {item['path']} 但根因假说没有给出修改位置(hypothesis.edits)" for item in plan["files"]
+                 if not item["isNew"] and item["path"] not in edited
+                 and matching_pattern(item["path"], test_paths) is None]
+    return problems
+
+
 def check(plan: Mapping[str, Any], context: FixContext, worktree: Path, protected_paths: Sequence[str],
-          max_files: int, max_lines: int) -> PlanCheck:
+          max_files: int, max_lines: int, test_paths: Sequence[str]) -> PlanCheck:
     problems = [f"计划中的已有文件 {item['path']} 不存在" for item in plan["files"]
                 if not item["isNew"] and not (worktree / item["path"]).is_file()]
     touched = {item["path"] for item in plan["protectedTouches"]}
@@ -70,6 +91,7 @@ def check(plan: Mapping[str, Any], context: FixContext, worktree: Path, protecte
     # 「不做什么」必填
     if "notDoing" not in plan:
         problems.append("notDoing(不做什么)为必填项，不得省略")
+    problems += _hypothesis_problems(plan, worktree, test_paths)
     return PlanCheck(tuple(problems), bool(plan["flags"]["design"]["flagged"]))
 
 
@@ -101,6 +123,7 @@ class ProposalSettings:
     large: bool = False  # C 通道：整体方案并拆分
     # 用户已同意按设计层面的根因修复(fix plan --accept-design)：设计问题不再中止，照常出计划
     design_accepted: bool = False
+    test_paths: tuple[str, ...] = ()  # 测试文件不要求根因假说给出修改位置
 
 
 def _design_from_flags(plan: Mapping[str, Any]) -> dict[str, Any]:
@@ -144,7 +167,7 @@ def propose(calls: FixCalls, context: FixContext, settings: ProposalSettings) ->
             proposal.problems.append(f"fix-planner：{scout.status_text(result.status, result.error_type)}")
             continue
         verdict = check(result.output, context, settings.worktree, settings.protected, settings.max_files,
-                        settings.max_lines)
+                        settings.max_lines, settings.test_paths)
         if verdict.design and not settings.design_accepted:
             proposal.plan = dict(result.output)
             proposal.design = _design_from_flags(result.output)

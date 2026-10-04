@@ -268,7 +268,7 @@ Issue 转为待决定(`hold` 为「超出单个任务的上限」)。结果写 `
 | 模型档 | `stages.fix.roles.fix-planner.capability`，默认强档 |
 | `outputSchema` | `handoff/outputs/fix-plan.schema.json` |
 
-`fix-plan` 的主要字段：`analysis`、`risk`(4.5 的第一次判定)、`lane` 与 `tier`(由核心写入)、`summary`、`steps`(文件、改动内容、验证方式)、`files`(计划改动的全部文件，新建文件标明理由)、`estimate`(文件数、行数，都不含测试文件)、`split`(拆分出的后续子任务，见下)、`protectedTouches`(每个受保护文件的改动内容与理由)、`flags`(设计问题、数据结构或存量数据、公共实现或接口契约)、`migration`(将新增的迁移条目、能否撤销、撤销方式)、`newDependencies`、`deletions`、`acceptanceMapping`(Issue 每条验收标准由哪一步满足)、`userVisibleChange`、`affectedEndpoints`、`affectedPages`、`notDoing`、`userDecisions`。
+`fix-plan` 的主要字段：`analysis`、`risk`(4.5 的第一次判定)、`lane` 与 `tier`(由核心写入)、`summary`、`hypothesis`(根因假说：`cause` 一条因果链，`evidence` 位置与读到的代码事实，`edits` 修改前代码的位置与在那里改什么；A 通道的程序计划取 Issue 的根因小节与根因位置)、`steps`(文件、改动内容、验证方式)、`files`(计划改动的全部文件，新建文件标明理由)、`estimate`(文件数、行数，都不含测试文件)、`split`(拆分出的后续子任务，见下)、`protectedTouches`(每个受保护文件的改动内容与理由)、`flags`(设计问题、数据结构或存量数据、公共实现或接口契约)、`migration`(将新增的迁移条目、能否撤销、撤销方式)、`newDependencies`、`deletions`、`acceptanceMapping`(Issue 每条验收标准由哪一步满足)、`userVisibleChange`、`affectedEndpoints`、`affectedPages`、`notDoing`、`userDecisions`。
 
 **代码检查**(`plan.check`)：
 
@@ -278,6 +278,7 @@ Issue 转为待决定(`hold` 为「超出单个任务的上限」)。结果写 `
 | `files` 与 `protectedPaths` 的交集都出现在 `protectedTouches` 中 | 重出 |
 | `estimate` 与 `split.followUps` 中每个子任务的预估不超过单个 PR 上限 `thresholds.change`(缺省 5 个文件、200 行，不含测试文件) | 重出，要求拆分 |
 | Issue 的每条验收标准都在 `acceptanceMapping` 中 | 重出 |
+| `hypothesis` 的证据与修改位置在 worktree 中真实存在；每处修改位置的文件在 `files` 中；`files` 中要修改的已有非测试文件至少有一处修改位置 | 重出 |
 | `flags.design` 为真 | 不重出，按 4.11 的「设计问题」处理 |
 
 勘察与出计划共用 `thresholds.fix.planRounds`(2)次重做，仍不通过时 Issue 转为待决定(设置 `hold`)。
@@ -359,7 +360,7 @@ Issue 转为待决定(`hold` 为「超出单个任务的上限」)。结果写 `
 
 `after` 发现违规时本次实施判为不通过，违规项作为「规范要求用户确认」性质处理(4.11)，不自动修正。
 
-`fix-executor` 返回「遇大问题中止」时不进入 4.9，`bigIssue` 按其描述归入「计划没覆盖」或「设计问题」。
+`fix-executor` 返回「遇大问题中止」时不进入 4.9，`bigIssue` 按其描述归入「计划没覆盖」或「设计问题」。按计划改完验证仍不通过、且原因不在根因假说之内时，`fix-executor` 不在修改位置之外试改，同样以大问题中止，由「计划没覆盖」重出计划。
 
 ### 4.9 程序检查与收集结果
 

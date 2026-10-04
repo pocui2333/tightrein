@@ -6,6 +6,7 @@
   "required": [
     "analysis",
     "summary",
+    "hypothesis",
     "steps",
     "files",
     "estimate",
@@ -30,6 +31,40 @@
     "tier": {"$ref": "../../common.schema.json#/$defs/SizeTier"},
     "analysis": {"type": "string", "minLength": 1},
     "summary": {"type": "string", "minLength": 1},
+    "hypothesis": {
+      "description": "根因假说：一条因果链、支撑它的代码事实与精确到行的修改位置(位置指修改前的代码)",
+      "type": "object",
+      "required": ["cause", "evidence", "edits"],
+      "additionalProperties": false,
+      "properties": {
+        "cause": {"type": "string", "minLength": 1},
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["location", "fact"],
+            "additionalProperties": false,
+            "properties": {
+              "location": {"$ref": "../../common.schema.json#/$defs/codeLocation"},
+              "fact": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "edits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["location", "change"],
+            "additionalProperties": false,
+            "properties": {
+              "location": {"$ref": "../../common.schema.json#/$defs/codeLocation"},
+              "change": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    },
     "steps": {
       "type": "array",
       "items": {
