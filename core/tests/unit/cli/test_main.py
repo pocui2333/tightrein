@@ -145,3 +145,87 @@ def test_config_show_lists_layers(tmp_path):
                                                "layers": {"core": 20}}]
     code, values = call_json(world, "config", "show", "--key", "nothing.here")
     assert code == exit_codes.USAGE
+
+
+def _failing_command(monkeypatch, failure, *, end_run=False):
+    """把 status 命令换成：开始一个运行、取一把对象锁，然后抛出 failure(None 为正常返回且不结束运行)。"""
+    from datetime import timedelta
+
+    from tightrein.cli import main as main_module
+    from tightrein.cli.output import Outcome
+    from tightrein.domain.enums import HandoffStatus, RunStage
+    from tightrein.pipeline.common import stage_runs
+    from tightrein.store import locks
+
+    started = []
+    real = build_parser()
+
+    def handler(invocation):
+        app = invocation.app
+        run = stage_runs.begin(RunStage.TRIAGE, app.layout, app.conn, app.clock, app.events)
+        locks.acquire(app.conn, "P-0001", app.clock, timedelta(hours=1), run_id=run.id)
+        started.append(run.id)
+        if end_run:
+            run.end(HandoffStatus.OK)
+        if failure is not None:
+            raise failure
+        return Outcome("status", exit_codes.OK, ["完成"])
+
+    class Parser:
+        def parse_args(self, argv):
+            args = real.parse_args(argv)
+            args.handler = handler
+            return args
+
+    monkeypatch.setattr(main_module, "build_parser", lambda: Parser())
+    return started
+
+
+def _ended(world, run_id):
+    from tightrein.store import locks
+    from tightrein.store.repos import runs
+
+    conn = database(world)
+    try:
+        return runs.get(conn, run_id).status, locks.get(conn, "P-0001")
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize(("failure", "code", "status"), [
+    (KeyboardInterrupt(), 130, "interrupted"),
+    (exit_codes.Terminated(15), 143, "interrupted"),
+    (exit_codes.Terminated(1), 129, "interrupted"),
+    (RuntimeError("坏了"), exit_codes.FAILED, "failed"),
+    (None, exit_codes.OK, "failed"),
+])
+def test_runs_left_running_by_the_command_are_closed_and_its_locks_released(tmp_path, monkeypatch, failure, code,
+                                                                             status):
+    world = make_cli_world(tmp_path)
+    started = _failing_command(monkeypatch, failure)
+    result, text = call(world, "status", "--workspace", str(world.root))
+    assert result == code
+    if isinstance(failure, (KeyboardInterrupt, exit_codes.Terminated)):
+        assert "status 被中断" in text and "Traceback" not in text
+    run_status, lock = _ended(world, started[0])
+    assert (run_status.value, lock) == (status, None)
+
+
+def test_runs_ended_normally_and_runs_of_other_processes_are_left_alone(tmp_path, monkeypatch):
+    from tightrein.domain.enums import RunStage, RunStatus
+    from tightrein.domain.run import Run
+    from tightrein.store.repos import runs
+
+    world = make_cli_world(tmp_path)
+    conn = database(world)
+    other = Run("R-20261005-010000-fix", RunStage.FIX, WHEN, RunStatus.RUNNING, holder_pid=999_999,
+                holder_host="another-host")
+    runs.save(conn, other)
+    conn.commit()
+    conn.close()
+    started = _failing_command(monkeypatch, KeyboardInterrupt(), end_run=True)
+    assert call(world, "status", "--workspace", str(world.root))[0] == 130
+    assert _ended(world, started[0])[0] is RunStatus.OK
+    conn = database(world)
+    assert runs.get(conn, other.id).status is RunStatus.RUNNING
+    conn.close()

@@ -92,6 +92,27 @@ def test_the_whole_process_group_is_terminated(tmp_path):
     assert not alive(pids[0])
 
 
+def test_an_interrupt_terminates_the_process_group_and_is_raised(tmp_path):
+    invocation = script(tmp_path, """
+        import subprocess, sys, time
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+        print(child.pid, flush=True)
+        time.sleep(30)
+    """)
+    pids = []
+
+    def handler(line):
+        pids.append(int(line))
+        raise KeyboardInterrupt
+
+    started = time.monotonic()
+    with pytest.raises(KeyboardInterrupt):
+        launcher().run(invocation, handler, None)
+    assert time.monotonic() - started < 5
+    time.sleep(0.2)
+    assert not alive(pids[0])
+
+
 def test_the_line_handler_can_stop_the_process(tmp_path):
     invocation = script(tmp_path, """
         import time

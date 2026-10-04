@@ -177,10 +177,17 @@ launchd 按 `tick` 唤醒 `tightrein tick`(`Orchestrator.tick`)：暂停时什�
 
 ### 3.5 中断恢复
 
-`recovery.py` 在每次 `run` 与 `continue` 开始时执行：
+命令被中断时先就地收尾，收尾不了的(进程被强杀、断电)由下一次 `run` 与 `continue` 接管。
 
-1. 找出 `runs` 中 `ended_at` 为空的记录，读取 `locks` 中对应的持有者进程号。
-2. 进程仍在运行：不处理(可能是另一个手动会话)。
+就地收尾：
+
+- Ctrl+C 是 `KeyboardInterrupt`；`tightrein` 入口把 SIGTERM、SIGHUP 转成同级的 `Terminated`。中断沿调用栈向上抛出，沿途的 `finally`、上下文管理器与事务回滚照常执行；三处子进程启动器(agent 工具、扩展脚本、git 与 gh)在等待期间收到中断时先终止子进程组再抛出，不留下孤儿进程。
+- `cli/main` 在关闭数据库前调用 `recovery.close_own`：本进程开始、仍为 `running` 的运行改为 `interrupted`(被中断)或 `failed`(异常，或模块漏了结束运行)，释放本进程持有的全部对象锁，每个运行写一条 `gate` 事件。
+
+下一次接管(`recovery.py`，在每次 `run` 与 `continue` 开始时执行；`watch` 用同一判定把它们显示为已中断)：
+
+1. 找出 `runs` 中状态为 `running` 的记录。每个运行记有开始它的进程号与主机(`holder_pid`、`holder_host`)；没有这两列的旧记录读取 `locks` 中对应的持有者进程号。
+2. 进程仍在运行或在其他主机上：不处理(可能是另一个手动会话)。
 3. 进程已不存在：把该运行的 `status` 改为 `interrupted`、写入 `ended_at`，接管并释放它持有的对象锁，写一条事件记录接管。
 4. 被中断的对象不需要单独补做：各模块只在一步完成时才更新对象状态，对象停留在中断前的状态，下一次 `continue` 或 run 的对应步骤按状态表重新执行这一步；对外操作由幂等键保证不重复(15.7)。
 5. 交互修复被中断时 Issue 停在修复阶段(`in-progress`，`phase` 为 `fix`)，按状态表续接修复会话。
@@ -434,6 +441,8 @@ tightrein
 | 6 | 边界违规 | `guards` 判定越界 |
 | 7 | 锁被占用 | 运行锁或对象锁被其他进程持有 |
 | 8 | 输出不合格 | 执行器结果重试后仍不符合 schema |
+| 130 | 被中断 | Ctrl+C |
+| 128 + 信号编号 | 被终止 | SIGTERM(143)、SIGHUP(129) |
 
 `exit_codes.py` 把各层抛出的具名异常映射为退出码；未映射的异常一律为 1，并在输出中给出事件日志路径。
 

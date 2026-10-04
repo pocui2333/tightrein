@@ -123,6 +123,9 @@ class Run:
     environment_detail: EnvironmentDetail = field(default_factory=EnvironmentDetail)
     aggregated_at: datetime | None = None
     trace_id: str | None = None
+    # 开始运行的进程(store/repos/runs.save 在新建进行中的运行时填入)：中断识别据此判断没有持有锁的运行是否仍在执行
+    holder_pid: int | None = None
+    holder_host: str | None = None
 
     def __post_init__(self) -> None:
         for name in ("started_at", "ended_at", "aggregated_at"):

@@ -78,7 +78,8 @@ def subprocess_executor(command: Command) -> Completed:
     )
     try:
         stdout, stderr = process.communicate(command.stdin, timeout=command.timeout)
-    except subprocess.TimeoutExpired:
+    except BaseException:
+        # 超时，或本进程被中断(Ctrl+C、入口转换的 SIGTERM、SIGHUP)：终止 git、gh 的进程组后抛出
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except (ProcessLookupError, PermissionError):

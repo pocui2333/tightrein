@@ -6,7 +6,7 @@
 - 标准输入写入一个请求 JSON 后关闭；标准输出只能是一个响应 JSON，超过 64 MB 时终止进程并按 protocol-error 处理；
   标准错误只保留最后 1 MB，经脱敏后写入 raw/extensions/<扩展点>[-<序号>].stderr.log。
 - 超时或标准输出超限时终止整个进程组：先 SIGTERM，等待片刻仍未退出再 SIGKILL；主进程退出后仍占着输出管道的
-  子进程同样终止。
+  子进程同样终止。等待期间本进程被中断时同样终止进程组，再把中断抛出。
 - 结果归类：超时为 timeout；退出码非 0 且标准输出没有合法的响应为 crashed，附标准错误的最后 50 行；标准输出不是
   单个 JSON 对象或 protocol 不一致为 protocol-error；响应或 output 不符合 schema 为 schema-invalid，附每条错误的
   JSON 路径与原因；扩展以 status: error 返回时取响应中的错误码，not-applicable 按核心默认处理。
@@ -142,13 +142,21 @@ class SubprocessRunner:
             thread.start()
         deadline = self.monotonic() + request.timeout_seconds
         timed_out = False
-        while process.poll() is None:
-            if stdout.exceeded.is_set():
-                break
-            if self.monotonic() >= deadline:
-                timed_out = True
-                break
-            time.sleep(self.poll_seconds)
+        try:
+            while process.poll() is None:
+                if stdout.exceeded.is_set():
+                    break
+                if self.monotonic() >= deadline:
+                    timed_out = True
+                    break
+                time.sleep(self.poll_seconds)
+        except BaseException:
+            # 本进程被中断(Ctrl+C、入口转换的 SIGTERM、SIGHUP)：终止扩展的进程组后把中断抛出
+            try:
+                self._terminate(process)
+            finally:
+                self._kill_group(process.pid)
+            raise
         if process.poll() is None:
             self._terminate(process)
         for thread in threads:

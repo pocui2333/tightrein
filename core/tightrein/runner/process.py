@@ -4,6 +4,7 @@
 - 到达时间上限或需要终止时，向整个进程组发送 SIGINT，等待 runtime.runner.interruptGraceSeconds(默认 10 秒)；仍未退出
   发送 SIGTERM，再等 runtime.runner.terminateGraceSeconds(默认 5 秒)后 SIGKILL，agent 启动的子进程随进程组一并终止。
   等待时间可以注入，测试用更短的值。
+- 等待期间本进程被中断(KeyboardInterrupt 或入口转换的 SIGTERM、SIGHUP)时同样按上面的顺序终止进程组，再把中断抛出。
 - 交互模式把标准输入输出直接交给 agent 工具，等待进程结束。
 启动器可以注入：单元测试用返回录制输出的假启动器，不启动真实的 claude、codex、agy。
 """
@@ -110,9 +111,13 @@ class SubprocessLauncher:
         for reader in readers:
             reader.start()
         deadline = None if timeout_ms is None else started + timeout_ms / MILLISECONDS_PER_SECOND
-        stopped_by = self._read(lines, on_line, deadline)
-        if stopped_by is None:
-            stopped_by = self._wait(process, deadline)
+        try:
+            stopped_by = self._read(lines, on_line, deadline)
+            if stopped_by is None:
+                stopped_by = self._wait(process, deadline)
+        except BaseException:
+            self._abandon(process)
+            raise
         if stopped_by is not None:
             self._terminate(process)
         process.wait()
@@ -168,6 +173,16 @@ class SubprocessLauncher:
                     break
             except subprocess.TimeoutExpired:
                 continue
+
+    def _abandon(self, process: subprocess.Popen[bytes]) -> None:
+        """本进程被中断(Ctrl+C、SIGTERM)时终止子进程组；宽限等待再被打断时直接 SIGKILL。"""
+        try:
+            self._terminate(process)
+        except BaseException:
+            self._kill_rest(process.pid)
+            raise
+        finally:
+            process.wait()
 
     @staticmethod
     def _kill_rest(group: int) -> None:
