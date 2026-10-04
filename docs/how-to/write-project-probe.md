@@ -209,5 +209,5 @@ sources:
 - **「输出不符合探针契约」**：按错误中的 JSON 路径补齐字段；`evidence` 至少一条，`severityHint` 不确定时写 null。
 - **「钥匙串条目 … 没有在 sources.project-probes[].keychain 中登记」**：把条目名加进该探针的 `keychain`。
 - **「没有配置 extensions.log-platform」**：`helpers.query_logs` 需要工作区配置日志平台方法，见[方法目录](../reference/methods.md)。
-- **同一问题每次都成了新问题**：`fingerprint` 中带了时间、数量或随机值，改成只由检查项与对象组成。
+- **同一问题每次都成了新问题**：`fingerprint` 中带了时间、数量或随机值，应只由检查项与对象组成。
 - **没有到期**：编排按 `every` 运行；`collect --select name:<名称>` 不看间隔，手动运行时总是执行。

@@ -1,58 +1,58 @@
 # tightrein
 
-[![test](https://github.com/pocui2333/tightrein/actions/workflows/test.yml/badge.svg)](https://github.com/pocui2333/tightrein/actions/workflows/test.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)
+[![test](https://img.shields.io/github/actions/workflow/status/pocui2333/tightrein/test.yml?branch=main&label=test)](https://github.com/pocui2333/tightrein/actions/workflows/test.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
 
 [简体中文](README.md) | English
 
-**Autonomous defect discovery and repair for your codebase, with the reins in your hands.**
+**Autonomous defect discovery and controlled AI repair pipeline.**
 
-tightrein runs a continuous pipeline. It finds defects in your application, triages them against evidence, fixes them with AI coding agents ([Claude Code](https://docs.claude.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex), Antigravity CLI), verifies the fixes, and opens pull requests. Every step runs inside boundaries you set: which commands agents may run, how much code they may change, how much they may spend, and which decisions need your approval.
+tightrein runs a continuous, closed-loop pipeline: detects application defects, triages them against evidence, repairs them with AI coding agents ([Claude Code](https://docs.claude.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex), Antigravity CLI) in isolated worktrees, verifies the fixes, and submits pull requests. Every step operates inside strictly enforced boundaries: which commands agents may run, maximum diff size, budget caps, and which high-risk actions require human sign-off.
 
 > [!WARNING]
-> tightrein is alpha software that runs AI agents against your code and environments. Start against a staging environment, with read-only platform tokens and the default approval gates.
+> tightrein is alpha software that interacts directly with your codebase and environments. We recommend starting in a staging environment, using read-only credentials, and retaining the default human approval gates.
 
 ## Highlights
 
-- **End-to-end pipeline.** Collects signals from API fuzzing ([Schemathesis](https://schemathesis.io/)), static review ([Semgrep](https://semgrep.dev/) and LLM review), error tracking (Sentry), logs (Loki), alerts (Alertmanager), and custom project probes. It deduplicates the signals, then checks each one against evidence before filing an issue.
-- **Reproduce first.** Every bug fix starts with a test that fails on the current code and must pass after the fix.
-- **Human approval gates.** By default you approve issues, fix plans, pushes, and merges. Each gate can be automated individually; high-risk changes always require a human.
-- **Enforced boundaries.** Command allowlists, agent environments without credentials, read-only worktrees, and git and file snapshots compared before and after every agent run.
-- **Small, reviewable PRs.** At most 5 files and 200 lines per PR by default, excluding tests. Larger work is split into sub-issues.
-- **Budgets and circuit breakers.** Spending limits per run, day, and week. After repeated failures or no progress, work goes back to a human.
-- **Mix and match agents.** Pick a tool and model per role. A reviewer must use a different model than the agent whose work it reviews.
-- **Learns from outcomes.** Lessons from fixes and false positives feed back into triage and fixing.
+- **Multi-source signals & evidence triage**: Ingests signals from API fuzzing ([Schemathesis](https://schemathesis.io/)), static checks ([Semgrep](https://semgrep.dev/) and LLM review), Sentry, Loki, Alertmanager, and custom project probes. Deduplicates signals and verifies validity via an independent adversarial model before filing an issue.
+- **Reproduction-first**: Every bug fix begins with generating a reproduction test that fails on the current codebase (Red) and must pass after the fix (Green).
+- **Enforced execution boundaries**: Command allowlists, credential-stripped agent environments, and isolated read-only worktrees with pre/post-run git and file snapshot comparisons.
+- **Small, reviewable PRs**: Hard default limits of at most 5 files and 200 lines (excluding tests) per PR to eliminate rogue refactorings; larger tasks are split into sub-issues.
+- **Human approval gates**: Approval required for issue dispatch, fix plans, and high-risk merges; each gate is individually configurable, but high-risk paths always require human confirmation.
+- **Budgets and circuit breakers**: Spending caps per run, day, and week. Automatically halts and delegates to human review upon repeated failures or lack of progress.
+- **Heterogeneous agent reviews**: Configurable agent tools and models per role; reviewer and author agents must use distinct models to prevent self-confirmation bias.
+- **Outcome-driven learning**: Insights from successful repairs and false positives feed back into rules and reusable skills.
 
 ## How it works
 
-| Stage | What happens |
-|---|---|
-| **collect** | Runs the configured sources and records raw signals. |
-| **aggregate** | Normalizes and deduplicates signals into problems. |
-| **triage** | Gathers evidence, decides whether the problem is real, and assigns severity, task type, size, and treatment: fix now, schedule, observe, or won't fix. |
-| **issue** | Writes a Markdown issue locally. A GitHub mirror is optional. |
-| **fix** | Plans the fix, writes the reproduction test, implements the change, runs the checks, and reviews it. Small, low-risk changes take a fast lane; large ones are split. |
-| **verify** | Re-runs the reproduction checks before merge and after deployment. |
-| **release** | Creates the branch, commit, and PR, tracks merge and deployment, and proposes a revert if a regression appears. |
-| **learn** | Tracks metrics, records lessons, and suggests rule and configuration changes. |
+The pipeline consists of 8 strictly governed stages:
 
-Runs can be triggered manually, on a schedule (launchd), or by events such as a new commit or a new deployment. Decisions waiting for you are collected in a single inbox: `tightrein status`.
+| Stage | Identifier | Description |
+|---|---|---|
+| Collect | `collect` | Runs configured data sources and probes to capture runtime signals. |
+| Aggregate | `aggregate` | Normalizes and deduplicates signals into problems based on fingerprints and stacktraces. |
+| Triage | `triage` | Gathers evidence to confirm validity and assigns severity and treatment (fix now, schedule, observe, drop). |
+| Issue | `issue` | Writes structured Markdown issues locally, with optional mirroring to GitHub Issues. |
+| Fix | `fix` | Plans changes, writes reproduction tests, and applies minimal patches in an isolated worktree. |
+| Verify | `verify` | Re-executes reproduction test suites and checks formatting and diff-bloat thresholds. |
+| Release | `release` | Creates branches, commits, opens PRs, tracks deployments, and proposes reverts upon regressions. |
+| Learn | `learn` | Aggregates metrics, extracts lessons, and suggests rule and prompt improvements. |
+
+Runs can be triggered manually, scheduled via launchd, or dispatched by code commit and deployment events. Pending decisions are gathered in the approval list: `tightrein status`.
 
 ## Requirements
 
-- Python 3.12+, git, and an authenticated [GitHub CLI](https://cli.github.com/)
-- At least one agent tool: Claude Code, Codex CLI, or Antigravity CLI
+- Python 3.12+, git, authenticated [GitHub CLI (`gh`)](https://cli.github.com/)
+- At least one configured agent tool: Claude Code, Codex CLI, or Antigravity CLI
 
-The following features currently require macOS:
+Platform support:
 
-| Feature | Depends on | Without it |
+| Feature | macOS | Linux / Docker |
 |---|---|---|
-| Platform tokens (read-only tokens for Sentry, Loki, Vercel, etc.) | Keychain | Don't connect those platforms |
-| Scheduled runs (`tightrein schedule install`) | launchd | Run manually, or call `tightrein tick` from another scheduler |
-| Desktop notifications | `osascript` | Set `notify: {method: none}` in `~/.config/tightrein/config.yaml` |
+| Credential storage (Sentry, Loki, etc.) | System Keychain | Environment variables |
+| Scheduled runs (`tightrein schedule install`) | launchd | cron / systemd |
+| Desktop notifications | Native osascript notifications | Disable (`notify: {method: none}`) |
 
-Everything else is independent of macOS but has so far been tested only on macOS. Native Windows is not supported.
+Native Windows is not currently supported; recommended to run under WSL2.
 
 ## Installation
 
@@ -61,10 +61,10 @@ git clone https://github.com/pocui2333/tightrein.git
 cd tightrein
 python3 -m venv core/.venv
 core/.venv/bin/pip install -e core
-core/.venv/bin/tightrein install    # installs the skills into the agent tools found on this machine
+core/.venv/bin/tightrein install    # Registers skills with locally detected agent tools
 ```
 
-Add `core/.venv/bin` to your `PATH`, or call `core/.venv/bin/tightrein` directly.
+Add `core/.venv/bin` to your `PATH`, or invoke `core/.venv/bin/tightrein` directly.
 
 ## Quick start
 
@@ -75,7 +75,7 @@ agents:
   defaultTool: claude
   stages:
     triage:
-      refuter: {capability: standard}   # reviewers must use a different model than the author
+      refuter: {capability: standard}   # Reviewer must use a different model
     fix:
       review:
         deep: {capability: standard}
@@ -85,39 +85,31 @@ agents:
     strong:   {claude: {model: opus, effort: high, inputUsdPerMTok: 5, outputUsdPerMTok: 25}}
 ```
 
-**2. Onboard a project.** Workspaces live under `workspaces/`, which git ignores. Until onboarding is complete, tightrein only takes read-only actions.
+**2. Onboard a project.** Workspaces reside under `workspaces/` (git-ignored). tightrein only performs read-only checks until onboarding is complete.
 
 ```sh
 tightrein workspace init --workspace workspaces/my-app --repo ~/code/my-app
-tightrein worktree init --workspace workspaces/my-app     # request a read-only worktree; approve it with tightrein confirm
-tightrein status --workspace workspaces/my-app           # open questions, recommended answers, and the commands to run
+tightrein worktree init --workspace workspaces/my-app     # Request read-only worktree; approve via tightrein confirm
+tightrein status --workspace workspaces/my-app           # Inspect onboarding questions and recommended commands
 ```
 
-**3. Run.** Trigger the first scan manually; after that, scheduled runs can take over.
+**3. Run.** Trigger the first run manually; background schedules can take over subsequently.
 
 ```sh
-tightrein run --workspace workspaces/my-app --select collect+ --probe static --dry-run   # show what would run
-tightrein run --workspace workspaces/my-app --select collect+ --probe static
-tightrein watch                                         # live view, in another terminal
-tightrein schedule install                              # optional: run on weekdays
+tightrein run --workspace workspaces/my-app --select collect+ --probe static --dry-run   # Dry run: preview planned steps
+tightrein run --workspace workspaces/my-app --select collect+ --probe static             # Run collection and inspection
+tightrein watch                                                                         # Live monitor in another terminal
+tightrein schedule install                                                              # Optional: scheduled weekday runs on macOS
 ```
 
-For a complete walkthrough, see the [first-run tutorial](docs/tutorials/first-run.md) (in Chinese).
+See the [first-run tutorial](docs/tutorials/first-run.md) for a full walkthrough.
 
 ## Documentation
 
-The CLI output and the documentation are currently in Chinese.
+The CLI output and reference documentation are currently in Chinese.
 
 - [Tutorial: first run](docs/tutorials/first-run.md)
 - [Configuration and behavior](docs/reference/configuration.md): sources, approval gates, budgets, GitHub mirroring, fix lanes, agent tools and models
 - [Reference](docs/reference/README.md): source methods, handoff documents, project probes
 - [How-to guides](docs/how-to/README.md)
 - [Design](docs/explanation/README.md)
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md). To report a vulnerability, see [SECURITY.md](SECURITY.md).
-
-## License
-
-[MIT](LICENSE)
