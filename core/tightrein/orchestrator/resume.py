@@ -359,7 +359,7 @@ class Resumer:
                 return self._stop(ref, "等待部署后由 aggregate 判定已解决", gate=AWAITING_DEPLOY)
             before = (view.status, view.command)
             result = self.execute(view.target, step)
-            while result.status is HandoffStatus.BLOCKED and result.operation and self.confirm is not None \
+            if result.status is HandoffStatus.BLOCKED and result.operation and self.confirm is not None \
                     and self.confirm(result.operation):
                 report.progress.append(Progress(ref, view.command or "", f"已确认并执行 {result.operation}"))
                 result = StepResult(HandoffStatus.OK, result.message)

@@ -214,16 +214,20 @@ class ImproveService:
         patch_file = deps.layout.improve_dir() / f"{run.id}{PATCH_SUFFIX}"
         if proposed["target"] == PROMPT and proposed["patch"]:
             atomic.write_text(patch_file, proposed["patch"].rstrip("\n") + "\n")
-        plan = self._plan(proposed, [*involved, *held_out], patch_file)
-        if isinstance(plan, str):
-            outputs["reason"] = plan
-            return self._done(run, outputs)
-        report = deps.evaluate(plan)
-        summary = summarize(report, involved, held_out)
-        recommended, reason = recommend(report, summary)
-        outputs.update(evaluationId=report.evaluation_id, summary=summary, recommended=recommended)
-        draft = self._draft(run, proposed, found, report, summary, recommended, reason, involved, held_out)
-        created = suggestions.store(deps.conn, deps.clock, [draft], self._writer(patch_file))
+        try:
+            plan = self._plan(proposed, [*involved, *held_out], patch_file)
+            if isinstance(plan, str):
+                outputs["reason"] = plan
+                return self._done(run, outputs)
+            report = deps.evaluate(plan)
+            summary = summarize(report, involved, held_out)
+            recommended, reason = recommend(report, summary)
+            outputs.update(evaluationId=report.evaluation_id, summary=summary, recommended=recommended)
+            draft = self._draft(run, proposed, found, report, summary, recommended, reason, involved, held_out)
+            created = suggestions.store(deps.conn, deps.clock, [draft], self._writer(patch_file))
+        finally:
+            # 临时补丁只在建议建成时由 _writer 移到建议编号下；去重丢弃、没有评测计划或出错时删掉
+            patch_file.unlink(missing_ok=True)
         outputs["suggestionId"] = created[0].id if created else None
         outputs["reason"] = reason if created else "同一建议已在等待处理"
         path = self._finish(run, outputs, f"在收件箱中处理建议 {outputs['suggestionId']}" if created else "无需处理")

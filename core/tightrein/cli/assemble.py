@@ -301,7 +301,6 @@ class App:
 
     def runner(self) -> Runner:
         def build() -> Runner:
-            ext = self.externals
             replay = None
             if self.options.replay_from is not None:
                 replay = ReplayAdapter(RecordingSet(self._replay_dir(self.options.replay_from)), self.process)
@@ -316,7 +315,6 @@ class App:
 
     def runner_for(self, output_dir: Path) -> Runner:
         """评测评分用的执行器：写入评测的输出目录，不写工作区。"""
-        ext = self.externals
         layout = WorkspaceLayout(self.root, output_dir)
         guards = Guards(self.git, GuardSettings.from_config(self.config), layout, self.tool, tracer=self.tracer)
         return Runner(conn=self.conn, layout=layout, tool_layout=self.tool, config=self.config,
@@ -353,7 +351,6 @@ class App:
         return self._once("resolution", lambda: resolve(self.config, self.layout, self.tool))
 
     def invoker(self, run_id: str | None = None) -> Invoker:
-        ext = self.externals
         return Invoker(self.layout, UserLayout(self.home), run_id=run_id or self.session_id,
                        runner=self.extension_runner(), environ=dict(self.environ), redactor=self.redactor,
                        tracer=self.tracer, stderr_tail_lines=int(self.config.get("runtime.extensions.stderrTailLines")),
@@ -493,7 +490,6 @@ class App:
 
     def regression_executor(self, base_url: str | None = None) -> RegressionExecutor:
         """复现检查执行器：接口类按目标地址登录，页面类用页面运行器，静态类用 Semgrep，测试类用项目检查命令。"""
-        ext = self.externals
         url = base_url or self.base_url()
         api = ApiCheck(self.session(url), self.transport, self.probe_redactor,
                        float(self.config.get("regressions.apiTimeoutSeconds")))
@@ -572,7 +568,6 @@ class App:
 
     def fix(self) -> FixService:
         def build() -> FixService:
-            ext = self.externals
             service = FixService(FixDeps(
                 self.layout, self.tool, self.config, self.conn, self.clock, self.events, self.runner(), self.git,
                 self.tool_launcher(), planner=self.planner(), executor=self.regression_executor(),
@@ -599,7 +594,6 @@ class App:
 
     def verify(self) -> VerifyService:
         def build() -> VerifyService:
-            ext = self.externals
             client = self.extensions()
             page_checks = client.configured(ExtensionPoint.PAGE_ROUTES) or any(self.layout.e2e_dir().glob("**/*.ts"))
             return VerifyService(VerifyDeps(

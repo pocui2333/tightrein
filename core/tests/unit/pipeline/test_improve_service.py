@@ -111,6 +111,16 @@ def test_an_improvement_that_helps_without_side_effects_is_recommended(tmp_path)
     assert sorted(path.name for path in world.layout.improve_dir().iterdir()) == ["LS-0001.md", "LS-0001.patch"]
 
 
+def test_a_duplicate_suggestion_leaves_no_temporary_patch(tmp_path):
+    world, service = make(tmp_path, Evaluator({"E-0001": True, "E-0002": True, "E-0003": True}))
+    world.runner.add("improvement-writer", suggestion()).add("improvement-writer", suggestion())
+    assert service.suggest().suggestion_id == "LS-0001"
+    world.clock.advance(timedelta(seconds=1))
+    again = service.suggest()
+    assert again.suggestion_id is None and again.outputs["reason"] == "同一建议已在等待处理"
+    assert sorted(path.name for path in world.layout.improve_dir().iterdir()) == ["LS-0001.md", "LS-0001.patch"]
+
+
 def test_an_improvement_that_hurts_held_out_cases_is_not_recommended(tmp_path):
     world, service = make(tmp_path, Evaluator({"E-0001": True, "E-0004": False}))
     world.runner.add("improvement-writer", suggestion())
