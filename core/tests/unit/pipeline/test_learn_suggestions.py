@@ -179,6 +179,19 @@ def test_review_suggestions_apply_the_chosen_action(tmp_path, action, expected):
     assert suggestions.get(world.conn, "LS-0001").reason == action
 
 
+@pytest.mark.parametrize("action", ["renew", "archive", "merge"])
+def test_review_suggestions_with_a_removed_entry_change_nothing(tmp_path, action):
+    world = make_learn_world(tmp_path)
+    _entries(world, "TL-0001", "TL-0002")
+    step.store(world.conn, world.clock, [Draft(SuggestionKind.KNOWLEDGE_REVIEW, "TL-0001,TL-0002,TL-0003",
+                                               {"ids": ["TL-0001", "TL-0002", "TL-0003"], "reason": "重复"},
+                                               ("TL-0001", "TL-0002", "TL-0003"))])
+    with pytest.raises(SuggestionError, match="TL-0003 已不存在"):
+        step.accept(learn_env(world), "LS-0001", action)
+    assert [knowledge.get(world.conn, entry_id).status.value for entry_id in ("TL-0001", "TL-0002")] == [
+        "active", "active"]
+
+
 def test_other_suggestions_only_record_the_decision(tmp_path):
     world = make_learn_world(tmp_path)
     step.store(world.conn, world.clock, [Draft(SuggestionKind.PROBE_CONFIG, "api-fuzz:x", {}, ("S-1",))])

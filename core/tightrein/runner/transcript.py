@@ -56,6 +56,8 @@ def unknown(line: str) -> EventDraft:
 def truncate(text: str | None, limit: int) -> str | None:
     if text is None or len(text) <= limit:
         return text
+    if limit <= len(TRUNCATED):  # 上限比截断标记还短时只截断，不加标记，结果不超过上限
+        return text[:limit]
     return text[:limit - len(TRUNCATED)] + TRUNCATED
 
 

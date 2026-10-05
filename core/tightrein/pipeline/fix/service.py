@@ -1081,7 +1081,7 @@ class _Apply:
             notes += [REPRO_TEST_NOTE.format(path=path) for path in sorted(self.repro_tests)]
             reviewed: list[review.Review] = []
             for mode in modes:
-                found = review.review(self.calls, self.ctx, self.plan, patch, notes, mode, risk, results, number)
+                found = review.review(self.calls, self.ctx, self.plan, patch, notes, mode, results, number)
                 reviewed.append(found)
                 self._review_document(number, found)
                 if not found.passed:

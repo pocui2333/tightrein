@@ -50,7 +50,8 @@ class Snapshot:
         """完整路径；已存在时原样返回，唯一后缀匹配时补全，否则为 None。"""
         if self.exists(file):
             return file
-        suffix = "/" + file.lstrip("./")
+        # 只去掉开头的「./」；lstrip("./") 会把 .github、.eslintrc.js 开头的点也去掉
+        suffix = "/" + re.sub(r"^(\./)+", "", file)
         found = [path for path in self.files() if path.endswith(suffix)]
         return found[0] if len(found) == 1 else None
 

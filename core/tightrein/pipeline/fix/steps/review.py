@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Any
 
 from tightrein.domain.enums import ReviewCategory, ReviewFindingKind, ReviewMode, RunnerStatus, ScoreResult
-from tightrein.domain.fix import FixRisk
 from tightrein.evaluation.scorers.code import location_problem
 from tightrein.pipeline.fix.prompts import fix_reviewer
 from tightrein.pipeline.fix.prompts.common import FixCalls
@@ -78,8 +77,8 @@ class Review:
 
 
 def review(calls: FixCalls, context: FixContext, plan: Mapping[str, Any], diff_text: str, notes: Sequence[str],
-           mode: ReviewMode, risk: FixRisk, results: str, attempt: int) -> Review:
-    result = calls.run(fix_reviewer.task(calls.prompt, context, plan, diff_text, notes, mode, attempt, risk=risk,
+           mode: ReviewMode, results: str, attempt: int) -> Review:
+    result = calls.run(fix_reviewer.task(calls.prompt, context, plan, diff_text, notes, mode, attempt,
                                          results=results))
     if result.status is not RunnerStatus.OK or result.output is None:
         return Review(mode, result.status, error=result.error_type)

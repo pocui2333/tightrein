@@ -168,6 +168,11 @@ def _review(env: LearnEnv, record: SuggestionRecord, action: str | None) -> None
     if action not in REVIEW_ACTIONS:
         raise SuggestionError(f"复核建议须用 --action 指定 {'、'.join(REVIEW_ACTIONS)} 之一")
     ids = list(record.evidence["ids"])
+    records = [knowledge.get(env.conn, entry_id) for entry_id in ids]
+    missing = [entry_id for entry_id, item in zip(ids, records, strict=True) if item is None]
+    if missing:
+        # 先查再改：建议生成后条目可能已被删除(kb sync 删掉记录)，不能改到一半才报错
+        raise SuggestionError(f"条目 {'、'.join(missing)} 已不存在，这条建议无法执行，请拒绝它")
     if action == RENEW:
         review_by = env.today() + timedelta(days=env.config.whole_threshold("learn.lessonReviewDays"))
         for entry_id in ids:
@@ -178,7 +183,6 @@ def _review(env: LearnEnv, record: SuggestionRecord, action: str | None) -> None
     else:
         if len(ids) < 2:
             raise SuggestionError("合并至少需要两个条目，这条建议只涉及一个条目，请用 renew 或 archive")
-        records = [knowledge.get(env.conn, entry_id) for entry_id in ids]
         primary = max((item for item in records if item is not None), key=lambda item: item.hits).id
         for entry_id in ids:
             if entry_id != primary:

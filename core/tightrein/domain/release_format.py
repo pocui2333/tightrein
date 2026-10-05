@@ -110,7 +110,7 @@ TEMPLATE_KEYS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("approach", ("why", "approach", "how", "implementation", "solution", "change", "方案", "实现", "做法", "改动", "変更",
                   "実装")),
     ("problem", ("problem", "summary", "description", "what", "background", "context", "motivation", "问题", "背景",
-                 "概要", "概括", "描述", "目的", "概要")),
+                 "概要", "概括", "描述", "目的")),
 )
 _TEMPLATE_HEADING = re.compile(r"^(#{1,3}) +(.+?)[ \t]*$", re.MULTILINE)
 _COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)

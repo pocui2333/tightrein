@@ -36,3 +36,13 @@ def test_only_the_given_keys_are_touched(tmp_path):
     done = locations.complete({"claim": {"statement": "exporter.py:1"}, "evidence": {"x": "exporter.py:1"}}, root,
                               keys=("evidence",))
     assert done.value == {"claim": {"statement": "exporter.py:1"}, "evidence": {"x": "storage/exporter.py:1"}}
+
+
+def test_hidden_files_and_directories_are_completed(tmp_path):
+    for path in ("web/.eslintrc.js", "svc/.github/workflows/ci.yml", "x/github/workflows/ci.yml"):
+        (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / path).write_text("a\n", encoding="utf-8")
+    found = locations.Snapshot(tmp_path)
+    assert found.resolve(".eslintrc.js") == "web/.eslintrc.js"
+    assert found.resolve(".github/workflows/ci.yml") == "svc/.github/workflows/ci.yml"
+    assert found.resolve("./.eslintrc.js") == "web/.eslintrc.js"
