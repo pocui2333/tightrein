@@ -32,6 +32,11 @@ def _execution(case: CaseResult) -> Execution:
                      artifacts=artifacts)
 
 
+def _same_file(reported: str, spec: str) -> bool:
+    """结果中的文件路径(可能是绝对路径)是否就是这个用例文件：按完整的路径段比较，other-page-1.spec.ts 不算 page-1.spec.ts。"""
+    return reported == spec or reported.endswith("/" + spec)
+
+
 class PageCheck:
     def __init__(self, runner: PageRunner) -> None:
         self.runner = runner
@@ -43,6 +48,6 @@ class PageCheck:
         reason = "；".join(outcome.notes) or "用例没有给出结果"
         found: dict[str, Execution] = {}
         for entry in entries:
-            case = next((item for item in cases if item.file.endswith(entry.file)), None)
+            case = next((item for item in cases if _same_file(item.file, entry.file)), None)
             found[entry.id] = not_run(reason) if case is None else _execution(case)
         return found

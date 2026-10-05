@@ -207,6 +207,13 @@ def test_page_checks_run_once_per_issue(layout, tmp_path, case, result, met):
     assert spec_dirs == (layout.regression_dir("0007"),) and roles == ("Admin",) and grep == "."
 
 
+def test_a_page_case_matches_its_spec_file_by_whole_name(layout, tmp_path):
+    checks = write_checks(layout, entries=(PAGE,))
+    pages = FakePages({"other-page-1.spec.ts": "unexpected"})
+    [outcome] = RegressionExecutor(layout, page=PageCheck(pages)).run_checks(checks, make_target(tmp_path))
+    assert outcome.result is RegressionResult.NOT_RUN
+
+
 def test_checks_are_dispatched_by_kind_in_the_given_order(layout, tmp_path):
     checks = write_checks(layout, entries=(STATIC, API))
     calls = []

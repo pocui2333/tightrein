@@ -109,6 +109,18 @@ def test_output_trim_preserves_failures_and_drops_passes():
     assert "test_pass1 PASSED" not in trimmed and "test_pass2 PASSED" not in trimmed
 
 
+def test_output_trim_keeps_failure_lines_that_mention_passed():
+    raw = ("tests/test_a.py::test_ok PASSED\n"
+           "FAILED tests/test_a.py::test_status - AssertionError\n"
+           "    assert status == 'PASSED'\n"
+           "E   AssertionError: expected PASSED, got FAILED\n"
+           "tests/test_a.py:12: AssertionError\n")
+    trimmed = trim(raw)
+    assert "E   AssertionError: expected PASSED, got FAILED" in trimmed
+    assert "tests/test_a.py:12: AssertionError" in trimmed
+    assert "test_ok PASSED" not in trimmed
+
+
 def test_output_trim_keeps_unrecognized_output_and_its_tail():
     assert trim("something odd\nhappened") == "something odd\nhappened"
     trimmed = trim("x" * 50 + "END", max_chars=10)

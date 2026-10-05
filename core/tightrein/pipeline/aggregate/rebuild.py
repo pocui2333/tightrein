@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 import sqlite3
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -117,12 +117,12 @@ class _Events:
         self.service = service
         self.work = work
         self.run_id = run_id
-        self.pending = list(events)
+        self.pending = deque(events)
         self.notes = notes
 
     def until(self, run: Run | None) -> None:
         while self.pending and (run is None or self.pending[0].at <= run.started_at):
-            self._apply(self.pending.pop(0))
+            self._apply(self.pending.popleft())
 
     def _apply(self, record: ProblemEventRecord) -> None:
         problem = problems.get(self.work, record.problem_id)

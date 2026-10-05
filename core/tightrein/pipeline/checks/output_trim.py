@@ -58,7 +58,7 @@ _PASS_LINE = re.compile(
     r"ok \d+|"                           # TAP pass
     r"✓|✔|"                              # unicode pass markers
     r"\s+\.\.\. (ok|passed|PASSED)|"     # verbose pass markers
-    r".*PASSED"
+    r"\S+::\S+\s+PASSED\b"              # pytest -v 的通过行；不能写成 .*PASSED，否则失败详情中含 PASSED 的行会结束失败段落
     r").*$",
     re.MULTILINE,
 )
