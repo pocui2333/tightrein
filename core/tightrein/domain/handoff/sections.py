@@ -14,7 +14,7 @@ from tightrein.domain.handoff import types
 
 BLOCK = re.compile(r"^```yaml data:([A-Za-z][\w-]*)[ \t]*\n(.*?)^```[ \t]*$", re.MULTILINE | re.DOTALL)
 FRONTMATTER = "---"
-FENCE = re.compile(r"^\s*(```|~~~)")
+FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
 
 
 def _heading(level: int) -> re.Pattern[str]:
@@ -22,13 +22,16 @@ def _heading(level: int) -> re.Pattern[str]:
 
 
 def _fenced(body: str) -> list[tuple[int, int]]:
-    """代码块(``` 或 ~~~ 围起的行)在正文中的起止位置；没有闭合的代码块延续到正文末尾。"""
-    spans, start, offset = [], None, 0
+    """代码块(``` 或 ~~~ 围起的行)在正文中的起止位置；没有闭合的代码块延续到正文末尾。
+    同 CommonMark：闭合标记须与开启标记同为反引号或同为波浪号，且不短于开启标记，代码块中引用的其他标记不算闭合。"""
+    spans, start, opener, offset = [], None, "", 0
     for line in body.splitlines(keepends=True):
-        if FENCE.match(line):
+        match = FENCE.match(line)
+        if match:
+            mark = match.group(1)
             if start is None:
-                start = offset
-            else:
+                start, opener = offset, mark
+            elif mark[0] == opener[0] and len(mark) >= len(opener):
                 spans.append((start, offset + len(line)))
                 start = None
         offset += len(line)

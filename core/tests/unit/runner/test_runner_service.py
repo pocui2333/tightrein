@@ -269,3 +269,12 @@ def test_the_output_mode_tells_agents_where_the_sandbox_is(make_world, tmp_path)
     world.runner().run(triage_task(world), clock=world.clock)
     assert (seen["TIGHTREIN_SANDBOX"], seen["TIGHTREIN_OUTPUT_DIR"]) == ("1", str(tmp_path / "sandbox"))
     assert (tmp_path / "sandbox" / "transcripts" / "claim-verifier-P-0042.jsonl").is_file()
+
+
+def test_the_retry_note_shows_the_structured_output_when_the_tool_gives_one():
+    from types import SimpleNamespace
+
+    from tightrein.runner.service import raw_output
+
+    assert raw_output(SimpleNamespace(final_text="", structured={"ok": "是"})) == '{"ok": "是"}'
+    assert raw_output(SimpleNamespace(final_text="文本", structured=None)) == "文本"

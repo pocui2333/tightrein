@@ -160,3 +160,20 @@ def test_recover_restores_locks_of_dead_processes(worktree, tmp_path, clock):
     assert not (guards_dir / "readonly-readonly.json").exists()
     assert (guards_dir / "readonly-fix-0007.json").exists()
     readonly.restore(guards_dir / "readonly-fix-0007.json")
+
+
+def test_unreadable_files_are_recorded_without_stopping_the_snapshot(tmp_path):
+    (tmp_path / "a.txt").write_text("a", encoding="utf-8")
+    locked = tmp_path / "locked.txt"
+    locked.write_text("secret", encoding="utf-8")
+    locked.chmod(0)
+    try:
+        before = file_state.snapshot_files(tmp_path, ["a.txt", "locked.txt"])
+        assert set(before) == {"a.txt", "locked.txt"}
+        locked.chmod(0o600)
+        locked.write_text("changed!", encoding="utf-8")
+        locked.chmod(0)
+        after = file_state.snapshot_files(tmp_path, ["a.txt", "locked.txt"], before)
+        assert file_state.compare(before, after).paths == ("locked.txt",)
+    finally:
+        locked.chmod(0o600)

@@ -76,3 +76,4 @@ def test_unknown_lines_are_kept():
     draft = transcript.unknown('{"type": "future_event"}')
     assert (draft.type, draft.actor, draft.text) == ("message", "system", '{"type": "future_event"}')
     assert transcript.truncate(None, 16384) is None
+    assert len(transcript.truncate("x" * 1000, 5)) <= 5

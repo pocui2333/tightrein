@@ -14,7 +14,6 @@ from typing import Any
 
 from tightrein.domain.enums import ReviewMode
 from tightrein.domain.issue_sections import ACCEPTANCE, CAUSE, PROBLEM
-from tightrein.domain.fix import FixRisk
 from tightrein.evaluation import rubric
 from tightrein.pipeline.fix.prompts.common import STAGE, FixPrompt, json_block
 from tightrein.pipeline.fix.steps.context import FixContext
@@ -31,7 +30,7 @@ SPECIAL_CASE = ("## 特判检查\n\n逐处核对新增的条件分支与字面�
 
 
 def task(prompt: FixPrompt, context: FixContext, plan: Mapping[str, Any], diff_text: str, checks: Sequence[str],
-         mode: ReviewMode, attempt: int, *, risk: FixRisk | None = None, results: str = "") -> RunnerTask:
+         mode: ReviewMode, attempt: int, *, results: str = "") -> RunnerTask:
     if mode is ReviewMode.DEEP:
         # 深度评审盲审：只看验收标准、最终 diff、测试与检查的真实输出
         acceptance = "\n".join(f"- {item}" for item in context.acceptance) or "- 无"

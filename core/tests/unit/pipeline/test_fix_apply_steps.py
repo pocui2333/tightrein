@@ -5,14 +5,12 @@ from fix_world import SERVICE_PATH, make_fix_world
 
 from tightrein.domain.enums import (
     Access,
-    FixRiskLevel,
     RegressionKind,
     RegressionResult,
     ReviewCategory,
     ReviewMode,
     RunnerStatus,
 )
-from tightrein.domain.fix import FixRisk
 from tightrein.guards.diff_rules import ChangedFile
 from tightrein.guards.policy import GuardSettings
 from tightrein.pipeline.fix.prompts.common import FixCalls, FixPrompt
@@ -137,14 +135,12 @@ def test_reviews_run_in_the_given_mode_with_the_results_and_unknown_items_block(
     unknown = {"mode": "deep", "blockers": [], "unverified": [],
                "items": [{"itemId": "fix.acceptance", "result": "unknown", "reason": "看不到数据"}]}
     world.runner.add("fix-reviewer", unknown)
-    high = FixRisk(FixRiskLevel.HIGH)
-    result = review.review(calls, ctx, {"summary": "x"}, "+x", [], ReviewMode.DEEP, high, "复现测试：passed", 1)
+    result = review.review(calls, ctx, {"summary": "x"}, "+x", [], ReviewMode.DEEP, "复现测试：passed", 1)
     assert (result.mode, result.passed, world.runner.roles()) == (ReviewMode.DEEP, False, ["fix-reviewer-deep"])
     prompt = world.runner.tasks[0].instructions.prompt
     assert "## 实际结果(第 7 步)\n\n复现测试：passed" in prompt and "## 特判检查" in prompt
     world.runner.outputs["fix-reviewer"] = [{"mode": "light", "blockers": [blocker()], "items": [], "unverified": []}]
-    result = review.review(calls, ctx, {"summary": "x"}, "+x", [], ReviewMode.LIGHT, FixRisk(FixRiskLevel.NORMAL), "",
-                           2)
+    result = review.review(calls, ctx, {"summary": "x"}, "+x", [], ReviewMode.LIGHT, "", 2)
     assert result.mode is ReviewMode.LIGHT and [item.category for item in result.findings()] == [ReviewCategory.LOCAL]
 
 

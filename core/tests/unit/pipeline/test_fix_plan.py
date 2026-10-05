@@ -229,12 +229,14 @@ def test_prompts_carry_the_rules_and_the_deep_review_hides_the_executor(tmp_path
     assert "- 改动满足 Issue 的验收标准，根因被修掉，没有破坏已有调用方" in planner
     assert "[fix.acceptance]" not in planner and "评分表" not in planner
     assert "hypothesis 必填" in planner and "13. **根因假说**" in planner
-    judged = risk_step.plan_risk(ctx, scouting(), world.config, set())
-    review = fix_reviewer.task(calls.prompt, ctx, fix_plan(ctx), "+x", [], ReviewMode.DEEP, 1, risk=judged)
+    review = fix_reviewer.task(calls.prompt, ctx, fix_plan(ctx), "+x", [], ReviewMode.DEEP, 1)
     assert (review.role, review.capability, review.access.value) == ("fix-reviewer-deep", "strong", "read-only")
-    assert "命中的风险类别与依据" in review.instructions.prompt and "deviations" not in review.instructions.prompt
+    # 深度评审盲审：看不到计划(含根因假说)与 Issue 正文，只有验收标准与 diff
+    deep = review.instructions.prompt
+    assert "(盲审)" in deep and "## 已确认的修复计划" not in deep and "Get 只按编号查询" not in deep
+    assert ctx.issue.title not in deep and "deviations" not in deep
     light = fix_reviewer.task(calls.prompt, ctx, fix_plan(ctx), "+x", [], ReviewMode.LIGHT, 1)
-    assert light.capability == "standard" and "## 命中的风险类别与依据" not in light.instructions.prompt
+    assert light.capability == "standard" and "## 已确认的修复计划" in light.instructions.prompt
 
 
 VIEW_PATH = "web/src/views/OrderList.vue"

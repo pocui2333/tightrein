@@ -28,7 +28,6 @@ PROXY_NAMES = ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY")
 NO_PROXY_NAMES = ("no_proxy", "NO_PROXY")
 LOOPBACK = ("localhost", "127.0.0.1", "::1")
 PROXY_SUFFIX = "_proxy"
-NO_PROXY_SCHEME = "no"
 ROUTE_PROXY_NAMES = ("https_proxy", "HTTPS_PROXY", "http_proxy", "HTTP_PROXY", "all_proxy", "ALL_PROXY")
 DIRECT = "直连"
 PROXIED = "经代理"

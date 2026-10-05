@@ -79,6 +79,11 @@ FINALIZE_STDOUT = "stdout.finalize.jsonl"
 ENDINGS = {ENDED_TURN_LIMIT: TURN_LIMIT, ENDED_BUDGET_LIMIT: COST_LIMIT}
 
 
+def raw_output(parsed: ParsedRun) -> str | None:
+    """重试说明中的原输出：带 --json-schema 的工具把结果放在 structured，final_text 常为空。"""
+    return parsed.final_text if parsed.structured is None else json.dumps(parsed.structured, ensure_ascii=False)
+
+
 @dataclass
 class Call:
     """一次调用的结果：status 不为空时本次尝试已经确定了结果，不再校验输出。"""
@@ -301,8 +306,7 @@ class Runner:
                 return self._result(task, RunnerStatus.OK, attempts, started, output_value=checked.value,
                                     report=context.report_path)
             parsed = call.parsed
-            raw = parsed.final_text if parsed.structured is None else json.dumps(parsed.structured, ensure_ascii=False)
-            note = output.retry_note(task.output_schema or "", raw, checked.errors,
+            note = output.retry_note(task.output_schema or "", raw_output(parsed), checked.errors,
                                      int(self.config.get("runtime.runner.retryOutputChars")))
             transcript.write(EventDraft(ERROR, SYSTEM, text=note), tool=attempts.tool, model=attempts.model,
                              session_id=attempts.session_id)
@@ -501,7 +505,7 @@ class Runner:
                                 report=context.report_path)
         checked = output.check_output(task.output_schema or "", parsed.structured, parsed.final_text)
         if not checked.ok:
-            note = output.retry_note(task.output_schema or "", parsed.final_text, checked.errors,
+            note = output.retry_note(task.output_schema or "", raw_output(parsed), checked.errors,
                                      int(self.config.get("runtime.runner.retryOutputChars")))
             transcript.write(EventDraft(ERROR, SYSTEM, text=note), tool=adapter.name, model=attempts.model,
                              session_id=located.session_id)

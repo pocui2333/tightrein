@@ -106,14 +106,25 @@ class RecordedQuery:
                 "ids": self.ids}
 
 
+def _log_day(text: str) -> date | None:
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return None
+
+
 def queries(layout: WorkspaceLayout, since: date) -> list[RecordedQuery]:
-    """since 当天及之后的事件日志中全部 kb search 事件，按时间排序。"""
-    name = layout.events_log(since).name
-    prefix, suffix = name.split(since.isoformat())
+    """since 当天及之后的事件日志中全部 kb search 事件，按时间排序。--output 模式只有输出目录中的一份事件日志；
+    日志目录中文件名不是「events-<日期>.jsonl」的文件不读。"""
+    log = layout.events_log(since)
+    if layout.output_dir is not None:
+        paths = [log] if log.is_file() else []
+    else:
+        prefix, suffix = log.name.split(since.isoformat())
+        paths = [path for path in sorted(layout.logs_dir().glob(f"{prefix}*{suffix}"))
+                 if (day := _log_day(path.name[len(prefix):-len(suffix)])) is not None and day >= since]
     found = []
-    for path in sorted(layout.logs_dir().glob(f"{prefix}*{suffix}")):
-        if date.fromisoformat(path.name[len(prefix):-len(suffix)]) < since:
-            continue
+    for path in paths:
         for event in events.read(path):
             attributes = event.attributes
             if event.agent == KB_AGENT and event.operation == "execute_tool" and attributes.get("operation") == SEARCH:

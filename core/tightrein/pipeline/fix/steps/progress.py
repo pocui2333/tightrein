@@ -61,7 +61,6 @@ class Tracker:
 
     def mark(self, step: int, state: str, text: str, *, blocker: str | None = None) -> None:
         data = self._load()
-        data["steps"].setdefault(str(step), {"state": PENDING, "note": ""})
         data["steps"][str(step)] = {"state": state, "note": text}
         data["blockers"] = [blocker] if blocker else []
         self._save(data, f"第 {step} 步 {STEPS[step]}：{text}")

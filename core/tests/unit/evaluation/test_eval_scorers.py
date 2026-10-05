@@ -101,6 +101,7 @@ OUTPUTS = {"verdict": "confirmed", "labels": ["sample-label"], "reason": "缺少
     ("equals", "verdict", "confirmed", True), ("equals", "verdict", "refuted", False),
     ("in", "verdict", ["confirmed", "conditional"], True), ("in", "verdict", ["refuted"], False),
     ("contains", "reason", "公司", True), ("contains", "labels", "discuss-with-author", False),
+    ("contains", "reason", 5, False),
     ("matches", "evidence.facts[*].location", r":3$", True), ("matches", "evidence.facts[*].location", r":9$", False),
     ("exists", "evidence.facts[1].observation", None, True), ("exists", "evidence.trigger", None, False),
     ("absent", "evidence.trigger", None, True), ("absent", "labels[0]", None, False),

@@ -2,6 +2,7 @@
 
 快照记录每个文件的大小、修改时间与内容的 sha256；符号链接记录链接目标文本的哈希，不跟随。运行后再取快照时，
 大小与修改时间都没变的文件沿用运行前的哈希，不再读取内容。键为相对快照根目录的 `/` 分隔路径。
+读不了内容的文件(没有读权限)以大小与修改时间代替哈希，照常参与比较，不中断快照；取状态与读取之间被删掉的不计入。
 """
 
 from __future__ import annotations
@@ -49,7 +50,13 @@ def _state(path: Path, previous: FileState | None) -> FileState | None:
         return None
     if previous is not None and (previous.size, previous.mtime_ns) == (info.st_size, info.st_mtime_ns):
         return previous
-    return FileState(info.st_size, info.st_mtime_ns, _digest(path, info))
+    try:
+        digest = _digest(path, info)
+    except FileNotFoundError:
+        return None
+    except OSError:
+        digest = f"unreadable:{info.st_size}:{info.st_mtime_ns}"
+    return FileState(info.st_size, info.st_mtime_ns, digest)
 
 
 def snapshot_files(root: Path, paths: Iterable[str], previous: Mapping[str, FileState] | None = None) -> Snapshot:

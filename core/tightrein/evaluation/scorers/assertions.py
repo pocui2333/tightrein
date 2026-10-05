@@ -48,7 +48,9 @@ def _satisfies(op: str, found: Any, expected: Any) -> bool:
     if op == "in":
         return isinstance(expected, list) and found in expected
     if op == "contains":
-        return isinstance(found, (str, list)) and expected in found
+        if isinstance(found, str):
+            return isinstance(expected, str) and expected in found  # 非字符串在字符串中查找会抛 TypeError
+        return isinstance(found, list) and expected in found
     if op == "matches":
         return isinstance(found, str) and re.search(str(expected), found) is not None
     raise ValueError(f"不认识的断言运算：{op}")

@@ -389,7 +389,7 @@ A 通道轻量评审，实际改动为微档且检查都通过、`fix.review.ski
 
 | 字段 | 轻量评审 | 深度评审 |
 |---|---|---|
-| `instructions` | `roles/fix-reviewer.md` + 评审项(修复条目表带编号与判定方式，12.2) + Issue 的结论、根因位置与验收标准 + 已确认的计划 + `git diff <baseCommit>` + 第 7 步的结果文档与 `suspected-hardcode` 命中 | 同左，另加命中的风险类别与依据、预取的同类缺陷模式与已接受的取舍条目 |
+| `instructions` | `roles/fix-reviewer.md` + 评审项(修复条目表带编号与判定方式，12.2) + Issue 的结论、根因位置与验收标准 + 已确认的计划 + `git diff <baseCommit>` + 第 7 步的结果文档与 `suspected-hardcode` 命中 | 盲审：`roles/fix-reviewer.md` + 评审项 + Issue 的验收标准 + 最终 diff + 第 7 步的实际结果与特判检查；不给 Issue 正文、计划与写代码模型的说明 |
 | 不包含 | `fix-executor` 的自述与会话记录 | 同左 |
 | `workdir`、`access`、`allowedCommands` | 修复 worktree，`read-only`，只读 git 命令与文本搜索 | 同左 |
 | 工具与模型 | `stages.fix.review.light`，默认标准档 | `stages.fix.review.deep`，默认强档，须与 `fix-executor` 所用的工具或模型不同(配置校验时检查) |

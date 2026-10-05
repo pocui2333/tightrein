@@ -137,3 +137,14 @@ def test_check_runs_all_six(tmp_path):
     world = make_learn_world(tmp_path)
     assert [item.check for item in health.check(context(world))] == [
         "missed-runs", "abnormal-exit", "idle-probe", "deploy-stall", "account-unavailable", "data-dir-size"]
+
+
+def test_schedule_commands_that_cannot_be_read_are_skipped_not_raised():
+    from tightrein.domain.enums import Probe, RunStage
+    from tightrein.pipeline.learn.steps.health import _target
+
+    assert _target("collect --probe static") == (RunStage.COLLECT, Probe.STATIC)
+    assert _target("collect --probe=static") == (RunStage.COLLECT, Probe.STATIC)
+    assert _target("collect --probe staic") is None
+    assert _target('collect "x') is None
+    assert _target("collect") == (RunStage.COLLECT, None)

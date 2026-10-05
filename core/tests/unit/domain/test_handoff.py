@@ -98,3 +98,10 @@ def test_append_line_and_language_detection():
     assert sections.append_line("## 问题\n", "关联", "- x").endswith("## 关联\n\n- x\n")
     assert sections.language_of("## Problem\n", {"problem": types.HEADINGS["problem"]}, "zh") == "en"
     assert sections.language_of("## 其他\n", {"problem": types.HEADINGS["problem"]}, "zh") == "zh"
+
+
+def test_a_fence_closes_only_with_the_same_kind_and_at_least_the_same_length():
+    tilde_inside = "## A\n```\n~~~\n## Fake\n```\n## B\nx\n"
+    assert list(sections.split(tilde_inside)) == ["A", "B"]
+    longer_outside = "## A\n````\n```\n## Fake\n```\n````\n## B\nx\n"
+    assert list(sections.split(longer_outside)) == ["A", "B"]

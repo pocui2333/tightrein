@@ -73,11 +73,19 @@ def _ok(check: str) -> list[HealthItem]:
 
 
 def _target(command: str) -> tuple[RunStage, Probe | None] | None:
-    """定时任务命令对应的环节与探针；第一个词不是环节时返回 None。"""
-    words = shlex.split(command)
+    """定时任务命令对应的环节与探针；第一个词不是环节、命令拆不开(引号没有闭合)或探针名不认识时返回 None，
+    不让一条写错的定时任务中断整个健康检查。探针写作 `--probe <名称>` 或 `--probe=<名称>`。"""
+    try:
+        words = shlex.split(command)
+    except ValueError:
+        return None
     if not words or words[0] not in {stage.value for stage in RunStage}:
         return None
     probe = words[words.index(PROBE_OPTION) + 1] if PROBE_OPTION in words[:-1] else None
+    if probe is None:
+        probe = next((word.split("=", 1)[1] for word in words if word.startswith(f"{PROBE_OPTION}=")), None)
+    if probe is not None and probe not in {item.value for item in Probe}:
+        return None
     return RunStage(words[0]), Probe(probe) if probe is not None else None
 
 

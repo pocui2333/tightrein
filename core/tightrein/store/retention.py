@@ -30,7 +30,6 @@ from tightrein.store.files.layout import WorkspaceLayout, rotated_log
 
 _RUN_TIME = re.compile(r"^R-(\d{8})-(\d{6})-")
 _EVENTS_LOG = re.compile(r"^events-(\d{4}-\d{2}-\d{2})\.jsonl$")
-_RUN_SUBDIRECTORIES = ("raw", "transcripts")
 
 
 def _days(key: str) -> int:

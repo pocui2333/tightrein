@@ -92,3 +92,14 @@ def test_queries_collect_search_events_since_a_day(world):
     assert found == [{"timestamp": "2026-10-06T03:00:00Z", "runId": "R-20261005-030000-triage", "query": "软删除",
                       "filters": {"types": [], "tags": [], "status": "any", "limit": 10}, "ids": ["TO-0001"]}]
     assert [item.query for item in commands.queries(world.layout, date(2026, 10, 1))] == ["公司过滤", "软删除"]
+
+
+def test_queries_read_the_single_log_in_output_mode_and_skip_odd_log_names(world, tmp_path):
+    from tightrein.store.files.layout import WorkspaceLayout
+
+    seed(world)
+    commands.search(opened(world), "公司过滤")
+    (world.layout.logs_dir() / "events-old.jsonl").write_text("", encoding="utf-8")
+    assert [item.query for item in commands.queries(world.layout, date(2026, 10, 1))] == ["公司过滤"]
+    output = WorkspaceLayout(world.layout.root, tmp_path / "out")
+    assert commands.queries(output, date(2026, 10, 1)) == []
