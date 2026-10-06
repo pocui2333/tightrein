@@ -164,7 +164,7 @@ worktree 路径为 `workspaces/<项目>/worktrees/fix-<Issue 编号>/`。worktre
 修复需要用户确认计划，以交互方式运行：
 
 1. `fix start` 检查前置条件与 `hold`，把 Issue 改为进行中、`phase` 为 `fix`(从合并前验证、提交或待合并重新进入时同样如此，「历史」记录原因)。
-2. 调用 `runner.run_interactive(task, first_input=...)`，在修复 worktree 中启动 `stages.fix.session` 指定工具的交互会话。任务字段：`instructions` 为 `skills/fix/SKILL.md` 加首条输入(Issue 文件路径、发现报告路径、上一次验证报告路径与评审意见路径)；`access` 为 `read-only`；`allowedCommands` 只含 `tightrein fix *`、`tightrein show` 与只读 git 命令；`interactive` 为 `true`。
+2. 调用 `runner.run_interactive(task, first_input=...)`，在修复 worktree 中启动调用点 `fix.session` 路由到的工具的交互会话。任务字段：`instructions` 为 `skills/fix/SKILL.md` 加首条输入(Issue 文件路径、发现报告路径、上一次验证报告路径与评审意见路径)；`access` 为 `read-only`；`allowedCommands` 只含 `tightrein fix *`、`tightrein show` 与只读 git 命令；`interactive` 为 `true`。
 3. 带 `--here` 时不执行第 2 步：第 1 步完成后返回，由用户当前所在的 agent 会话加载 `fix` skill 继续。
 4. 会话中由 skill 依次调用 `fix plan`、`fix confirm`(计划需要用户确认时，用户在会话中表态后由 skill 执行)、`fix apply`、`fix done`。每个子命令都是独立的核心调用，各角色在子命令内部经执行器以无人值守方式运行，结果写入 store；会话本身不产出任何结果。
 5. **续接**：Issue 处于修复阶段(进行中，`phase` 为 `fix`)时再次 `fix start`，由 `service.resume_point()` 读取 `data/fixes/<Issue 编号>/` 下已有的文件判断停在哪一步(`ResumePoint`：没有计划或通道已升级而计划仍是旧通道的为 PLAN，其后依次为 CONFIRM、APPLY、DONE)；执行器支持续接时续接原会话，否则新开会话并把已有的计划与当前 diff 作为首条输入。
@@ -240,7 +240,7 @@ Issue 转为待决定(`hold` 为「超出单个任务的上限」)。结果写 `
 | `access` | `read-only` |
 | `allowedCommands` | 只读 git 命令与文本搜索 |
 | `limits` | `stages.fix.roles.fix-scout.limits.<复杂度>` |
-| 模型档 | `stages.fix.roles.fix-scout.capability`，默认轻量档 |
+| 模型 | 调用点 `fix.scout` 的路由；Issue 的根因位置有前端文件时带 `frontend` 条件 |
 | `outputSchema` | `runner/roles/fix-scout.schema.json`：`analysis`、`existing`、`reusable`、`dataStructure`、`linkage`(每项带位置)、`problems`、`designIssue`、`affectedEndpoints`、`affectedPages`、`incidental` |
 
 代码检查：每处位置在 worktree 中真实存在。结果渲染为 `scout.md`，Issue「历史」写引用。`designIssue` 非空时不再出计划，按 4.11 的「设计问题」处理(用户已 `--accept-design` 时照常继续)。
@@ -265,7 +265,7 @@ Issue 转为待决定(`hold` 为「超出单个任务的上限」)。结果写 `
 |---|---|
 | `instructions` | `roles/fix-planner.md` + `fix-rules.md` + `plan-template.md` + Issue 各节 + 勘察结论(如有) + 风险判定结果 + 受保护文件清单(`protectedPaths`) + 单个 PR 上限 + 上一次验证报告或评审意见(含实施中发现的计划缺口) + 用户的决定与补充(4.2)；C 通道另要求出整体方案并拆分 |
 | `workdir`、`access` | 修复 worktree，`read-only` |
-| 模型档 | `stages.fix.roles.fix-planner.capability`，默认强档 |
+| 模型 | 调用点 `fix.planner` 的路由；风险判定为高风险时带 `high-risk` 条件，C 通道带 `large` 条件 |
 | `outputSchema` | `handoff/outputs/fix-plan.schema.json` |
 
 `fix-plan` 的主要字段：`analysis`、`risk`(4.5 的第一次判定)、`lane` 与 `tier`(由核心写入)、`summary`、`hypothesis`(根因假说：`cause` 一条因果链，`evidence` 位置与读到的代码事实，`edits` 修改前代码的位置与在那里改什么；A 通道的程序计划取 Issue 的根因小节与根因位置)、`steps`(文件、改动内容、验证方式)、`files`(计划改动的全部文件，新建文件标明理由)、`estimate`(文件数、行数，都不含测试文件)、`split`(拆分出的后续子任务，见下)、`protectedTouches`(每个受保护文件的改动内容与理由)、`flags`(设计问题、数据结构或存量数据、公共实现或接口契约)、`migration`(将新增的迁移条目、能否撤销、撤销方式)、`newDependencies`、`deletions`、`acceptanceMapping`(Issue 每条验收标准由哪一步满足)、`userVisibleChange`、`affectedEndpoints`、`affectedPages`、`notDoing`、`userDecisions`。
@@ -294,7 +294,7 @@ Issue 转为待决定(`hold` 为「超出单个任务的上限」)。结果写 `
 |---|---|
 | `instructions` | `roles/frontend-designer.md` + Issue 各节 + 已通过检查的计划 + 计划中的前端文件 + 预取条目 |
 | `workdir`、`access` | 修复 worktree，`read-only` |
-| 模型档与工具 | `roleCapabilities.frontend-designer`(默认强档)；工具与模型按角色设置 `stages.fix.roles.frontend-designer.{tool, model, capability}`，例如交给 agy |
+| 模型 | 调用点 `fix.frontend-designer` 的路由，例如路由到 agy 的别名 |
 | `outputSchema` | `runner/roles/frontend-designer.schema.json`：`pages`(页面与组件结构)、`layout`(布局与信息层级)、`interactions`、`states`(加载、空、出错)、`styling`(取值与来源，优先既有设计变量与组件)、`mobile`、`copy`(文案与多语言键名)、`planConflicts`(设计上与计划冲突之处) |
 
 设计说明写进计划的 `frontendDesign`(随 `plan.json` 由用户确认，`plan.md` 的「前端设计」一节)，并作为交接文档的 `frontendDesign`(`files`、`design`、`error`)；`fix-executor` 的任务附「按设计实现，偏离时写进 `deviations` 并说明理由」。执行器没有返回结果时不重试、不阻断：计划照常给出，确认说明与交接文档写明原因，`fix-executor` 只按计划实施。重出计划时随新计划重新判定与运行。
@@ -325,7 +325,7 @@ Issue 转为待决定(`hold` 为「超出单个任务的上限」)。结果写 `
 |---|---|
 | `instructions` | 角色说明 + `fix-rules.md` + Issue(A)或计划与勘察给出的复现线索(B) + 测试类的允许命令前缀与 `testPaths` |
 | `workdir`、`access` | 修复 worktree，`workspace-write`；任务只允许改动测试文件(`RunnerTask.tests_only`，第二层边界检查拒绝其他改动) |
-| 模型档 | `roleCapabilities.fix-executor`、`roleCapabilities.repro-writer`，默认强档 |
+| 模型 | 调用点 `fix.executor`(第一轮与写代码同一会话，条件相同)、`fix.repro-writer` 的路由 |
 | `outputSchema` | `runner/roles/repro-test.schema.json`：`analysis`、`status`、`file`、`command`、`location`、`covers`、`reason` |
 
 程序检查：改动只有 `testPaths` 中的文件且包含输出的 `file`；`command` 以 shlex 拆分后开头须为某条 `checks.commands` 的允许前缀(完整命令、去掉末尾含 `/` 的路径参数后的部分、`affected.command` 中 `{tests}` 之前的部分)，其余参数中有一个是该文件或以 `<文件>::` 开头(`pipeline/checks/project_checks.repro_test_cwd`)。然后在基准版本(只加了这个测试)上运行，退出码按 `regressions.testFailureExitCodes` 判定，无法执行的不算；失败时登记了 `expectedSignature` 的须在输出中出现该签名，没有登记的按 `regressions.testFailurePatterns.testBroken` 排除测试本身的问题，重试后仍是环境问题的停下报告：类型在 `fix.repro.passOnBaseTypes`(缺省 `refactor`，表征测试)中的须通过，其余须失败。
@@ -346,7 +346,7 @@ Issue 转为待决定(`hold` 为「超出单个任务的上限」)。结果写 `
 | `access` | `workspace-write` |
 | `allowedCommands` | 按 `checks` 配置的项目检查命令、只读 git 命令、文本搜索 |
 | `limits` | `stages.fix.roles.fix-executor.limits.<复杂度>`，预算按 4.2 |
-| 模型档 | `stages.fix.roles.fix-executor.capability`，默认强档 |
+| 模型 | 调用点 `fix.executor` 的路由；已确认计划的风险判定为高风险时带 `high-risk` 条件 |
 | 会话 | 续接第 5 步(或上一轮)的同一会话：`Runner.run(..., resume_session=<会话编号>)`，第一次调用就按会话续接；复现测试由 `repro-writer` 独立写、或工具没有返回会话编号时新开会话并附上第 5 步的测试；回放模式忽略 |
 | `interactive` | `false`：在 `fix apply` 内以无人值守方式运行；`fix apply` 由用户、修复会话或(`gates.fix-session` 为 `auto` 时)编排层的无人值守修复触发 |
 | `outputSchema` | `runner/roles/fix-executor.schema.json`：`analysis`、`status`(完成、遇大问题中止)、`changedFiles`、`verification`(命令与实际输出)、`deviations`、`bigIssue`、`incidental`、`outOfScope` |
@@ -392,7 +392,7 @@ A 通道轻量评审，实际改动为微档且检查都通过、`fix.review.ski
 | `instructions` | `roles/fix-reviewer.md` + 评审项(修复条目表带编号与判定方式，12.2) + Issue 的结论、根因位置与验收标准 + 已确认的计划 + `git diff <baseCommit>` + 第 7 步的结果文档与 `suspected-hardcode` 命中 | 盲审：`roles/fix-reviewer.md` + 评审项 + Issue 的验收标准 + 最终 diff + 第 7 步的实际结果与特判检查；不给 Issue 正文、计划与写代码模型的说明 |
 | 不包含 | `fix-executor` 的自述与会话记录 | 同左 |
 | `workdir`、`access`、`allowedCommands` | 修复 worktree，`read-only`，只读 git 命令与文本搜索 | 同左 |
-| 工具与模型 | `stages.fix.review.light`，默认标准档 | `stages.fix.review.deep`，默认强档，须与 `fix-executor` 所用的工具或模型不同(配置校验时检查) |
+| 工具与模型 | 调用点 `fix.review.light` 的路由，上限 `stages.fix.review.light` | 调用点 `fix.review.deep` 的路由，上限 `stages.fix.review.deep`，须与 `fix.executor` 解析出的工具或模型不同(配置校验时检查) |
 | `limits` | `stages.fix.review.light.limits` | `stages.fix.review.deep.limits` |
 | `outputSchema` | `handoff/outputs/fix-review.schema.json`：`analysis`、`mode`(`ReviewMode`：`light`、`deep`)、`items`(评分项、结果、理由)、`blockers`(类别、位置、触发条件、问题、性质、根源判断)、`unverified` | 同左 |
 
@@ -687,7 +687,7 @@ PR 创建之后才有 CI 的结果，因此由发布跟踪读取(`ReleaseService
 ### 13.2 截图查看
 
 1. 收集第 4 步的截图与对应的用例、页面说明。
-2. 所配置工具支持读取图片时，调用 `fix-reviewer` 的截图评审：`instructions` 为 `roles/fix-reviewer.md` 的截图评审部分加页面说明；`workdir` 为报告目录；`access` 为 `read-only`；`readPaths` 为截图文件；工具与模型取 `stages.verify.screenshotReview`，默认标准档；`outputSchema` 为 `handoff/outputs/fix-review.schema.json`(`mode` 为 `screenshot`)。
+2. 所配置工具支持读取图片时，调用 `fix-reviewer` 的截图评审：`instructions` 为 `roles/fix-reviewer.md` 的截图评审部分加页面说明；`workdir` 为报告目录；`access` 为 `read-only`；`readPaths` 为截图文件；工具与模型按调用点 `verify.screenshot-review` 的路由，上限取 `stages.verify.screenshotReview`；`outputSchema` 为 `handoff/outputs/fix-review.schema.json`(`mode` 为 `screenshot`)。
 3. 结果：每张截图为「无问题」「有问题」「无法判断」。「有问题」计为失败项；「无法判断」或工具不支持读取图片时，整体结论为「等待用户」，用户用 `verify screenshots <编号> --ok` 或 `--issue <说明>` 给出结论，`--issue` 计为失败项。
 
 ## 14. verify：部署后确认

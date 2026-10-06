@@ -43,8 +43,8 @@ def test_review_uses_the_role_file_changed_files_findings_and_prefetched_knowled
     task = runner.tasks[0]
     assert (task.role, task.subject.type, task.subject_id, task.stage, task.workdir) == (
         "static-review", "run", RUN_ID, Stage.COLLECT, world.worktree)
-    assert (task.capability, task.limits, task.allowed_commands) == (
-        "strong", Limits(max_turns=60, max_duration_ms=1200000), READ_ONLY_COMMANDS)
+    assert (task.route, task.limits, task.allowed_commands) == (
+        "collect.static-review", Limits(max_turns=60, max_duration_ms=1200000), READ_ONLY_COMMANDS)
     prompt = task.instructions.prompt
     assert prompt.startswith("# static-review：静态巡检的增量审查")
     assert "- src/Services/OrderService.src" in prompt and '"rule": "no-filter"' in prompt
@@ -68,8 +68,8 @@ def test_baseline_review_lists_the_batch_files_and_uses_the_strong_tier(tmp_path
     assert result.claims == (Claim.from_dict(baseline_claim),) and result.claims[0].severity == "high"
     assert (result.cost_usd, result.exhausted) == (0.01, False)
     task = runner.tasks[0]
-    assert (task.role, task.capability, task.output_schema) == (
-        "baseline-review-2", "strong", "runner/roles/static-review.schema.json")
+    assert (task.role, task.route, task.output_schema) == (
+        "baseline-review-2", "collect.baseline-review", "runner/roles/static-review.schema.json")
     assert task.limits == Limits(max_turns=80, max_duration_ms=1800000)
     prompt = task.instructions.prompt
     assert prompt.startswith("# baseline-review：静态巡检的基线审查")
@@ -116,7 +116,7 @@ def test_verify_gives_only_the_claim_and_numbers_each_call(tmp_path):
     assert (second.status, second.output, second.detail) == (RunnerStatus.LIMIT_REACHED, None, "fake-error")
     assert [task.role for task in runner.tasks] == ["claim-verifier-1", "claim-verifier-2"]
     task = runner.tasks[0]
-    assert (task.capability, task.output_schema) == ("strong", "runner/roles/claim-verifier.schema.json")
+    assert (task.route, task.output_schema) == ("collect.claim-verifier", "runner/roles/claim-verifier.schema.json")
     assert task.instructions.prompt.startswith("# claim-verifier：核实一条主张在代码里是否成立")
     assert "# 取证底线" in task.instructions.prompt and "查询没有按公司过滤" in task.instructions.prompt
 

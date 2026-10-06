@@ -235,7 +235,7 @@ class App:
         self.root = workspace.resolve()
         self.layout = WorkspaceLayout(self.root, options.output_dir)
         self.config: ProjectConfig = project.load(self.layout.project_config(), self.tool.root,
-                                                   agents=self.user.agents)
+                                                   routing=self.user.routing)
         self.clock: Clock = FixedClock(parse_now(options.now, self.zone)) if options.now else SystemClock()
         self.redactor = Redactor()
         self.redactor.register(network.proxy_password(self.user) or "")
@@ -395,7 +395,7 @@ class App:
     def onboarding(self) -> Onboarding:
         """接入流程：试连接走 ext run 的同一路径，检查命令在切到主分支的只读 worktree 上全量运行。"""
         def load() -> ProjectConfig:
-            return project.load(self.layout.project_config(), self.tool.root, agents=self.user.agents)
+            return project.load(self.layout.project_config(), self.tool.root, routing=self.user.routing)
 
         def try_point(config: ProjectConfig, point: ExtensionPoint) -> Any:
             head = self.git.head(config.repo).commit

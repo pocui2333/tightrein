@@ -26,7 +26,6 @@ STAGE = Stage.TRIAGE
 SKILL = "triage"
 EVIDENCE_STANDARD = "references/evidence-standard.md"
 SEVERITY = "references/severity.md"
-REFUTER = "refuter"
 
 
 @dataclass(frozen=True)
@@ -40,9 +39,7 @@ class PromptContext:
         return reference(self.tool, SKILL, path)
 
     def role_setting(self, group: str, name: str, complexity: Complexity | None = None) -> RoleSetting:
-        """证伪复核的 stages.triage.refuter 叠加在 refuter 角色的设置之上。"""
-        overlay = self.config.stage_setting(STAGE).get(REFUTER) if name == REFUTER else None
-        return setting(self.config, STAGE, group, name, complexity, overlay=overlay)
+        return setting(self.config, STAGE, group, name, complexity)
 
 
 @dataclass(frozen=True)

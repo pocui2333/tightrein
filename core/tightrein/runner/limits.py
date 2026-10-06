@@ -5,7 +5,7 @@
 - 总预算(budget 段)：全部环节合计的每次运行、每天、每周上限。执行器启动任务前检查每天与每周；编排在每一步之前检查
   三层(每次运行的已用为当前总额减去运行开始时的总额)。每周从周一开始；perWeekUsd 为空时按 perWeekPercent ×
   subscriptionWeekUsd 换算。
-- 费用估算：工具不返回费用时，按 capabilities 中该模型的每百万 token 价格计算，costEstimated 为真；没有价格时费用为空。
+- 费用估算：工具不返回费用时，按 models 中该模型的每百万 token 价格计算，costEstimated 为真；没有价格时费用为空。
 - 工具不支持原生轮数或费用上限时，核心逐行读取事件：tool-call 计数超过 maxTurns、累计费用超过 maxCostUsd 时终止。
 """
 
@@ -16,7 +16,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import timedelta, tzinfo
 
-from tightrein.config.capabilities import Capabilities
+from tightrein.config.routes import Routes
 from tightrein.config.project import ProjectConfig
 from tightrein.domain.clock import Clock, local_date
 from tightrein.domain.enums import Stage
@@ -37,11 +37,11 @@ def budget_per_day(config: ProjectConfig, stage: Stage) -> float | None:
     return None if value is None else float(value)
 
 
-def with_cost(usage: Usage, capabilities: Capabilities, tool: str, model: str | None) -> Usage:
+def with_cost(usage: Usage, routes: Routes, tool: str, model: str | None) -> Usage:
     """工具没有给出费用时按价格估算。"""
     if usage.cost_usd is not None or usage.input_tokens is None or usage.output_tokens is None:
         return usage
-    cost = capabilities.estimate_cost(tool, model, usage.input_tokens, usage.output_tokens)
+    cost = routes.estimate_cost(tool, model, usage.input_tokens, usage.output_tokens)
     return usage if cost is None else replace(usage, cost_usd=cost, cost_estimated=True)
 
 

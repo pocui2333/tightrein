@@ -71,19 +71,16 @@ With `~/.local/bin` on your `PATH`, run `tightrein` from any directory; otherwis
 **1. Configure models.** Create `~/.config/tightrein/config.yaml`:
 
 ```yaml
-agents:
-  defaultTool: claude
-  stages:
-    triage:
-      refuter: {capability: standard}   # Reviewer must use a different model
-    fix:
-      review:
-        deep: {capability: standard}
-  capabilities:
-    light:    {claude: {model: haiku, inputUsdPerMTok: 1, outputUsdPerMTok: 5}}
-    standard: {claude: {model: sonnet, inputUsdPerMTok: 3, outputUsdPerMTok: 15}}
-    strong:   {claude: {model: opus, effort: high, inputUsdPerMTok: 5, outputUsdPerMTok: 25}}
+models:                       # Model aliases: tool, model, reasoning effort and prices
+  opus:   {tool: claude, model: opus, effort: high, inputUsdPerMTok: 5, outputUsdPerMTok: 25}
+  sonnet: {tool: claude, model: sonnet, inputUsdPerMTok: 3, outputUsdPerMTok: 15}
+routes:                       # Call point → alias; call points not listed use default
+  default: opus
+  triage.refuter: sonnet      # Reviewer must use a different model
+  fix.review.deep: sonnet
 ```
+
+`tightrein project config --routes` shows the model each call point resolves to; call points and conditions are listed in the [configuration reference](docs/reference/configuration.md).
 
 **2. Onboard a project.** Workspaces reside under `workspaces/` (git-ignored). tightrein only performs read-only checks until onboarding is complete.
 

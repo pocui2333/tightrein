@@ -23,6 +23,7 @@ from tightrein.runner.service import Runner
 from tightrein.runner.task import Instructions, RunnerTask
 
 ROLE = "judge"
+ROUTE = "eval.judge"
 OUTPUT_SCHEMA = "runner/roles/judge.schema.json"
 ALLOWED_COMMANDS = ("rg", "ls", "cat", "head", "wc")
 INVALID_OUTPUT = "评审输出无效"
@@ -51,7 +52,7 @@ def judge_task(request: JudgeRequest, items: Sequence[RubricItem], workdir: Path
         run_id=request.run_id, stage=request.stage, role=ROLE, subject=request.subject, attempt=1,
         instructions=Instructions(instructions(items, case_input, outputs)), workdir=workdir,
         output_schema=OUTPUT_SCHEMA, access=Access.READ_ONLY, allowed_commands=ALLOWED_COMMANDS,
-        tool=request.tool, model=request.model,
+        route=ROUTE,
     )
 
 
@@ -59,8 +60,10 @@ def unknown_items(items: Sequence[RubricItem], reason: str) -> list[ItemResult]:
     return [ItemResult(item.id, ScoreMethod.JUDGE, ScoreResult.UNKNOWN, reason) for item in items]
 
 
-def run_judge(runner: Runner, clock: Clock, task: RunnerTask, items: Sequence[RubricItem]) -> list[ItemResult]:
-    result = runner.run(task, clock=clock)
+def run_judge(runner: Runner, clock: Clock, task: RunnerTask, items: Sequence[RubricItem],
+              tool: str | None = None) -> list[ItemResult]:
+    """tool 为评测设置中解析出的评审工具(JudgeRequest.tool)，与路由的工具相同时沿用路由的模型与推理强度。"""
+    result = runner.run(task, clock=clock, runner_override=tool)
     if result.status is RunnerStatus.SCHEMA_INVALID:
         return unknown_items(items, INVALID_OUTPUT)
     if result.status is not RunnerStatus.OK or result.output is None:

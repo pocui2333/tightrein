@@ -20,7 +20,7 @@ RUNNER_TASK = {
                                   "reason": "path:src/Services/ 前缀匹配"}]},
     "workdir": "/work/worktrees/readonly", "outputSchema": "runner/roles/claim-verifier.schema.json", "access": "read-only",
     "allowedCommands": ["git log", "git show"], "limits": {"maxTurns": 40, "maxDurationMs": 600000, "maxCostUsd": None},
-    "interactive": False, "tool": None, "model": None, "capability": None, "approvedProtectedPaths": [], "web": False,
+    "interactive": False, "route": "triage.claim-verifier", "conditions": [], "approvedProtectedPaths": [], "web": False,
     "readPaths": [],
 }
 USAGE = {"inputTokens": 1200, "outputTokens": 300, "cachedInputTokens": None, "costUsd": 0.02, "costEstimated": True}
@@ -77,6 +77,7 @@ INVALID = [
     (TASK, changed(RUNNER_TASK, outputSchema=None), "$.outputSchema"),
     (TASK, changed(RUNNER_TASK, outputSchema="contracts/schemas/runner/roles/claim-verifier.json"), "$.outputSchema"),
     (TASK, changed(RUNNER_TASK, access="full"), "$.access"),
+    (TASK, changed(RUNNER_TASK, conditions=["urgent"]), "$.conditions[0]"),
     (TASK, without(RUNNER_TASK, "readPaths"), "$"),
     (RESULT, changed(RUNNER_RESULT, output=None), "$.output"),
     (RESULT, changed(RUNNER_RESULT, status="failed", errorType="tool-error"), "$.output"),

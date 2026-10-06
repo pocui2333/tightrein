@@ -6,7 +6,7 @@
   不经审查与取证)；失败时巡检为 partial；
 - 审查：incremental 与 full 为 reviewer.review(审查 diff)；baseline 档位与没有上次巡检终点的 full 档位为基线审查，
   按目录模块分批(baseline.plan)逐批 review_baseline，当天预算用尽时其余批次不再运行；full 与 baseline 另对每个缺陷
-  模式 scan_variants；两种审查都用强档(roleCapabilities.static-review、baseline-review)；
+  模式 scan_variants；两种审查的模型按调用点 collect.static-review、collect.baseline-review 的路由；
 - 取证与待处理清单：低级疑点不在采集时取证，直接进入待处理清单(pending_claims，原因 low)；先取证清单中超出上限
   遗留的疑点(options.queued)，再按严重度取证本次的高、中级疑点，合计不超过取证上限(sources.static.maxClaims，基线为
   baseline.maxClaims)；超出上限与预算用尽后未取证的进入清单(原因 over-limit)，后续运行继续处理。清单中的低级疑点经

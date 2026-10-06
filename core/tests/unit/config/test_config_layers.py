@@ -11,7 +11,7 @@ PROJECT = {
     "accounts": {"roles": {"Admin": {"keychain": "demo.admin"}},
                  "login": {"endpoint": "/login", "bodyTemplate": {}, "tokenPath": "token"}},
     "stages": {},
-    "evaluation": {"judge": {"runner": "claude"}, "budgetUsd": 5},
+    "evaluation": {"budgetUsd": 5},
     "thresholds": {"suppressionDays": {"value": 30, "min": 7, "max": 90},
                    "triage": {"deferredReopenOccurrences": {"value": 3, "min": 1, "max": 10}}},
 }

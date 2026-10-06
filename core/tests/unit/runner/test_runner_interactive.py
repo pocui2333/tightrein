@@ -31,7 +31,8 @@ def make_world(repos, make_config, tmp_path):
 
 def session_task(world, **changes):
     fields = {"stage": Stage.FIX, "role": "fix-session", "subject": Subject("issue", "0007"), "interactive": True,
-              "output_schema": None, "access": Access.READ_ONLY, "allowed_commands": ("tightrein fix",)}
+              "output_schema": None, "access": Access.READ_ONLY, "allowed_commands": ("tightrein fix",),
+              "route": "fix.session"}
     return task(world.fix, **{**fields, **changes})
 
 
@@ -114,17 +115,21 @@ def test_resume_without_a_session_is_unsupported(make_world):
     assert world.launcher.interactive == []
 
 
-def test_agy_sessions_are_refused_before_anything_is_recorded(make_world):
-    world = make_world()
+def session_routes(make_config, alias, tool):
+    data = make_config().data
+    return {"models": {**data["models"], alias: {"tool": tool}}, "routes": {**data["routes"], "fix.session": alias}}
+
+
+def test_agy_sessions_are_refused_before_anything_is_recorded(make_world, make_config):
+    world = make_world(**session_routes(make_config, "agy", "agy"))
     with pytest.raises(RunnerConfigError, match="agy 不支持交互会话"):
-        world.runner().run_interactive(session_task(world, tool="agy"), clock=world.clock, first_input=FIRST_INPUT)
+        world.runner().run_interactive(session_task(world), clock=world.clock, first_input=FIRST_INPUT)
     assert world.launcher.interactive == []
     assert agent_sessions.find(world.conn, stage=Stage.FIX, role="fix-session") == []
 
 
-def test_codex_sessions_are_located_after_they_end(make_world):
-    world = make_world(stages={"fix": {"tool": "codex", "session": {"tool": "codex"},
-                                       "review": {"deep": {"tool": "claude"}}}})
+def test_codex_sessions_are_located_after_they_end(make_world, make_config):
+    world = make_world(**session_routes(make_config, "codex", "codex"))
 
     def codex_session(invocation):
         adapter = world.registry.adapter("codex")

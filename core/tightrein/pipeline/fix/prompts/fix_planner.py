@@ -1,7 +1,7 @@
 """组装 fix-planner 的执行器任务(redesign/05-fix.md 第 3 步)：角色说明 + 修复规则 + Issue 各节 + 勘察结论(有时) +
 风险判定 + 受保护文件清单 + 单个 PR 的改动量上限 + 上一次验证报告或评审意见(含实施中发现的计划缺口) + 用户的决定与补充。
-C 通道(大任务)要求先出整体方案并拆成有先后顺序、各自不超过单 PR 上限的子任务。模型按角色配置(stages.fix.roles.fix-planner)，
-核心不写死。"""
+C 通道(大任务)要求先出整体方案并拆成有先后顺序、各自不超过单 PR 上限的子任务。模型按调用点 fix.planner 的路由，
+风险判定为高风险时带 high-risk 条件，C 通道带 large 条件(依次查找)，核心不写死。"""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from tightrein.config.routes import HIGH_RISK, LARGE
 from tightrein.domain.fix import FixRisk
 from tightrein.pipeline.fix.prompts.common import STAGE, FixPrompt, decisions_text, feedback_text, json_block
 from tightrein.pipeline.fix.steps.context import FixContext
@@ -39,6 +40,10 @@ PLAN_RULES = ("## 计划与验收标准对应要求\n\n"
               "hypothesis 必填：一条因果链、代码证据与精确到行的修改位置；位置会被程序核对。")
 
 
+def conditions(inputs: PlanInputs) -> tuple[str, ...]:
+    return (*((HIGH_RISK,) if inputs.risk.high else ()), *((LARGE,) if inputs.large else ()))
+
+
 def task(prompt: FixPrompt, context: FixContext, inputs: PlanInputs, attempt: int,
          feedback: Sequence[str] = ()) -> RunnerTask:
     limits = (f"## 单个 PR 的改动量上限与受保护文件\n\n改动文件不超过 {inputs.max_files} 个、变更行数不超过 "
@@ -58,4 +63,4 @@ def task(prompt: FixPrompt, context: FixContext, inputs: PlanInputs, attempt: in
                 f"## 相关知识\n\n{context.knowledge}", feedback_text(feedback))
     return read_only_task(run_id=prompt.run_id, stage=STAGE, role=ROLE, subject=prompt.subject(context.issue_id),
                           attempt=attempt, prompt=body, workdir=prompt.workdir, output_schema=SCHEMA,
-                          role_setting=prompt.role_setting(ROLE, context.complexity))
+                          role_setting=prompt.role_setting(ROLE, context.complexity, conditions(inputs)))

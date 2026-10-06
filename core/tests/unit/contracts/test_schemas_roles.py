@@ -54,7 +54,7 @@ IMPROVEMENT_DRAFT = {
     "reason": "三次评审驳回都因为没有检查入口校验",
     "suggestion": {"stage": "fix", "target": "prompt",
                    "patch": "--- a/skills/fix/references/fix-rules.md\n+++ b/skills/fix/references/fix-rules.md\n",
-                   "capability": None, "rationale": "角色说明没有要求追到入口", "addresses": ["0007"],
+                   "model": None, "rationale": "角色说明没有要求追到入口", "addresses": ["0007"],
                    "expected": "参与改进的用例评审通过率提升"},
 }
 VALID = [

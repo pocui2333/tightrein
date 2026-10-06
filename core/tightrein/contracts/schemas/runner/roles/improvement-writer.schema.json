@@ -16,18 +16,18 @@
         {"type": "null"},
         {
           "type": "object",
-          "required": ["stage", "target", "patch", "capability", "rationale", "addresses", "expected"],
+          "required": ["stage", "target", "patch", "model", "rationale", "addresses", "expected"],
           "additionalProperties": false,
           "properties": {
             "stage": {"enum": ["triage", "issue", "fix"], "description": "要改进的环节，评测按这个环节的用例运行"},
-            "target": {"enum": ["prompt", "model"], "description": "prompt 为修改角色说明，model 为该环节改用另一个能力档"},
+            "target": {"enum": ["prompt", "model"], "description": "prompt 为修改角色说明，model 为该环节的主要调用点改用另一个模型别名"},
             "patch": {
               "type": ["string", "null"],
               "description": "target 为 prompt 时，相对本工具仓库根目录的统一格式补丁，只改 skills/ 下的文件；否则为 null"
             },
-            "capability": {
-              "enum": ["light", "standard", "strong", null],
-              "description": "target 为 model 时建议的能力档；否则为 null"
+            "model": {
+              "type": ["string", "null"],
+              "description": "target 为 model 时建议的模型别名(任务说明中列出的 models 别名之一)；否则为 null"
             },
             "rationale": {"type": "string", "minLength": 1, "description": "这些失败的共同原因与改动为什么能避免它们"},
             "addresses": {

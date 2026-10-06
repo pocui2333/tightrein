@@ -3,9 +3,9 @@ import copy
 import pytest
 
 from tightrein.config import layers, project
-from tightrein.config.capabilities import CapabilityError, ModelChoice
+from tightrein.config.routes import LEGACY_HINT, ModelChoice, RouteError
 from tightrein.config.project import ConfigError, ConfigIssue, ExtensionSetting, MissingSetting
-from tightrein.domain.enums import ExtensionMode, ExtensionPoint, LogLevel, Stage
+from tightrein.domain.enums import ExtensionMode, ExtensionPoint, LogLevel
 from tightrein.store.files import yaml_text
 from tightrein.store.retention import RetentionPolicy
 
@@ -49,40 +49,25 @@ extensions:
   page-routes:
     enabled: false
 stages:
-  triage:
-    tool: claude
-    capability: deep
-    refuter:
-      tool: claude
-      model: claude-sonnet
   fix:
-    tool: claude
-    capability: deep
     review:
-      light:
-        capability: deep
       deep:
-        tool: codex
-        capability: deep
-capabilities:
-  deep:
-    claude:
-      model: claude-opus
-      inputUsdPerMTok: 15
-      outputUsdPerMTok: 75
-    codex:
-      model: gpt-5
-      inputUsdPerMTok: 1.25
-      outputUsdPerMTok: 10
+        limits: {maxTurns: 50}
+models:
+  opus: {tool: claude, model: claude-opus, effort: high, inputUsdPerMTok: 15, outputUsdPerMTok: 75}
+  sonnet: {tool: claude, model: claude-sonnet}
+  gpt: {tool: codex, model: gpt-5, inputUsdPerMTok: 1.25, outputUsdPerMTok: 10}
+routes:
+  default: opus
+  triage.refuter: sonnet
+  fix.review.deep: gpt
+  eval.judge: gpt
 schedule:
   tick:
     weekdays: [1, 2, 3, 4, 5]
     minutes: [0, 30]
   nonWorkingDays: [2026-10-12]
 evaluation:
-  judge:
-    runner: codex
-    capability: deep
   budgetUsd: 20
 thresholds:
   suppressionDays: {value: 30, min: 7, max: 90}
@@ -117,7 +102,7 @@ def test_a_valid_file_loads(config, tmp_path):
     assert config.path == tmp_path / "project.yaml"
     assert (config.name, str(config.repo), config.main_branch) == ("sample", "/Users/me/Projects/sample", "main")
     assert config.get("schedule.nonWorkingDays") == ["2026-10-12"]
-    assert config.get("stages.fix.review.deep.tool") == "codex"
+    assert config.get("stages.fix.review.deep.limits") == {"maxTurns": 50}
 
 
 def test_missing_required_keys_are_reported_with_full_names(data):
@@ -136,7 +121,7 @@ def test_only_project_is_required_and_the_rest_falls_back_to_defaults(tmp_path):
                            tmp_path / "project.yaml")
     assert config.whole_threshold("suppressionDays") == 30
     assert config.whole_threshold("triage.deferredReopenOccurrences") == 3
-    assert config.get("evaluation.judge") == {"capability": None}  # 核心不给缺省工具
+    assert config.routes.routes == {} and config.routes.aliases == {}  # 核心不给缺省路由
     assert config.get("evaluation.budgetUsd") == 10
     assert (config.base_url, config.roles()) == (None, ())
     with pytest.raises(MissingSetting):
@@ -199,32 +184,36 @@ def test_nested_learn_thresholds_are_checked(data):
     assert issues_of(data) == ["thresholds.learn.controls.firstPassFloor: value 0.05 越出 [0.1, 1]"]
 
 
-def test_capabilities_referenced_by_stages_must_be_mapped(data):
-    data["stages"]["fix"]["session"] = {"tool": "agy", "capability": "deep"}
-    data["evaluation"]["judge"] = {"runner": "agy", "capability": "deep"}
+def test_routes_must_name_known_call_points_and_aliases(data):
+    data["routes"]["fix.unknown"] = "opus"
+    data["routes"]["fix.session"] = "missing"
     assert issues_of(data) == [
-        "evaluation.judge: capabilities.deep.agy: 能力档 deep 没有为工具 agy 配置模型",
-        "stages.fix.session: capabilities.deep.agy: 能力档 deep 没有为工具 agy 配置模型",
+        "routes.fix.session: 别名 missing 没有在 models 中定义",
+        "routes.fix.unknown: 不认识的调用点；调用点与条件见 `tightrein project config --routes`",
     ]
 
 
 def test_reviewers_must_differ_from_the_producer(data):
-    data["roleCapabilities"] = {"claim-verifier": "deep", "fix-executor": "deep"}
-    data["stages"]["triage"]["refuter"] = {"tool": "claude", "model": "claude-opus"}
-    data["stages"]["fix"]["review"] = {"light": {"capability": "deep"}, "deep": {"capability": "deep"}}
+    data["routes"] = {"default": "opus"}
     assert issues_of(data) == [
-        "stages.fix.review.deep: 须与生成者 fix-executor(工具 claude，模型 claude-opus)使用不同的工具或模型："
-        "只用一种工具时给两者不同的模型档，例如 stages.fix.review.deep.capability: standard；"
-        "用两种工具时可写 stages.fix.review.deep.tool 为另一种工具",
-        "stages.triage.refuter: 须与生成者 claim-verifier(工具 claude，模型 claude-opus)使用不同的工具或模型："
-        "只用一种工具时给两者不同的模型档，例如 stages.triage.refuter.capability: standard；"
-        "用两种工具时可写 stages.triage.refuter.tool 为另一种工具",
+        "routes.fix.review.deep: 须与 fix.executor 使用不同的工具或模型(两者都解析为工具 claude、模型 claude-opus)："
+        "把 routes.fix.review.deep 改为(没写时写上)另一个工具或模型的别名",
+        "routes.triage.refuter: 须与 triage.claim-verifier 使用不同的工具或模型(两者都解析为工具 claude、模型 claude-opus)："
+        "把 routes.triage.refuter 改为(没写时写上)另一个工具或模型的别名",
     ]
 
 
-def test_conflicting_capability_prices_are_reported(data):
-    data["capabilities"]["search"] = {"claude": {"model": "claude-opus", "inputUsdPerMTok": 1, "outputUsdPerMTok": 2}}
-    assert issues_of(data) == ["capabilities.search.claude: 模型 claude-opus 的价格与其他能力档中的不一致"]
+def test_conflicting_prices_are_reported(data):
+    data["models"]["opus-mid"] = {"tool": "claude", "model": "claude-opus", "inputUsdPerMTok": 1, "outputUsdPerMTok": 2}
+    assert issues_of(data) == ["models.opus-mid: 工具 claude 的模型 claude-opus 的价格与其他别名中的不一致"]
+
+
+def test_old_model_keys_are_reported_with_the_new_form(data):
+    data["defaultTool"] = "claude"
+    data["stages"]["fix"]["review"]["deep"]["capability"] = "strong"
+    data["evaluation"]["judge"] = {"runner": "codex"}
+    assert project.check(data) == [ConfigIssue("defaultTool", LEGACY_HINT), ConfigIssue("evaluation.judge", LEGACY_HINT),
+                                   ConfigIssue("stages.fix.review.deep.capability", LEGACY_HINT)]
 
 
 def test_load_raises_with_all_issues(tmp_path, data):
@@ -293,12 +282,8 @@ def test_thresholds_fall_back_to_core_defaults(config, data, tmp_path, monkeypat
 
 def test_core_defaults_file_has_the_triage_keys(config):
     assert config.whole_threshold("triage.dedupCandidates") == 10
-    assert config.role_capability(Stage.TRIAGE, "refuter") == "strong"
-    assert config.role_capability(Stage.TRIAGE, "dedup") == "light"
     assert config.get("stages.triage.roles.refuter.limits.low") == {"maxTurns": 40, "maxDurationMs": 900000}
     assert config.get("triage.treatment.rules")[-1] == {"treatment": "observe"}
-    assert config.role_capability(Stage.COLLECT, "static-review") == "strong"
-    assert config.role_capability(Stage.TRIAGE, "no-such-role") is None
 
 
 def test_whole_thresholds_reject_fractions(data, tmp_path):
@@ -321,14 +306,13 @@ def test_roles_and_keychain_items(config):
         config.keychain_item("Admin")
 
 
-def test_model_choice_for_stages_and_overrides(config):
-    assert config.model_choice(Stage.TRIAGE) == ModelChoice("claude", "claude-opus", "deep")
-    assert config.model_choice(Stage.FIX, "review.deep") == ModelChoice("codex", "gpt-5", "deep")
-    assert config.model_choice(Stage.FIX, "review.light") == ModelChoice("claude", "claude-opus", "deep")
-    assert config.model_choice(Stage.TRIAGE, "refuter") == ModelChoice("claude", "claude-sonnet")
-    assert config.model_choice(Stage.FIX, tool="codex") == ModelChoice("codex", "gpt-5", "deep")
-    assert config.model_choice(Stage.FIX, model="claude-haiku") == ModelChoice("claude", "claude-haiku")
-    assert config.capabilities.estimate_cost("codex", "gpt-5", 1_000_000, 0) == 1.25
+def test_model_choice_for_call_points_and_overrides(config):
+    assert config.model_choice("triage.claim-verifier") == ModelChoice("claude", "claude-opus", "high", "opus")
+    assert config.model_choice("fix.review.deep") == ModelChoice("codex", "gpt-5", None, "gpt")
+    assert config.model_choice("triage.refuter") == ModelChoice("claude", "claude-sonnet", None, "sonnet")
+    assert config.model_choice("fix.executor", tool="codex") == ModelChoice("codex", None)
+    assert config.model_choice("fix.executor", model="claude-haiku") == ModelChoice("claude", "claude-haiku")
+    assert config.routes.estimate_cost("codex", "gpt-5", 1_000_000, 0) == 1.25
 
 
 def test_parse_does_not_modify_the_input(data, tmp_path):
@@ -434,117 +418,51 @@ def test_the_project_tick_replaces_the_default_tick_as_a_whole(config):
 MINIMAL = {"project": {"name": "sample", "repo": "/tmp/sample", "mainBranch": "main"}}
 
 
-def tier(model, price=1):
-    return {"model": model, "inputUsdPerMTok": price, "outputUsdPerMTok": price}
-
-
-SINGLE_TOOL = {
-    "defaultTool": "claude",
-    "capabilities": {"light": {"claude": tier("haiku")}, "standard": {"claude": tier("sonnet", 3)},
-                     "strong": {"claude": tier("opus", 15)}},
-    "roleCapabilities": {"refuter": "standard"},
-    "stages": {"fix": {"review": {"deep": {"capability": "standard"}}}},
+USER = {
+    "models": {"opus": {"tool": "claude", "model": "opus", "effort": "high", "inputUsdPerMTok": 15,
+                        "outputUsdPerMTok": 75},
+               "flash": {"tool": "agy", "model": "flash-high"}},
+    "routes": {"default": "opus", "triage.refuter": "flash", "fix.review.deep": "flash"},
 }
 
 
-def test_the_user_agent_layer_gives_tools_and_models_to_every_stage(tmp_path):
-    config = project.parse(MINIMAL, tmp_path / "project.yaml", agents=SINGLE_TOOL)
-    assert config.default_tool == "claude"
-    assert config.model_choice(Stage.COLLECT) == ModelChoice("claude", None)
-    assert config.model_choice(Stage.FIX, "review.light") == ModelChoice("claude", "sonnet", "standard")
-    assert config.model_choice(Stage.FIX, "review.deep") == ModelChoice("claude", "sonnet", "standard")
-    assert config.role_capability(Stage.TRIAGE, "refuter") == "standard"
-    assert config.capabilities.price("claude", "opus").input_usd_per_mtok == 15
+def test_the_user_routing_layer_gives_models_to_every_call_point(tmp_path):
+    config = project.parse(MINIMAL, tmp_path / "project.yaml", routing=USER)
+    assert config.model_choice("collect.static-review") == ModelChoice("claude", "opus", "high", "opus")
+    assert config.model_choice("fix.review.deep") == ModelChoice("agy", "flash-high", None, "flash")
+    assert config.routes.price("claude", "opus").input_usd_per_mtok == 15
 
 
-def test_the_project_overrides_the_user_agent_layer(tmp_path):
-    data = {**MINIMAL, "stages": {"fix": {"tool": "codex", "review": {"deep": {"capability": "strong"}}}},
-            "capabilities": {"strong": {"codex": tier("gpt-5.5", 2)}, "standard": {"codex": tier("gpt-5.5", 2)}}}
-    agents = {**SINGLE_TOOL, "stages": {"fix": {"model": "opus", "review": {"deep": {"tool": "claude"}}}}}
-    config = project.parse(data, tmp_path / "project.yaml", agents=agents)
-    assert config.stage_setting(Stage.FIX)["tool"] == "codex"
-    assert "model" not in config.stage_setting(Stage.FIX)  # 用户层的模型属于原工具，不再沿用
-    assert config.model_choice(Stage.FIX, "review.deep") == ModelChoice("claude", "opus", "strong")
-    assert config.model_choice(Stage.TRIAGE) == ModelChoice("claude", None)
-    assert config.capabilities.model("strong", "claude") == "opus"
+def test_the_project_overrides_the_user_routing_layer_per_key(tmp_path):
+    data = {**MINIMAL, "models": {"flash": {"tool": "agy", "model": "flash-low"}, "gpt": {"tool": "codex"}},
+            "routes": {"fix.planner": "gpt"}}
+    config = project.parse(data, tmp_path / "project.yaml", routing=USER)
+    assert config.model_choice("fix.planner") == ModelChoice("codex", None, None, "gpt")
+    assert config.model_choice("fix.review.deep").model == "flash-low"  # 项目的别名整体替换用户的同名别名
+    assert config.model_choice("fix.executor").alias == "opus"
 
 
-def test_without_any_tool_the_error_names_the_keys(tmp_path):
+def test_without_any_route_the_error_names_the_call_point(tmp_path):
     config = project.parse(MINIMAL, tmp_path / "project.yaml")
-    with pytest.raises(CapabilityError) as caught:
-        config.model_choice(Stage.TRIAGE)
-    assert caught.value.key == "stages.triage.tool"
-    assert "agents.defaultTool" in caught.value.reason and "agents: {defaultTool: claude}" in caught.value.reason
+    with pytest.raises(RouteError) as caught:
+        config.model_choice("triage.claim-verifier")
+    assert caught.value.key == "routes.triage.claim-verifier"
+    assert "routes.default 或 routes.triage.claim-verifier" in caught.value.reason
 
 
-def test_a_single_tool_needs_different_tiers_for_reviewers(tmp_path):
-    project.parse(MINIMAL, tmp_path / "project.yaml", agents=SINGLE_TOOL)
-    same = {**SINGLE_TOOL, "roleCapabilities": {}, "stages": {}}
+def test_a_single_model_for_everything_fails_the_independence_check(tmp_path):
+    same = {**USER, "routes": {"default": "opus"}}
     with pytest.raises(ConfigError) as caught:
-        project.parse(MINIMAL, tmp_path / "project.yaml", agents=same)
-    assert [issue.key for issue in caught.value.issues] == ["stages.fix.review.deep", "stages.triage.refuter"]
-    assert "工具 claude，模型 opus" in caught.value.issues[0].reason
+        project.parse(MINIMAL, tmp_path / "project.yaml", routing=same)
+    assert [issue.key for issue in caught.value.issues] == ["routes.fix.review.deep", "routes.triage.refuter"]
 
 
-def test_a_second_tool_may_review_and_the_refuter_may_give_only_a_tier(tmp_path):
-    agents = {**SINGLE_TOOL, "roleCapabilities": {},
-              "capabilities": {**SINGLE_TOOL["capabilities"], "strong": {"claude": tier("opus", 15),
-                                                                          "codex": tier("gpt-5.5", 2)}},
-              "stages": {"triage": {"refuter": {"tool": "codex"}}, "fix": {"review": {"deep": {"tool": "codex"}}}}}
-    config = project.parse(MINIMAL, tmp_path / "project.yaml", agents=agents)
-    assert config.model_choice(Stage.FIX, "review.deep") == ModelChoice("codex", "gpt-5.5", "strong")
-    only_tier = {**SINGLE_TOOL, "roleCapabilities": {}, "stages": {"triage": {"refuter": {"capability": "light"}},
-                                                                   "fix": {"review": {"deep": {"capability": "light"}}}}}
-    config = project.parse(MINIMAL, tmp_path / "project.yaml", agents=only_tier)
-    assert config.model_choice(Stage.TRIAGE, "refuter") == ModelChoice("claude", "haiku", "light")
-
-
-TWO_TOOLS = {
-    **SINGLE_TOOL,
-    "capabilities": {"light": {"claude": tier("haiku"), "agy": tier("flash-low", 0.5)},
-                     "standard": {"claude": tier("sonnet", 3), "agy": tier("flash-medium", 0.5)},
-                     "strong": {"claude": tier("opus", 15), "agy": tier("flash-high", 0.5)}},
-}
-
-
-def test_roles_and_tasks_may_choose_their_own_tool_and_model(tmp_path):
-    agents = {**TWO_TOOLS, "stages": {**SINGLE_TOOL["stages"],
-                                      "fix": {**SINGLE_TOOL["stages"]["fix"],
-                                              "roles": {"fix-scout": {"tool": "agy"}, "fix-planner": {"model": "opus"}}},
-                                      "triage": {"tasks": {"dedup": {"tool": "agy", "model": "flash-low"}}}}}
-    data = {**MINIMAL, "stages": {"fix": {"roles": {"fix-scout": {"tool": "claude", "limits": {"low": {"maxTurns": 5}}}}}}}
-    config = project.parse(MINIMAL, tmp_path / "project.yaml", agents=agents)
-    assert config.role_agent(Stage.FIX, "fix-scout") == {"tool": "agy"}
-    assert config.role_agent(Stage.FIX, "fix-planner") == {"model": "opus", "tool": "claude"}  # 模型绑定环节工具
-    assert config.role_agent(Stage.TRIAGE, "dedup") == {"tool": "agy", "model": "flash-low"}
-    agents["stages"]["fix"]["roles"]["fix-scout"]["model"] = "flash-low"
-    overridden = project.parse(data, tmp_path / "project.yaml", agents=agents)
-    assert overridden.role_agent(Stage.FIX, "fix-scout") == {"tool": "claude"}  # 项目改写工具，不沿用原工具的模型
-
-
-def test_role_tools_need_their_tier_mapped(tmp_path):
-    agents = {**SINGLE_TOOL, "stages": {**SINGLE_TOOL["stages"], "fix": {**SINGLE_TOOL["stages"]["fix"],
-                                                                         "roles": {"fix-scout": {"tool": "agy"}}}}}
+def test_independence_checks_the_condition_variants(tmp_path):
+    variant = {**USER, "routes": {**USER["routes"], "fix.executor.high-risk": "flash"}}
     with pytest.raises(ConfigError) as caught:
-        project.parse(MINIMAL, tmp_path / "project.yaml", agents=agents)
-    assert [str(issue) for issue in caught.value.issues] == [
-        "stages.fix.roles.fix-scout: capabilities.light.agy: 能力档 light 没有为工具 agy 配置模型"]
-
-
-def test_independence_follows_the_resolved_role_tools(tmp_path):
-    same = {**TWO_TOOLS, "roleCapabilities": {"refuter": "standard"},
-            "stages": {"triage": {"refuter": {"tool": "agy"}, "roles": {"claim-verifier": {"tool": "agy",
-                                                                                          "capability": "standard"}}},
-                       "fix": {"review": {"deep": {"tool": "agy"}}}}}
-    with pytest.raises(ConfigError) as caught:
-        project.parse(MINIMAL, tmp_path / "project.yaml", agents=same)
-    assert [issue.key for issue in caught.value.issues] == ["stages.triage.refuter"]
-    assert "claim-verifier(工具 agy，模型 flash-medium)" in caught.value.issues[0].reason
-    by_role = {**same, "stages": {**same["stages"], "triage": {"roles": {"claim-verifier": {"tool": "agy"},
-                                                                         "refuter": {"tool": "claude"}}}}}
-    config = project.parse(MINIMAL, tmp_path / "project.yaml", agents=by_role)
-    assert config.role_agent(Stage.TRIAGE, "refuter", overlay=config.stage_setting(Stage.TRIAGE).get("refuter")) \
-        == {"tool": "claude"}
+        project.parse(MINIMAL, tmp_path / "project.yaml", routing=variant)
+    assert [issue.key for issue in caught.value.issues] == ["routes.fix.review.deep"]
+    assert "fix.executor.high-risk" in caught.value.issues[0].reason
 
 
 def test_list_settings_may_be_appended_with_a_plus_key(tmp_path):
