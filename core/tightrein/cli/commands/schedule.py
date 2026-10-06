@@ -80,7 +80,7 @@ def _show(invocation: Any) -> Outcome:
     if not path.exists():
         return Outcome("schedule show", exit_codes.OK, [f"没有安装定时任务：{path}"],
                        result={"path": str(path), "plist": None, "status": None},
-                       next="tightrein schedule install")
+                       next="tightrein project schedule install")
     plist = path.read_text(encoding="utf-8")
     status = _launchd(app).show(path)
     return Outcome("schedule show", exit_codes.OK, [str(path), plist, status],
@@ -89,6 +89,6 @@ def _show(invocation: Any) -> Outcome:
 
 def register(commands: Any, common: argparse.ArgumentParser) -> None:
     schedule = group(commands, "schedule", "launchd 定时任务")
-    leaf(schedule, common, "install", _install, "生成并加载定时任务", "schedule install")
-    leaf(schedule, common, "uninstall", _uninstall, "卸载并删除定时任务", "schedule uninstall")
-    leaf(schedule, common, "show", _show, "查看定时任务的配置与状态", "schedule show")
+    leaf(schedule, common, "install", _install, "生成并加载定时任务")
+    leaf(schedule, common, "uninstall", _uninstall, "卸载并删除定时任务")
+    leaf(schedule, common, "show", _show, "查看定时任务的配置与状态")

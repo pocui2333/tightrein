@@ -59,11 +59,11 @@ tightrein learn reject <建议编号> --reason <原因>
 
 | 类别 | 处理 |
 |---|---|
-| Issue 等待放行 | 阅读 Issue 后 `tightrein issue approve <编号>` 或 `issue close` |
+| Issue 等待放行 | 阅读 Issue 后 `tightrein approve <编号>` 或 `issue close` |
 | PR 等待审核、PR 可以合并 | 打开给出的 PR 地址审核或合并 |
-| 人工队列 | 补充信息后 `tightrein retriage <问题> --note <补充信息>`，或直接改判 |
+| 人工队列 | 补充信息后 `tightrein problem retriage <问题> --note <补充信息>`，或直接改判 |
 | 抑制规则即将到期 | 编辑 `suppressions.yaml` 续期，或任其到期 |
-| 自动判为误报(请抽查) | 抽查发现报告；判错时 `tightrein retriage <问题> --verdict confirmed --reason <原因>` |
+| 自动判为误报(请抽查) | 抽查发现报告；判错时 `tightrein problem retriage <问题> --verdict confirmed --reason <原因>` |
 | 回归两次及以上 | 局部修复没有根治，考虑设计层面的问题，重新评估 Issue |
 | 待处理的建议 | 见下文 |
 | 需要手写的经验 | 经验撰写多次失败，按给出的目录手写一条经验 |

@@ -9,7 +9,7 @@
 
 ## 前提
 
-- 工作区已建好(`tightrein workspace init`)，`project.yaml` 可以通过 `tightrein config show`。
+- 工作区已建好(`tightrein project init`)，`project.yaml` 可以通过 `tightrein project config`。
 - 探针只从外部只读观察被测系统：调用只读接口或日志平台的查询 API，不修改数据，不登录服务器，不读服务器上的文件。
 - 需要凭证时，先建一个只有读权限的凭证，存进本机钥匙串：`security add-generic-password -s <条目名> -a <账号> -w`。
 - 要从日志平台取数时，工作区已配置 `extensions.log-platform`(例如 `core/loki`)；要按字段读取时再配置 `extensions.log-parse`。
@@ -19,7 +19,7 @@
 1. **生成模板并登记**
 
    ```
-   tightrein probe new daily-import --every 1h --workspace workspaces/<项目>
+   tightrein project probe new daily-import --every 1h --workspace workspaces/<项目>
    ```
 
    预期：输出「已生成 probes/daily_import.py 并登记到 sources.project-probes」；`project.yaml` 中多出：
@@ -56,7 +56,7 @@
 3. **单独试跑**
 
    ```
-   tightrein probe test daily-import --workspace workspaces/<项目>
+   tightrein project probe test daily-import --workspace workspaces/<项目>
    ```
 
    预期：输出「daily-import 的输出符合契约，将产出 N 条信号」，并逐条列出位置、现象、指纹与严重度提示。试跑不写数据库、
@@ -200,7 +200,7 @@ sources:
 
 ## 验证
 
-- `tightrein probe test <名称>` 显示「输出符合契约」，信号的指纹在两次试跑之间相同。
+- `tightrein project probe test <名称>` 显示「输出符合契约」，信号的指纹在两次试跑之间相同。
 - `tightrein collect --probe project-probe --select name:<名称>` 的交接文档中 `coverage.sources` 含探针名；
   `tightrein aggregate` 之后，同一指纹的异常归为同一个问题，探针某次运行不再输出它、累计覆盖运行达到次数后判为已解决。
 

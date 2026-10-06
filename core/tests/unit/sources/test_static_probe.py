@@ -253,7 +253,7 @@ def test_skips_and_preconditions(tmp_path, repos, make_config):
     assert (same.status, same.skipped_reason) == (RunStatus.SKIPPED, "上次巡检以来没有新提交")
     moved = world.probe.run(replace(world.target, release="0" * 40), None,
                             ProbeOptions(base_commit=world.base, reviewer=world.reviewer))
-    assert moved.status is RunStatus.FAILED and "tightrein worktree sync" in moved.notes[0]
+    assert moved.status is RunStatus.FAILED and "tightrein project worktree sync" in moved.notes[0]
     missing = world.probe.run(world.target, None, ProbeOptions())
     assert missing.status is RunStatus.FAILED and "Reviewer" in missing.notes[0]
     assert world.reviewer.reviewed == [] and NOW.tzinfo is not None

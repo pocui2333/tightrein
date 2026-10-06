@@ -31,7 +31,7 @@ def test_doc_check_passes_a_valid_document_without_a_workspace(tmp_path):
     world = make_cli_world(tmp_path)
     path = tmp_path / "progress.md"
     write_progress(path)
-    code, values = call(world, "doc", "check", str(path))
+    code, values = call(world, "admin", "doc", "check", str(path))
     assert code == exit_codes.OK and values["result"] == []
 
 
@@ -39,12 +39,12 @@ def test_doc_check_takes_the_limits_from_the_workspace(tmp_path):
     world = make_cli_world(tmp_path, documents={"sectionMaxChars": {"completed": 3}})
     path = tmp_path / "progress.md"
     write_progress(path, completed="建分支与 worktree。")
-    assert call(world, "doc", "check", str(path))[0] == exit_codes.OK
-    code, values = call(world, "doc", "check", str(path), "--workspace", str(world.root))
+    assert call(world, "admin", "doc", "check", str(path))[0] == exit_codes.OK
+    code, values = call(world, "admin", "doc", "check", str(path), "--workspace", str(world.root))
     assert code == exit_codes.FAILED
     assert values["result"] == ["「已完成」有 14 个字符，超过上限 3；超出的部分放进单独的附件文件，正文只给引用与摘要"]
 
 
 def test_doc_check_reports_a_missing_file_as_a_usage_error(tmp_path):
     world = make_cli_world(tmp_path)
-    assert call(world, "doc", "check", str(tmp_path / "none.md"))[0] == exit_codes.USAGE
+    assert call(world, "admin", "doc", "check", str(tmp_path / "none.md"))[0] == exit_codes.USAGE

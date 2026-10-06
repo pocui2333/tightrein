@@ -2,7 +2,7 @@
 
 ## 目标
 
-新增一种交接文档类型(例如 `incident`)：程序能按它的模板渲染、`tightrein doc check` 能校验它，契约参考中列出它的小节与数据块。
+新增一种交接文档类型(例如 `incident`)：程序能按它的模板渲染、`tightrein admin doc check` 能校验它，契约参考中列出它的小节与数据块。
 
 ## 前提
 
@@ -50,11 +50,11 @@ cd core
 
 预期结果：全部通过。这几个测试核对每个小节键都有三语标题、注册表与 schema 文件中的数据块一一对应、契约参考与 schema 一致。
 
-再用程序渲染一份新类型的样例(`store/files/documents.write`)，执行 `tightrein doc check <文件>`，预期输出「通过」。
+再用程序渲染一份新类型的样例(`store/files/documents.write`)，执行 `tightrein admin doc check <文件>`，预期输出「通过」。
 
 ## 常见问题
 
 - **测试提示注册表与 schema 不一致**：`TYPES` 中的数据块标签与 schema 的 `$defs` 键要完全相同，没有数据块的类型也要有 schema 文件。
 - **`test_contract_reference.py` 失败，提示文件已过期**：改了类型注册或 schema 之后没有重新生成，执行第 5 步。
-- **`doc check` 报「缺少「内容」小节」**：标题必须与 `HEADINGS` 中的某种语言完全相同，且使用三级标题(`### `)。
+- **`admin doc check` 报「缺少「内容」小节」**：标题必须与 `HEADINGS` 中的某种语言完全相同，且使用三级标题(`### `)。
 - **数据块没有被识别**：代码块的信息串必须是 `yaml data:<标签>`，标签与注册时相同。

@@ -71,7 +71,7 @@ next: fix plan 0003          # 下一步
 
 ## 4. 校验
 
-- `tightrein doc check <文件>` 校验头信息、必需的小节与数据块的 schema。
+- `tightrein admin doc check <文件>` 校验头信息、必需的小节与数据块的 schema。
 - 每个模块与角色交接前自动校验，不通过时退回重写，不向下游传递。
 
 ## 5. 谁来写、读哪些

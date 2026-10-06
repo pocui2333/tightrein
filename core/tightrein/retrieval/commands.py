@@ -1,4 +1,4 @@
-"""tightrein kb 各子命令背后的函数(architecture/03 1.7)；命令行解析与表格输出属于 cli/kb.py。
+"""tightrein admin kb 各子命令背后的函数(architecture/03 1.7)；命令行解析与表格输出属于 cli/kb.py。
 
 - 每个函数只把参数转换成 KnowledgeService 的调用，返回可直接写成 JSON 的字典；命令行的 --json 输出与 MCP 工具的
   结构化结果都来自这里，两个入口的结果因此一致；

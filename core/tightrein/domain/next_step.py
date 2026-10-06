@@ -64,7 +64,7 @@ PROBLEM_STEPS: tuple[ProblemRow, ...] = (
 )
 
 ISSUE_STEPS: dict[tuple[IssueStatus, IssuePhase | None], NextStep] = {
-    (IssueStatus.NEEDS_DECISION, None): NextStep(Stage.ISSUE, "issue approve", Continuation.USER, "等用户决定是否放行"),
+    (IssueStatus.NEEDS_DECISION, None): NextStep(Stage.ISSUE, "approve", Continuation.USER, "等用户决定是否放行"),
     (IssueStatus.TODO, None): NextStep(Stage.FIX, "fix start", Continuation.INTERACTIVE),
     (IssueStatus.IN_PROGRESS, IssuePhase.FIX): NextStep(Stage.FIX, "fix start", Continuation.INTERACTIVE),
     (IssueStatus.IN_PROGRESS, IssuePhase.VERIFY): NextStep(Stage.VERIFY, "verify local", Continuation.AUTO),
@@ -76,12 +76,12 @@ ISSUE_STEPS: dict[tuple[IssueStatus, IssuePhase | None], NextStep] = {
 }
 
 
-MANUAL_APPROVE = NextStep(Stage.ISSUE, "issue approve", Continuation.USER, "用户需求：放行并申请建修复分支")
+MANUAL_APPROVE = NextStep(Stage.ISSUE, "approve", Continuation.USER, "用户需求：放行并申请建修复分支")
 
 
 def for_issue(issue: Issue) -> NextStep:
     """待决定且带 hold 的 Issue 先向用户说明原因，确认后以 fix start --force 继续；还没有修复分支的用户需求先
-    issue approve，拆分出的后续子任务另写明排在哪个 Issue 之后。"""
+    approve，拆分出的后续子任务另写明排在哪个 Issue 之后。"""
     step = ISSUE_STEPS[(issue.status, issue.phase)]
     if issue.is_manual and issue.status is IssueStatus.TODO and issue.branch is None:
         step = MANUAL_APPROVE

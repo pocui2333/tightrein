@@ -38,30 +38,30 @@ def test_kb_errors_use_the_common_exit_codes():
 
 def test_kb_commands_use_the_common_exit_codes(tmp_path):
     world = make_cli_world(tmp_path)
-    code, values = call_json(world, "kb", "search", "订单", "--type", "defect-pattern")
+    code, values = call_json(world, "admin", "kb", "search", "订单", "--type", "defect-pattern")
     assert code == 0 and values["result"]["hits"] == []
-    code, values = call_json(world, "kb", "get", "DP-0001")
+    code, values = call_json(world, "admin", "kb", "get", "DP-0001")
     assert code == exit_codes.USAGE and values["errors"][0]["type"] == "EntryNotFound"
-    code, values = call_json(world, "kb", "queries", "--since", "2026-10-01")
+    code, values = call_json(world, "admin", "kb", "queries", "--since", "2026-10-01")
     assert code == 0 and [item["query"] for item in values["result"]] == ["订单"]
 
 
 def test_worktree_init_waits_for_confirmation(tmp_path):
     world = make_cli_world(tmp_path)
     world.vcs.add(("rev-parse",), "1" * 40 + "\n")
-    code, values = call_json(world, "worktree", "init")
+    code, values = call_json(world, "project", "worktree", "init")
     assert code == exit_codes.GATE and values["pendingOperations"][0]["kind"] == "init-readonly-worktree"
-    code, values = call_json(world, "worktree", "list")
+    code, values = call_json(world, "project", "worktree", "list")
     assert code == 0 and values["result"] == []
 
 
 def test_ext_and_eval_commands(tmp_path):
     world = make_cli_world(tmp_path)
-    code, values = call_json(world, "ext", "list")
+    code, values = call_json(world, "admin", "ext", "list")
     assert code == 0 and {item["point"] for item in values["result"]} >= {"spec-export", "local-run"}
-    code, values = call_json(world, "ext", "test")
+    code, values = call_json(world, "admin", "ext", "test")
     assert code == exit_codes.USAGE
-    code, values = call_json(world, "eval", "report", "EV-20261005-030000")
+    code, values = call_json(world, "admin", "eval", "report", "EV-20261005-030000")
     assert code == exit_codes.USAGE
-    code, values = call_json(world, "eval", "add", "--module", "triage", "--from", str(tmp_path / "x.json"))
+    code, values = call_json(world, "admin", "eval", "add", "--module", "triage", "--from", str(tmp_path / "x.json"))
     assert code == exit_codes.USAGE

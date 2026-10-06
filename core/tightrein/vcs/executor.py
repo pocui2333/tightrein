@@ -1,6 +1,6 @@
 """待确认操作的确认、拒绝、执行与过期(architecture/02 4.5)。
 
-确认只来自用户(tightrein confirm)；删除类操作需要确认两次；执行方为 user 的操作不能经 confirm 执行。项目声明不逐次
+确认只来自用户(tightrein approve)；删除类操作需要确认两次；执行方为 user 的操作不能经 confirm 执行。项目声明不逐次
 确认的操作与按规则自动决定的操作经 run_unattended 记为已确认后立即执行(vcs/unattended.py)，理由写 gate 事件。
 执行：
 1. 状态必须为 confirmed；

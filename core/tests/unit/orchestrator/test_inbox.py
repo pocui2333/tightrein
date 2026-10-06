@@ -31,18 +31,18 @@ def test_onboarding_questions_come_with_the_recommended_answer(tmp_path):
     onboarding_items.save(world.conn, OnboardingItem("platform:deploy-source", 3, "平台接入：部署来源", "blocked", "user",
                                                      "没有配置", NOW, "用 GitHub Actions 的部署工作流 deploy.yml 跟踪部署"))
     [item] = inbox.items(world.conn)
-    assert (item["kind"], item["command"]) == ("onboarding", "tightrein workspace answer platform:deploy-source --recommended")
+    assert (item["kind"], item["command"]) == ("onboarding", "tightrein project answer platform:deploy-source --recommended")
     assert item["recommendation"].startswith("用 GitHub Actions")
 
 
 def test_failed_onboarding_checks_are_listed_with_their_cause(tmp_path):
     world = make_world(tmp_path)
     onboarding_items.save(world.conn, OnboardingItem("checks", 1, "检查命令在基准版本上通过", "failed", "system",
-                                                     "主分支上失败：无法把只读 worktree 切到主分支(先执行 tightrein worktree init)",
+                                                     "主分支上失败：无法把只读 worktree 切到主分支(先执行 tightrein project worktree init)",
                                                      NOW))
     [item] = inbox.items(world.conn)
-    assert (item["kind"], item["command"]) == ("onboarding", "tightrein workspace check")
-    assert "先执行 tightrein worktree init" in item["summary"]
+    assert (item["kind"], item["command"]) == ("onboarding", "tightrein project check")
+    assert "先执行 tightrein project worktree init" in item["summary"]
 
 
 def test_pending_learn_suggestions_carry_their_document_and_advice(tmp_path):

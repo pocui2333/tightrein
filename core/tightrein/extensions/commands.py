@@ -1,4 +1,4 @@
-"""`tightrein ext list|methods|run|test` 背后的函数(architecture/10 1.4、第 8 章)；参数解析与输出格式由命令行
+"""`tightrein admin ext list|methods|run|test` 背后的函数(architecture/10 1.4、第 8 章)；参数解析与输出格式由命令行
 负责。
 
 - list_points：每个扩展点的实现层、选用的方法、命令、生效的 options、超时与 extend 时的下一层。

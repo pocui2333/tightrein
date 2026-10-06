@@ -35,5 +35,5 @@ def _check(invocation: Any) -> Outcome:
 
 def register(commands: Any, common: argparse.ArgumentParser) -> None:
     doc = group(commands, "doc", "Markdown 交接文档")
-    checked = leaf(doc, common, "check", _check, "校验头信息、必需的小节、数据块的 schema 与小节长度", "doc check")
+    checked = leaf(doc, common, "check", _check, "校验头信息、必需的小节、数据块的 schema 与小节长度")
     checked.add_argument("file", type=Path, help="交接文档的路径")

@@ -43,7 +43,7 @@ def test_links_point_to_the_repository_skills(world):
     plan = run_install(world, install.CODEX)
     assert os.readlink(agents(world) / "loop") == str(world.tool.skills_dir() / "loop")
     assert (agents(world) / "fix" / "references" / "rules.md").is_file()
-    assert "differential-review 尚未锁定，未安装；先执行 tightrein third-party lock" in plan.notes
+    assert "differential-review 尚未锁定，未安装；先执行 tightrein admin third-party lock" in plan.notes
     record = installed(world)["tools"]["codex"]
     assert (record["path"], record["method"], sorted(record["skills"])) == (str(agents(world)), "link", ["fix", "loop"])
 
@@ -160,6 +160,27 @@ def test_agy_gets_the_read_only_commands_and_uninstall_removes_only_those(world)
     install.uninstall(ctx, agy)
     data = json.loads(settings.read_text(encoding="utf-8"))
     assert data["permissions"]["allow"] == ["command(git grep)", "command(npm)"] and data["model"] == "x"
+
+
+def test_the_command_is_linked_into_local_bin_and_removed_with_the_last_tool(world):
+    local_bin = world.home / ".local" / "bin"
+    local_bin.mkdir(parents=True)
+    run_install(world)
+    link = local_bin / "tightrein"
+    assert link.is_symlink() and link.resolve() == (world.tool.root / install.PROGRAM).resolve()
+    assert run_install(world).actions == []
+    ctx, chosen = targets(world)
+    install.uninstall(ctx, chosen)
+    assert not link.is_symlink()
+
+
+def test_a_foreign_command_in_local_bin_is_left_alone(world):
+    local_bin = world.home / ".local" / "bin"
+    local_bin.mkdir(parents=True)
+    (local_bin / "tightrein").write_text("#!/bin/sh\n", encoding="utf-8")
+    plan = run_install(world)
+    assert any("没有建立命令链接" in note for note in plan.notes)
+    assert (local_bin / "tightrein").read_text(encoding="utf-8") == "#!/bin/sh\n"
 
 
 def test_uninstall_only_removes_what_this_tool_created(world, tmp_path):

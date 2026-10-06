@@ -78,7 +78,7 @@ third_party/
 |---|---|---|---|
 | 1 | 中断恢复 | 总是 | `recovery.py`(3.5) |
 | 2 | 部署检测 | 总是 | `collect deployments`：只读查询部署记录，新部署写入 `deployments` |
-| 3 | 部署后浅跑 | `deployments` 中存在尚未浅跑的成功部署 | `worktree sync` 到该 commit，`schedule.onDeploy` 中列出的探针逐个 `collect`，随后 `aggregate --select run:<本次各探针运行>` |
+| 3 | 部署后浅跑 | `deployments` 中存在尚未浅跑的成功部署 | `project worktree sync` 到该 commit，`schedule.onDeploy` 中列出的探针逐个 `collect`，随后 `aggregate --select run:<本次各探针运行>` |
 | 3a | 新提交的增量巡检 | fetch 后主分支的最新提交与最近一次静态巡检的目标 commit 不同(从未巡检过的项目不触发，第一次是基线审查) | `collect --probe static --level incremental --commit <最新提交>`，随后 `aggregate` |
 | 4 | 定时任务 | `schedule.tasks` 中到期的任务(3.2) | 任务配置的命令，采集类任务之后接 `aggregate` |
 | 5 | 分诊 | 存在状态为 `new` 或 `regressed` 的问题 | `triage --select status:new,regressed`(数量上限由 `triage` 自己控制) |
@@ -171,7 +171,7 @@ launchd 按 `tick` 唤醒 `tightrein tick`(`Orchestrator.tick`)：暂停时什�
 
 - 每完成一步输出一行进度；停止时输出停在哪里、为什么停、下一步命令。
 - 交互修复：终端中 `continue` 到 `fix` 时由 `fix start` 启动所配置工具的交互会话，会话结束后若修复的交接文档为 `ok`，继续执行 `fix done` 与后续步骤。由 skill 调用(`--json`)时不再嵌套启动会话，停在关口 `interactive-fix`，给出两种方式：在终端执行 `tightrein fix start <编号>`，或在当前会话中执行 `tightrein fix start <编号> --here` 后按 `fix` skill 工作。
-- **从某一步重来**：`--from` 只接受 `triage`、`fix`、`verify`。`triage` 对关联问题执行 `retriage`；`fix` 与 `verify` 通过 Issue 状态机的 `restart` 事件把 Issue 退回 `todo` 或合并前验证(`in-progress`，`phase` 为 `verify`)。下游的交接文档在 `handoffs` 中标记 `stale_at`，文件保留不删除，随后按状态表继续。
+- **从某一步重来**：`--from` 只接受 `triage`、`fix`、`verify`。`triage` 对关联问题执行 `problem retriage`；`fix` 与 `verify` 通过 Issue 状态机的 `restart` 事件把 Issue 退回 `todo` 或合并前验证(`in-progress`，`phase` 为 `verify`)。下游的交接文档在 `handoffs` 中标记 `stale_at`，文件保留不删除，随后按状态表继续。
 
 **next 的输出**：对象、当前状态(中文名)、下一步模块与命令、能否自动继续、不能继续时的关口类型。
 
@@ -266,7 +266,7 @@ launchd 按 `tick` 唤醒 `tightrein tick`(`Orchestrator.tick`)：暂停时什�
 
 新工作区先处于接入中(redesign/10-onboarding.md)。`orchestrator/onboarding/`：
 
-- **阶段**：`workspace_meta.phase` 为 `onboarding` 或 `running`。迁移 010 给已有数据库写 `running`(已有工作区不强制重新接入)，`workspace init` 新建时写 `onboarding`。接入中 `run` 只做接入检查与每日汇总(步骤 `onboarding`)，`tick` 只在固定时刻运行；不采集、不修代码、不提 PR、不建 Issue。
+- **阶段**：`workspace_meta.phase` 为 `onboarding` 或 `running`。迁移 010 给已有数据库写 `running`(已有工作区不强制重新接入)，`project init` 新建时写 `onboarding`。接入中 `run` 只做接入检查与每日汇总(步骤 `onboarding`)，`tick` 只在固定时刻运行；不采集、不修代码、不提 PR、不建 Issue。
 - **清单**(`service.Onboarding._evaluate`，按配置动态生成；状态存 `onboarding_items`，渲染为工作区根目录的 `onboarding.md`，progress 类型；每项注明自动完成、需要用户回答(附推荐答案)、失败待处理)：
 
 | 项 | 自动完成 | 需要用户回答(推荐答案) | 失败待处理 |
@@ -280,9 +280,9 @@ launchd 按 `tick` 唤醒 `tightrein tick`(`Orchestrator.tick`)：暂停时什�
 | `accounts` 测试账号(有被测地址时) | 各角色的钥匙串条目存在(只读账号属性，不读密码) | 未配置(推荐匿名) | 条目不存在 |
 | `roles` 角色能力表(配置了账号与 `authz-roles` 时) | 试运行成功 | — | 试运行失败 |
 
-  试运行走 `ext run` 的同一路径(`extensions/commands.run_point`)。清单全部完成(回答过的问题算完成)、没有失败项时转为运行中并写历史。
-- **回答**：`tightrein workspace init [--workspace <目录>] [--repo <仓库>]`(目录不存在时新建最小的 `project.yaml`；检查后在终端逐项提问，回车采用推荐，`skip` 跳过，其他输入作为值；非交互时只检查并列出问题)；`tightrein workspace answer <项> --recommended|--skip|--value <值>`(loop skill 用它把用户的回答写回)；直接改 `project.yaml`，或在 `onboarding.md` 的数据块中把某项改为 `done`，下次检查采纳。写回配置由 `config/edit.py` 按行修改单个两级键，不改动其余内容与注释，核对不一致时不写并提示手动修改。
-- **显示**：`status` 显示「<项目>：接入中，还差 N 项需要回答」；每日汇总有「接入中的项目」；收件箱列出各问题与推荐答案。`tightrein workspace check` 对任何工作区生成一次清单检查，运行中的不改阶段。
+  试运行走 `admin ext run` 的同一路径(`extensions/commands.run_point`)。清单全部完成(回答过的问题算完成)、没有失败项时转为运行中并写历史。
+- **回答**：`tightrein project init [--workspace <目录>] [--repo <仓库>]`(目录不存在时新建最小的 `project.yaml`；检查后在终端逐项提问，回车采用推荐，`skip` 跳过，其他输入作为值；非交互时只检查并列出问题)；`tightrein project answer <项> --recommended|--skip|--value <值>`(loop skill 用它把用户的回答写回)；直接改 `project.yaml`，或在 `onboarding.md` 的数据块中把某项改为 `done`，下次检查采纳。写回配置由 `config/edit.py` 按行修改单个两级键，不改动其余内容与注释，核对不一致时不写并提示手动修改。
+- **显示**：`status` 显示「<项目>：接入中，还差 N 项需要回答」；每日汇总有「接入中的项目」；收件箱列出各问题与推荐答案。`tightrein project check` 对任何工作区生成一次清单检查，运行中的不改阶段。
 
 ## 4. cli
 
@@ -377,12 +377,12 @@ tightrein
 ```
 
 - 流水线模块的命令(`collect` 到 `learn`)接受 15.2 的全部参数；未写出的子命令参数由对应分篇定义。
-- 问题的人工操作(`ignore`、`false-positive`、`merge`、`reopen`、`retriage`)是顶层命令，与 2.9、3.9 的写法一致；`reopen` 作用于问题，`issue reopen` 作用于 Issue。
-- `kb sync` 同步 FTS 索引并重新生成各目录的 `INDEX.md`(16.4)；`kb` 的其余子命令见 03 分篇 1.7，`eval` 的子命令见 03 分篇 2.7。
+- 问题的人工操作(`problem ignore`、`problem false-positive`、`merge`、`reopen`、`problem retriage`)是顶层命令，与 2.9、3.9 的写法一致；`reopen` 作用于问题，`issue reopen` 作用于 Issue。
+- `admin kb sync` 同步 FTS 索引并重新生成各目录的 `INDEX.md`(16.4)；`kb` 的其余子命令见 03 分篇 1.7，`eval` 的子命令见 03 分篇 2.7。
 - `ext` 的三个子命令见 10 分篇第 8 章：查看扩展点的解析结果、单独调用一次扩展点、以夹具测试扩展。
-- `worktree init` 生成创建只读 worktree 的待确认操作；`worktree sync` 调用 `vcs` 的只读 worktree 切换函数，执行 `git fetch origin` 与 `git checkout --detach <commit>`，不建分支、不提交；省略 `--commit` 时取 staging 当前部署的 commit(02 分篇 4.6)。
+- `project worktree init` 生成创建只读 worktree 的待确认操作；`project worktree sync` 调用 `vcs` 的只读 worktree 切换函数，执行 `git fetch origin` 与 `git checkout --detach <commit>`，不建分支、不提交；省略 `--commit` 时取 staging 当前部署的 commit(02 分篇 4.6)。
 - `--runner replay` 可与 `--replay-from <运行编号或目录>` 同用，指定回放的录制集(02 分篇 2.12)。
-- `config show` 列出四层配置合成后每个键的生效值与来源层(`core`、`stack:<名称>`、`project`、`user`)；`--key` 只显示该键及其下级键，并列出各层中的值(01 分篇 5.1)。
+- `project config` 列出四层配置合成后每个键的生效值与来源层(`core`、`stack:<名称>`、`project`、`user`)；`--key` 只显示该键及其下级键，并列出各层中的值(01 分篇 5.1)。
 
 ### 4.2 通用参数
 
@@ -423,9 +423,9 @@ tightrein
 
 `vcs` 的写操作与各模块的确认事项不直接执行，而是生成「待确认操作」，写入 `pending_operations` 表，编号 `OP-<四位序号>`(01 篇 4.2)：
 
-- **终端中**：`confirm.py` 当场展示将执行的命令、作用的分支与文件、对工作区与历史的影响、是否影响远程、能否撤销，等待输入 `yes`；同意只对这一次操作有效。
-- **非交互调用**(标准输入不是终端或使用 `--json`)：命令以退出码 4 结束，`pendingOperations` 中给出操作；用户同意后由调用方执行 `tightrein confirm <操作编号>`，拒绝时执行 `tightrein reject <操作编号> [--note <说明>]`。
-- `confirm` 执行前重新检查前置条件(分支、工作区状态)与幂等键。
+- **终端中**：`approve.py` 当场展示将执行的命令、作用的分支与文件、对工作区与历史的影响、是否影响远程、能否撤销，等待输入 `yes`；同意只对这一次操作有效。
+- **非交互调用**(标准输入不是终端或使用 `--json`)：命令以退出码 4 结束，`pendingOperations` 中给出操作；用户同意后由调用方执行 `tightrein approve <操作编号>`，拒绝时执行 `tightrein reject <操作编号> [--note <说明>]`。
+- `approve` 执行前重新检查前置条件(分支、工作区状态)与幂等键。
 - 待确认操作超过 7 天未处理标为 `expired`，需要时重新运行对应命令生成。
 
 ### 4.5 退出码
@@ -455,13 +455,13 @@ tightrein
 | 标准 | Agent Skills 标准：每个 skill 一个目录，目录名即 skill 名，内含 `SKILL.md`，可选 `references/` |
 | frontmatter | 只写 `name` 与 `description`。`name` 与目录名相同，小写字母、数字与连字符；`description` 写清做什么、何时使用，包含用户常用的中文说法，不超过 1024 个字符 |
 | 正文长度 | `SKILL.md` 正文不超过 500 行 |
-| references | 只从 `SKILL.md` 直接引用，参考文件之间不互相引用；超过 100 行的参考文件顶部加目录；`references/roles/`、`references/tasks/` 下的角色与任务说明由核心作为执行器任务的 `instructions` 加载，不要求被 `SKILL.md` 引用；其余参考文件(包括同样由核心加载的单个文件，例如 `evidence-standard.md`)都须在 `SKILL.md` 的参考资料清单中列出；`skills check` 检查这两条 |
+| references | 只从 `SKILL.md` 直接引用，参考文件之间不互相引用；超过 100 行的参考文件顶部加目录；`references/roles/`、`references/tasks/` 下的角色与任务说明由核心作为执行器任务的 `instructions` 加载，不要求被 `SKILL.md` 引用；其余参考文件(包括同样由核心加载的单个文件，例如 `evidence-standard.md`)都须在 `SKILL.md` 的参考资料清单中列出；`admin skills check` 检查这两条 |
 | 内容边界 | 只写：何时使用、该调用哪个命令与参数、如何解读 `--json` 输出与退出码、在哪些关口停下等用户、禁止事项。不写业务规则表、阈值、状态表，这些由核心维护，skill 通过命令的输出获得 |
 | 命令调用 | 一律带 `--json`；不直接读写工作区中的数据库、交接文档与配置；不执行任何 git 写操作 |
-| 确认 | 退出码 4 时把 `pendingOperations` 的说明原样展示给用户，得到用户明确同意后才执行 `confirm`；用户的同意不能由 agent 推断 |
+| 确认 | 退出码 4 时把 `pendingOperations` 的说明原样展示给用户，得到用户明确同意后才执行 `approve`；用户的同意不能由 agent 推断 |
 | 语言 | 正文用中文 |
 
-`tightrein skills check` 机械检查以上约定：frontmatter 只有两个字段且 `name` 与目录名一致、正文行数、`references/` 中的文件都被 `SKILL.md` 引用且没有互相引用、长参考文件有目录、正文与参考文件中出现的 `tightrein <命令>` 都存在于命令树中。该检查在单元测试与 `install` 前都会运行。
+`tightrein admin skills check` 机械检查以上约定：frontmatter 只有两个字段且 `name` 与目录名一致、正文行数、`references/` 中的文件都被 `SKILL.md` 引用且没有互相引用、长参考文件有目录、正文与参考文件中出现的 `tightrein <命令>` 都存在于命令树中。该检查在单元测试与 `admin install` 前都会运行。
 
 ### 5.2 loop skill
 
@@ -476,12 +476,12 @@ tightrein
 |---|---|
 | 总则 | 进度就是状态，永远先读状态再行动；判断下一步只看命令输出，不自行推断；所有命令加 `--json` |
 | 看全局 | 用户问整体情况时执行 `tightrein status --json`，先说暂停与接入状态，再按收件箱各项(附推荐做法)、异常、产出的顺序汇报 |
-| 接入问题 | 接入中的工作区执行 `tightrein workspace check --json` 列出待回答的问题与推荐答案；用户用自然语言回答后以 `tightrein workspace answer <项> --recommended\|--skip\|--value <值>` 写回 |
+| 接入问题 | 接入中的工作区执行 `tightrein project check --json` 列出待回答的问题与推荐答案；用户用自然语言回答后以 `tightrein project answer <项> --recommended\|--skip\|--value <值>` 写回 |
 | 暂停 | 用户要求暂停或恢复时执行 `tightrein pause`、`tightrein resume`(只对一个工作区时带 `--workspace`) |
 | 识别对象 | 有编号直接用；没有编号时执行 `tightrein find`，把相对时间换算为绝对日期；多个候选时列出编号、标题、状态让用户选，不猜 |
 | 识别目标 | 用户说了做到哪一步的换成 `--until`；只问进度的用 `next`；说「从某步重来」的用 `--from` |
 | 执行 | 执行 `tightrein continue <对象> [--until] [--from]`；每步完成后用一句话汇报；停下时说明停在哪里、为什么停、下一步是什么 |
-| 关口 | 按退出码与 `stoppedAt` 的关口类型处理：待确认操作原样展示，等用户同意后 `confirm`；待放行的 Issue 展示 Issue 摘要，由用户决定是否 `issue approve`；修复计划由 `fix` skill 负责确认；交互修复给出两种方式由用户选；待合并的 PR 只给链接 |
+| 关口 | 按退出码与 `stoppedAt` 的关口类型处理：待确认操作原样展示，等用户同意后 `approve`；待放行的 Issue 展示 Issue 摘要，由用户决定是否 `approve`；修复计划由 `fix` skill 负责确认；交互修复给出两种方式由用户选；待合并的 PR 只给链接 |
 | 失败 | 退出码 1、5、6、8 时汇报 `errors` 中的说明与事件日志路径，不重试、不换参数绕过；退出码 3 时按输出执行前置命令前先告诉用户；退出码 7 时告诉用户有其他运行正在进行 |
 | 禁止 | 不执行 git 写操作；不编辑工作区中的文件；不替用户确认；不跳过关口；不用 `--ignore-state` |
 | 参考资料 | `references/commands.md`、`references/gates.md`、`references/exit-codes.md`、`references/phrasing.md` |
@@ -532,19 +532,19 @@ tightrein
 
 ### 6.3 安装流程
 
-`tightrein install [--tool <工具>]` 调用 `packaging/install.py`：
+`tightrein admin install [--tool <工具>]` 调用 `packaging/install.py`：
 
-1. 运行 `skills check`，不通过则停止。
-2. 运行 `third-party verify`，缓存缺失的按锁定清单下载，哈希不符则停止。
+1. 运行 `admin skills check`，不通过则停止。
+2. 运行 `admin third-party verify`，缓存缺失的按锁定清单下载，哈希不符则停止。
 3. 对每个目标工具检查冲突：目标位置已存在同名条目、且不是本工具上次安装的(不在 `installed.json` 中)时停止，列出冲突路径，由用户处理后重跑；不覆盖他人的 skill。
-4. 按 6.1 安装。链接方式下链接指向仓库中的 `skills/<名称>` 与第三方 skill 的缓存目录，修改 skill 后无需重装；插件方式下每次 skills 变化后重新执行 `install`。
+4. 按 6.1 安装。链接方式下链接指向仓库中的 `skills/<名称>` 与第三方 skill 的缓存目录，修改 skill 后无需重装；插件方式下每次 skills 变化后重新执行 `admin install`。
 5. 核对：每个安装位置都能读到 `SKILL.md`，其 `name` 与预期一致，内容哈希与来源一致。
 6. 写 `third_party/installed.json`：工具、安装路径、方式、各 skill 的内容哈希、安装时间。
 
 - `--dry-run` 只列出将要创建、更新与删除的路径与命令。
-- `install --check` 只做第 5 步的核对，报告缺失、过期(哈希与仓库不一致)与冲突的条目。
-- `uninstall` 只删除 `installed.json` 中记录的、由本工具创建的链接与插件，删除前列出清单并确认。
-- `--repo-only`(与 `--tool` 互斥)只做本工具仓库内的部分：第 1、2 步，在 `skills/<名称>` 建立指向缓存的链接，写 `installed.json` 的 `repo` 段；不构建插件、不执行 `claude plugin`、不碰任何工具目录。`--dry-run`、`--check`(只核对 `skills/<名称>` 的链接，工具名记为 `repo`)同样适用。`uninstall --repo-only` 只删除 `repo` 段记录的链接，仍有工具的安装记录时停止(这些工具经 `skills/<名称>` 取得第三方 skill)；下载缓存保留。
+- `admin install --check` 只做第 5 步的核对，报告缺失、过期(哈希与仓库不一致)与冲突的条目。
+- `admin uninstall` 只删除 `installed.json` 中记录的、由本工具创建的链接与插件，删除前列出清单并确认。
+- `--repo-only`(与 `--tool` 互斥)只做本工具仓库内的部分：第 1、2 步，在 `skills/<名称>` 建立指向缓存的链接，写 `installed.json` 的 `repo` 段；不构建插件、不执行 `claude plugin`、不碰任何工具目录。`--dry-run`、`--check`(只核对 `skills/<名称>` 的链接，工具名记为 `repo`)同样适用。`admin uninstall --repo-only` 只删除 `repo` 段记录的链接，仍有工具的安装记录时停止(这些工具经 `skills/<名称>` 取得第三方 skill)；下载缓存保留。
 - 各次核对都包含已锁定的第三方 skill 在 `skills/<名称>` 的链接。
 
 ## 7. third_party
@@ -569,17 +569,17 @@ tightrein
 
 - **目录哈希**：对 skill 目录中的全部文件(不含 `.git`)，按相对路径排序，逐行拼接「相对路径、一个制表符、文件内容的 sha256、换行」，再对拼接结果求 sha256。不计文件权限与修改时间，结果与平台无关。
 - **下载**：按 `source` 与 `ref` 下载该 commit 的源码归档(GitHub 的 `https://codeload.github.com/<所有者>/<仓库>/tar.gz/<commit>`)，只解出 `path` 下的目录，放到本工具仓库内的缓存 `local/third_party-cache/<名称>/<commit>/`(`local/` 已被 `.gitignore` 忽略)。不在缓存中执行任何 git 命令。
-- **校验时机**：`install` 前；`collect` 的静态巡检启动执行器前，由 `packaging/common.py` 提供的校验函数核对已安装副本；`third-party verify` 手动执行。任一文件哈希不符即停止，报出文件路径与期望哈希、实际哈希，不自动重新下载覆盖。
-- **锁定与更新**：`third-party lock [<名称>...] [--ref <commit>]`：没有 `--ref` 时取来源仓库默认分支的最新 commit，按 design 9.11 核实后下载，写入 commit、路径、许可证、逐文件哈希与核实数据；改写已锁定的条目时列出与当前锁定版本的文件差异，用户确认后才改写；清单的提交由用户自行完成。
+- **校验时机**：`admin install` 前；`collect` 的静态巡检启动执行器前，由 `packaging/common.py` 提供的校验函数核对已安装副本；`admin third-party verify` 手动执行。任一文件哈希不符即停止，报出文件路径与期望哈希、实际哈希，不自动重新下载覆盖。
+- **锁定与更新**：`admin third-party lock [<名称>...] [--ref <commit>]`：没有 `--ref` 时取来源仓库默认分支的最新 commit，按 design 9.11 核实后下载，写入 commit、路径、许可证、逐文件哈希与核实数据；改写已锁定的条目时列出与当前锁定版本的文件差异，用户确认后才改写；清单的提交由用户自行完成。
 
 ## 8. launchd 定时配置
 
 ### 8.1 放置位置与加载
 
 - 文件：`~/Library/LaunchAgents/local.tightrein.<项目名>.plist`，用户级 LaunchAgent，在用户登录的图形会话域中运行，可以读取登录钥匙串中的测试账号密码。
-- `tightrein schedule install` 由 `schedule.tick`(`project.yaml` 覆盖核心缺省值)生成 plist，展示全文与将执行的命令，确认后写入并执行 `launchctl bootstrap gui/<用户 ID> <plist 路径>`。
-- `schedule uninstall` 执行 `launchctl bootout gui/<用户 ID>/local.tightrein.<项目名>` 后删除 plist；`schedule show` 输出 plist 与 `launchctl print gui/<用户 ID>/local.tightrein.<项目名>` 的状态。
-- 修改 `schedule.tick` 后重新执行 `schedule install`，先 `bootout` 再 `bootstrap`。
+- `tightrein project schedule install` 由 `schedule.tick`(`project.yaml` 覆盖核心缺省值)生成 plist，展示全文与将执行的命令，确认后写入并执行 `launchctl bootstrap gui/<用户 ID> <plist 路径>`。
+- `project schedule uninstall` 执行 `launchctl bootout gui/<用户 ID>/local.tightrein.<项目名>` 后删除 plist；`project schedule show` 输出 plist 与 `launchctl print gui/<用户 ID>/local.tightrein.<项目名>` 的状态。
+- 修改 `schedule.tick` 后重新执行 `project schedule install`，先 `bootout` 再 `bootstrap`。
 - 手动立即触发一次：`launchctl kickstart gui/<用户 ID>/local.tightrein.<项目名>`。
 
 ### 8.2 plist 内容要点
@@ -611,7 +611,7 @@ tightrein
 | 待确认操作执行时前置条件已变化 | 标为 `expired`，提示重新运行生成它的命令 |
 | 事件日志写入失败 | 不中断，运行摘要中报告 |
 | 通知失败 | 不中断，运行摘要中报告 |
-| 安装冲突、哈希不符、`skills check` 不通过 | 停止安装，列出全部问题，不做部分安装 |
+| 安装冲突、哈希不符、`admin skills check` 不通过 | 停止安装，列出全部问题，不做部分安装 |
 | `launchctl` 命令失败 | 输出命令与错误原文，plist 文件保留，便于手动排查 |
 
 ## 10. 测试
@@ -624,9 +624,9 @@ tightrein
 | `recovery.py` | 持有者进程不存在时接管锁并标记 `interrupted`；进程存在时不处理 |
 | `summary.py`、`notify.py` | 给定子运行的交接文档断言摘要各节；通知幂等去重；`notify.method=none` 时不调用外部命令 |
 | `cli` | 每个命令的参数解析；`--ignore-state` 无 `--output` 时报错；`--json` 时标准输出只有一个合法 JSON；每类异常到退出码的映射；非交互调用时待确认操作以退出码 4 返回 |
-| `confirm` | 前置条件变化时转为 `expired`；幂等键已完成时跳过 |
-| `skills check` | 对仓库中的全部 skill 运行，作为单元测试的一部分；另备违规样例：多余的 frontmatter 字段、名称与目录不一致、超过 500 行、参考文件互相引用、引用不存在的命令 |
-| `packaging` | 在临时 HOME 中安装：链接指向正确、冲突时停止、`--dry-run` 无副作用、`install --check` 报告过期条目、`uninstall` 只删除自己创建的条目；Claude Code 插件只断言构建出的目录与清单内容，不在测试中调用 `claude` |
+| `approve` | 前置条件变化时转为 `expired`；幂等键已完成时跳过 |
+| `admin skills check` | 对仓库中的全部 skill 运行，作为单元测试的一部分；另备违规样例：多余的 frontmatter 字段、名称与目录不一致、超过 500 行、参考文件互相引用、引用不存在的命令 |
+| `packaging` | 在临时 HOME 中安装：链接指向正确、冲突时停止、`--dry-run` 无副作用、`admin install --check` 报告过期条目、`admin uninstall` 只删除自己创建的条目；Claude Code 插件只断言构建出的目录与清单内容，不在测试中调用 `claude` |
 | `third_party` | 目录哈希的确定性(文件顺序、权限变化不影响结果)；文件被改动一个字节时校验失败 |
 | launchd | 断言由 `tick` 展开的 `StartCalendarInterval` 与 plist 其余键；不在测试中调用 `launchctl` |
 | 端到端 | `tests/replay/` 中准备一次完整 run 的夹具：数据库快照、录制的 agent 结果、期望的运行摘要，以 `--runner replay --now` 运行并比对 |

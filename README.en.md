@@ -49,7 +49,7 @@ Platform support:
 | Feature | macOS | Linux / Docker |
 |---|---|---|
 | Credential storage (Sentry, Loki, etc.) | System Keychain | Environment variables |
-| Scheduled runs (`tightrein schedule install`) | launchd | cron / systemd |
+| Scheduled runs (`tightrein project schedule install`) | launchd | cron / systemd |
 | Desktop notifications | Native osascript notifications | Disable (`notify: {method: none}`) |
 
 Native Windows is not currently supported; recommended to run under WSL2.
@@ -61,10 +61,10 @@ git clone https://github.com/pocui2333/tightrein.git
 cd tightrein
 python3 -m venv core/.venv
 core/.venv/bin/pip install -e core
-core/.venv/bin/tightrein install    # Registers skills with locally detected agent tools
+core/.venv/bin/tightrein admin install    # Registers skills and links the tightrein command into ~/.local/bin
 ```
 
-Add `core/.venv/bin` to your `PATH`, or invoke `core/.venv/bin/tightrein` directly.
+With `~/.local/bin` on your `PATH`, run `tightrein` from any directory; otherwise add `core/.venv/bin` to your `PATH`. `tightrein --help` lists every command; see the [command reference](docs/reference/cli.md).
 
 ## Quick start
 
@@ -88,8 +88,8 @@ agents:
 **2. Onboard a project.** Workspaces reside under `workspaces/` (git-ignored). tightrein only performs read-only checks until onboarding is complete.
 
 ```sh
-tightrein workspace init --workspace workspaces/my-app --repo ~/code/my-app
-tightrein worktree init --workspace workspaces/my-app     # Request read-only worktree; approve via tightrein confirm
+tightrein project init --workspace workspaces/my-app --repo ~/code/my-app
+tightrein project worktree init --workspace workspaces/my-app     # Request read-only worktree; approve via tightrein approve
 tightrein status --workspace workspaces/my-app           # Inspect onboarding questions and recommended commands
 ```
 
@@ -99,7 +99,7 @@ tightrein status --workspace workspaces/my-app           # Inspect onboarding qu
 tightrein run --workspace workspaces/my-app --select collect+ --probe static --dry-run   # Dry run: preview planned steps
 tightrein run --workspace workspaces/my-app --select collect+ --probe static             # Run collection and inspection
 tightrein watch                                                                         # Live monitor in another terminal
-tightrein schedule install                                                              # Optional: scheduled weekday runs on macOS
+tightrein project schedule install                                                              # Optional: scheduled weekday runs on macOS
 ```
 
 See the [first-run tutorial](docs/tutorials/first-run.md) for a full walkthrough.

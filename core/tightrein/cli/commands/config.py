@@ -27,6 +27,5 @@ def _show(invocation: Any) -> Outcome:
 
 
 def register(commands: Any, common: argparse.ArgumentParser) -> None:
-    config = group(commands, "config", "查看配置")
-    shown = leaf(config, common, "show", _show, "列出生效值与来源层", "config show")
+    shown = leaf(commands, common, "config", _show, "生效的配置值与来源层")
     shown.add_argument("--key", help="只显示该键及其下级键，并列出各层中的值")

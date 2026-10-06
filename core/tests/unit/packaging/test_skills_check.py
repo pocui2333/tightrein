@@ -30,11 +30,10 @@ def test_every_skill_in_the_repository_passes():
 
 def test_the_command_tree_lists_subcommands():
     assert COMMANDS["status"] is None
-    assert COMMANDS["install"] is None and COMMANDS["uninstall"] is None
-    assert COMMANDS["schedule"] == frozenset({"install", "uninstall", "show"})
-    assert COMMANDS["skills"] == frozenset({"check"})
-    assert "approve" in COMMANDS["issue"]
-    assert COMMANDS["third-party"] == frozenset({"lock", "verify"})
+    assert COMMANDS["approve"] is None and COMMANDS["new"] is None
+    assert {"install", "uninstall", "third-party", "skills"} <= COMMANDS["admin"]
+    assert {"init", "probe", "config", "schedule"} <= COMMANDS["project"]
+    assert "approve" not in COMMANDS["issue"] and "retriage" in COMMANDS["problem"]
 
 
 def test_violations_are_reported_by_rule(tmp_path):
@@ -44,7 +43,7 @@ def test_violations_are_reported_by_rule(tmp_path):
     write(tmp_path, "nofront/SKILL.md", "# 没有 frontmatter\n")
     write(tmp_path, "long/SKILL.md", skill_text("long", "行\n" * 20))
     write(tmp_path, "commands/SKILL.md", skill_text("commands", "`tightrein improve propose`、`tightrein issue burn 7`\n"
-                                                    "、`tightrein continue 7` 与 `tightrein issue approve 7`\n"))
+                                                    "、`tightrein continue 7` 与 `tightrein approve 7`\n"))
     write(tmp_path, "refs/SKILL.md", skill_text("refs", "见 `references/a.md` 与 `references/missing.md`。\n"))
     write(tmp_path, "refs/references/a.md", "再看 [b](b.md)。\n")
     write(tmp_path, "refs/references/b.md", "执行 `tightrein nothing`。\n")

@@ -69,14 +69,14 @@ def test_large_groups_are_split_evenly(world):
     assert groups[0][0] == "DP-0001" and groups[1][-1] == "DP-0009"
 
 
-EXPECTED_TYPE_INDEX = """<!-- 本文件由 tightrein kb sync 生成，不要手工编辑 -->
+EXPECTED_TYPE_INDEX = """<!-- 本文件由 tightrein admin kb sync 生成，不要手工编辑 -->
 # 缺陷模式(defect-pattern)
 
 - DP-0001 查询缺少公司过滤 (DP-0001-e.md)
 - DP-0003 分页从 0 开始 (DP-0003-e.md)
 """
 
-EXPECTED_ROOT_INDEX = """<!-- 本文件由 tightrein kb sync 生成，不要手工编辑 -->
+EXPECTED_ROOT_INDEX = """<!-- 本文件由 tightrein admin kb sync 生成，不要手工编辑 -->
 # 知识索引
 
 ## 缺陷模式(defect-pattern)

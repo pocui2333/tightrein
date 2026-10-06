@@ -59,7 +59,7 @@ def test_approve_on_a_manual_todo_issue_keeps_the_state(tmp_path):
     record = service(world).approve("0001")
     assert record.issue.status is IssueStatus.TODO
     assert issue_events.for_issue(world.conn, "0001") == []
-    assert next_step(record.issue).command == "issue approve"
+    assert next_step(record.issue).command == "approve"
 
 
 def test_manual_issue_closes_and_reopens_without_problems(tmp_path):

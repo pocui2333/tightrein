@@ -1,7 +1,7 @@
 """待确认操作的展示、终端确认、confirm 与 reject(architecture/09 4.4)。
 
 终端中当场展示命令、分支与文件、影响、是否影响远程、能否撤销，输入 yes 才同意，同意只对这一次操作有效；
-非交互调用不在这里确认，命令以退出码 4 结束，由调用方在用户同意后执行 tightrein confirm。
+非交互调用不在这里确认，命令以退出码 4 结束，由调用方在用户同意后执行 tightrein approve。
 confirm 只执行执行方为 vcs 的操作，执行前由 vcs 复核前置条件与幂等键；前置条件变化时操作改为 expired。
 """
 
@@ -21,7 +21,7 @@ AGREE = "yes"
 
 def pending_dict(operation: PendingOperation) -> dict[str, Any]:
     return {"id": operation.id, "kind": operation.kind.value, "subjectId": operation.subject_id,
-            "description": operations.describe(operation), "command": f"tightrein confirm {operation.id}"}
+            "description": operations.describe(operation), "command": f"tightrein approve {operation.id}"}
 
 
 def load(app: App, operation_id: str) -> PendingOperation:

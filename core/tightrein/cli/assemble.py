@@ -208,6 +208,17 @@ def alternate_route(ext: Externals, config: ProjectConfig, environment: Mapping[
                           network.route(switched, host), tuple(config.get("runtime.network.errorPatterns")), record)
 
 
+def resolve_workspace(given: Path, workspaces: Path) -> Path:
+    """工作区可以写路径，也可以写项目名(本工具 workspaces/ 下的目录名)。"""
+    if given.is_dir():
+        return given
+    named = workspaces / given.name
+    if len(given.parts) == 1 and named.is_dir():
+        return named
+    known = sorted(item.name for item in workspaces.iterdir() if item.is_dir()) if workspaces.is_dir() else []
+    raise UsageError(f"工作区不存在：{given}" + (f"；已有的工作区：{'、'.join(known)}" if known else ""))
+
+
 class App:
     def __init__(self, options: Options, externals: Externals | None = None) -> None:
         self.options = options
@@ -220,8 +231,7 @@ class App:
         workspace = options.workspace or self.user.default_workspace
         if workspace is None:
             raise UsageError("没有给出 --workspace，本机用户配置中也没有 defaultWorkspace")
-        if not workspace.is_dir():
-            raise UsageError(f"工作区不存在：{workspace}")
+        workspace = resolve_workspace(workspace, self.tool.workspaces_dir())
         self.root = workspace.resolve()
         self.layout = WorkspaceLayout(self.root, options.output_dir)
         self.config: ProjectConfig = project.load(self.layout.project_config(), self.tool.root,
@@ -397,7 +407,7 @@ class App:
             try:
                 self.sync_readonly()
             except (VcsError, OSError) as error:
-                return [f"无法把只读 worktree 切到主分支(先执行 tightrein worktree init)：{error}"]
+                return [f"无法把只读 worktree 切到主分支(先执行 tightrein project worktree init)：{error}"]
             runs = project_checks.run(project_checks.commands(config), self.layout.readonly_worktree(), [],
                                       self.tool_launcher(), self.layout.onboarding_checks_dir(),
                                       timeout=project_checks.timeout_seconds(config), state=lambda root: {},

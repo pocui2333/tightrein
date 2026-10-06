@@ -56,7 +56,7 @@ def test_a_broken_file_keeps_the_last_index_and_warns(world):
     result = service(world).search("公司过滤")
     assert [hit.id for hit in result.hits] == ["DP-0001"]
     assert result.index_warnings == [
-        "知识文件有格式错误，本次检索未包含最新改动；运行 tightrein kb sync 查看详情："
+        "知识文件有格式错误，本次检索未包含最新改动；运行 tightrein admin kb sync 查看详情："
         "knowledge/defect-pattern/DP-0001-owner.md"]
 
 

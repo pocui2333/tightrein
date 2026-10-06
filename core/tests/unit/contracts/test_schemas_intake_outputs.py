@@ -34,7 +34,7 @@ ISSUE_OUTPUTS = {"issueId": "0007", "action": "created", "path": "issues/0007-or
 LOOP_OUTPUTS = {
     "conclusion": "有 1 项等待用户处理",
     "waiting": [{"kind": "issue-approval", "subjectId": "0007", "summary": "订单查询在分页参数为负数时返回 500",
-                 "command": "tightrein issue approve 7", "treatment": "immediate",
+                 "command": "tightrein approve 7", "treatment": "immediate",
                  "severity": "P1"}],
     "steps": [{"order": 5, "name": "分诊", "executed": True, "reason": None, "runId": "R-20260929-021503-triage",
                "status": "ok", "durationMs": 81000}],

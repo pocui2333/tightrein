@@ -50,7 +50,7 @@ def _low_models(ctx: MetricContext, week: date, current: Sequence[MetricValue]) 
             accept=f"把写代码的角色改用更强的档或其他模型(配置键 `{WRITER_ROLE}`，或本机用户配置中该档对应的模型)",
             reject="保持当前模型，继续观察",
             recommended=True, reason="一次通过率持续偏低会增加修正轮数与费用，写代码出错有复现测试与评审兜底，升档的收益可由评测确认",
-            apply=f"先运行 `tightrein eval run --module fix --model {model},<候选模型>` 对比，再自己修改 `{WRITER_ROLE}`")
+            apply=f"先运行 `tightrein admin eval run --module fix --model {model},<候选模型>` 对比，再自己修改 `{WRITER_ROLE}`")
         found.append(Draft(SuggestionKind.CONTROL, f"first-pass:{model}",
                            {"metric": FIRST_PASS, "model": model, "rates": [rate for rate, _ in series],
                             "advice": {"recommendation": text.accept, "reason": text.reason}},

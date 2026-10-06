@@ -11,7 +11,7 @@
 - secret：从钥匙串读取登记过的只读凭证(sources.project-probes[].keychain 之外的条目一律拒绝)，读到的值登记到脱敏器；
 - redact：按核心的脱敏规则处理文本(含已读到的凭证)，证据与说明写出前调用；
 - query_logs：经工作区配置的日志平台方法(extensions.log-platform)取日志，配置了 log-parse 时返回解析后的条目，
-  否则返回原文行；实际调用 `tightrein probe logs`，非 Python 的探针也可以直接调用这条命令。
+  否则返回原文行；实际调用 `tightrein project probe logs`，非 Python 的探针也可以直接调用这条命令。
 """
 
 from __future__ import annotations
@@ -89,7 +89,7 @@ def query_logs(query: str, since: str, until: str, limit: int = 1000, *, parse: 
     try:
         document = json.loads(completed.stdout)
     except ValueError as error:
-        raise RuntimeError(f"tightrein probe logs 没有输出 JSON(退出码 {completed.returncode})") from error
+        raise RuntimeError(f"tightrein project probe logs 没有输出 JSON(退出码 {completed.returncode})") from error
     if completed.returncode != 0:
-        raise RuntimeError(f"tightrein probe logs 失败：{document.get('errors') or document.get('result')}")
+        raise RuntimeError(f"tightrein project probe logs 失败：{document.get('errors') or document.get('result')}")
     return list(document["result"]["entries"])

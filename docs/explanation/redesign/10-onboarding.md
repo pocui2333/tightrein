@@ -24,7 +24,7 @@
 
 ## 4. 回答方式
 
-- 终端：`tightrein workspace init` 逐项提问，有推荐答案时直接回车即采用。
+- 终端：`tightrein project init` 逐项提问，有推荐答案时直接回车即采用。
 - 对话：通过 loop skill 列出待回答的问题，用户用自然语言回答，由 agent 写回配置。
 - 文件：在 `onboarding.md` 中勾选或直接修改 project.yaml，下次运行时重新检查。
 

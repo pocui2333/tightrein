@@ -39,7 +39,7 @@ def summary(run_id: str, items: Sequence[SummaryItem], skipped: Sequence[tuple[s
         lines += ["P0 问题，已交给 issue 创建：", *(_line(item) for item in urgent), ""]
     lines += [*(_line(item) for item in others)] or ["本次没有得出结论的问题。"]
     if manual:
-        lines += ["", "人工队列(补充信息后 tightrein retriage <问题> --note，或直接改判)：",
+        lines += ["", "人工队列(补充信息后 tightrein problem retriage <问题> --note，或直接改判)：",
                   *(f"{_line(item)}；{item.reason}" for item in manual)]
     if merged:
         lines += ["", "并入其他问题：", *(f"- {item.problem_id} 并入 {item.merged_into}" for item in merged)]

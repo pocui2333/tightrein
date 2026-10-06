@@ -35,6 +35,6 @@ def _list(invocation: Any) -> Outcome:
 
 def register(commands: Any, common: argparse.ArgumentParser) -> None:
     group_ = group(commands, "worktree", "只读与修复 worktree")
-    leaf(group_, common, "init", _init, "申请创建只读 worktree", "worktree init")
-    leaf(group_, common, "sync", _sync, "把只读 worktree 切换到 commit(缺省为 staging 当前部署的 commit)", "worktree sync")
-    leaf(group_, common, "list", _list, "列出 worktree", "worktree list")
+    leaf(group_, common, "init", _init, "申请创建只读 worktree")
+    leaf(group_, common, "sync", _sync, "把只读 worktree 切换到 commit(缺省为 staging 当前部署的 commit)")
+    leaf(group_, common, "list", _list, "列出 worktree")

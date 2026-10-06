@@ -73,7 +73,7 @@ def test_changed_extra_and_missing_cases_are_all_listed(world):
         ("triage/E-0002", "manifest.json 中登记了但目录或文件不存在"),
         ("triage/E-0003", "没有登记在 manifest.json 中"),
     ]
-    assert "tightrein eval seal" in str(raised.value)
+    assert "tightrein admin eval seal" in str(raised.value)
 
 
 def test_uncommitted_changes_are_refused_even_when_resealed(world):

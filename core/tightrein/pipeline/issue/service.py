@@ -6,7 +6,7 @@ project.language 的模板)。新建前核对正文中引用的代码位置：�
 为 failed 并提示重新分诊；写好后做「提 Issue 与报告」一项的代码检查(结果写 scores)，不通过说明生成逻辑有缺陷，交接文档为
 failed 且保留文件；P0 立即发本机通知(同一天同一 Issue 只通知一次)；写 issue-<问题编号>.json。
 --output 模式照常读数据库，Issue 文件与交接文档写到输出目录，不写数据库、不发通知。
-issue approve 放行后的建分支确认由编排层组合(architecture/06 9.2)，本服务只做状态转换，不调用任何 vcs 写操作。
+approve 放行 Issue 后的建分支确认由编排层组合(architecture/06 9.2)，本服务只做状态转换，不调用任何 vcs 写操作。
 create_manual 直接新建用户需求的 Issue(architecture/06 10.7)：不关联问题，状态为待修，不写运行记录与交接文档，
 不做「提 Issue 与报告」的检查(评分表针对分诊生成的正文)；--output 模式不支持。
 关卡 gates.issue-approve 为 auto 时(architecture/06 9.3)，新建的 Issue 按分诊结论自动放行并调用 prepare(由组装层注入 fix prepare)，
@@ -88,14 +88,14 @@ ENVELOPE = "handoff/envelope.schema.json"
 CREATED = "created"
 APPENDED = "appended"
 P0_EVENT = "issue-p0"
-NEXT_ACTION = "等用户审阅：tightrein issue show {issue_id}，确认后 tightrein issue approve {issue_id}"
+NEXT_ACTION = "等用户审阅：tightrein issue show {issue_id}，确认后 tightrein approve {issue_id}"
 AUTO_APPROVED = "自动放行：满足"
 APPROVED_NEXT = "已自动放行，建修复分支后进入修复：tightrein fix start {issue_id}"
 NEEDS_DECISION = "需要用户决定"
 RERENDERED = "按当前模板重新渲染(issue rerender，未重新分诊)"
 MANUAL_APPROVED = "自动放行(gates.issue-approve 为 auto)：用户需求直接申请建修复分支"
 LOCATED_KEYS = ("evidence", "rootCauses", "report", "worth", "flags")
-BLOCKED_NEXT = "代码位置不完整，没有建 Issue：tightrein retriage {problem_id} 重新取证后再 tightrein issue create"
+BLOCKED_NEXT = "代码位置不完整，没有建 Issue：tightrein problem retriage {problem_id} 重新取证后再 tightrein issue create"
 
 
 @dataclass

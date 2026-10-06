@@ -17,10 +17,10 @@ tightrein collect --probe <方法> [--level <档位>] [--select <选择器>]
                    [--target <地址>] [--commit <commit>] [--reparse <运行编号>] [--import-archive <目录>]
                    [--no-regressions] [--output <目录>] [--dry-run]
 tightrein collect deployments
-tightrein probe new <名称> [--every 1h]      # 生成项目探针模板并登记到 sources.project-probes
-tightrein probe test <名称>                  # 单独试跑、校验输出、显示将产出的信号，不进入流程
-tightrein probe logs --query <查询> --since <时间> --until <时间> [--raw]   # 经日志平台取数(供探针调用)
-tightrein spec draft                          # 接口描述没有自动导出时由 AI 起草 openapi.draft.yaml，交用户确认
+tightrein project probe new <名称> [--every 1h]      # 生成项目探针模板并登记到 sources.project-probes
+tightrein project probe test <名称>                  # 单独试跑、校验输出、显示将产出的信号，不进入流程
+tightrein project probe logs --query <查询> --since <时间> --until <时间> [--raw]   # 经日志平台取数(供探针调用)
+tightrein project spec draft                          # 接口描述没有自动导出时由 AI 起草 openapi.draft.yaml，交用户确认
 ```
 
 - `--probe`：`platform-errors`(错误追踪与集中日志平台上的运行报错、前端错误)、`access-log`(访问日志的性能与可用性退化，可选)、
@@ -39,7 +39,7 @@ tightrein spec draft                          # 接口描述没有自动导出�
 
 - `status` 为 `ok`：`nextAction` 为「交给 aggregate」，接着运行 `tightrein aggregate`。
 - `status` 为 `blocked`：按 `blockedReason` 与 `nextAction` 处理后重跑，例如「staging 不可用」(健康检查不通过，本次跳过采集)时先确认环境，「今日静态巡检预算已用尽」时改天再跑。
-- `status` 为 `failed`：`blockedReason` 是给出的原因，例如平台返回错误、钥匙串条目不存在；提示「先执行 tightrein worktree sync」时照做后重跑；数据库写入失败时用 `--reparse <运行编号>` 恢复。
+- `status` 为 `failed`：`blockedReason` 是给出的原因，例如平台返回错误、钥匙串条目不存在；提示「先执行 tightrein project worktree sync」时照做后重跑；数据库写入失败时用 `--reparse <运行编号>` 恢复。
 - `outputs.runStatus` 为 `skipped` 时看 `skippedReason`(例如「未启用：…」「没有到期的项目探针」)，这不是错误。
 - `outputs.signalCount`、`signalsByCheck`：本次信号数；信号本身在 `signalsFile`。
 - `outputs.coverage.sources`：本次读到数据的平台或项目探针；没读到的来源不能作为问题已解决的证据。

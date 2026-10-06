@@ -2,7 +2,7 @@
 
 <!-- 本文件由 core/dev/contract_reference.py 生成，不要手改；改 schema 或类型注册后重新生成。 -->
 
-格式与规则见 [交接文档](../explanation/redesign/00-handoff-documents.md)；新增类型见[如何新增一种交接文档类型](../how-to/add-handoff-document-type.md)。校验：`tightrein doc check <文件>`。
+格式与规则见 [交接文档](../explanation/redesign/00-handoff-documents.md)；新增类型见[如何新增一种交接文档类型](../how-to/add-handoff-document-type.md)。校验：`tightrein admin doc check <文件>`。
 
 ## 头信息
 

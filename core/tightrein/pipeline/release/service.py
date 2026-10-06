@@ -160,7 +160,7 @@ class ReleaseService:
             return self._direct(issue_id, operation, message)
         outputs = self.outputs(issue_id)
         outputs["pendingOperations"] = [*outputs["pendingOperations"], operation.id]
-        path = self._save(issue_id, outputs, HandoffStatus.BLOCKED, f"确认 {operation.id}：tightrein confirm "
+        path = self._save(issue_id, outputs, HandoffStatus.BLOCKED, f"确认 {operation.id}：tightrein approve "
                           f"{operation.id}", f"等待确认 {operation.id}")
         return ReleaseResult(issue_id, HandoffStatus.BLOCKED, f"{message}\n{operations.describe(operation)}",
                              operation.id, path)

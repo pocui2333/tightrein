@@ -27,4 +27,4 @@ def _check(invocation: Any) -> Outcome:
 
 def register(commands: Any, common: argparse.ArgumentParser) -> None:
     skills = group(commands, "skills", "skill 的一致性检查")
-    leaf(skills, common, "check", _check, "检查 frontmatter、正文行数、参考文件与引用的命令", "skills check")
+    leaf(skills, common, "check", _check, "检查 frontmatter、正文行数、参考文件与引用的命令")

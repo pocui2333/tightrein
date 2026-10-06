@@ -32,7 +32,7 @@ def test_spec_failures(tmp_path):
     assert failed.status is RunStatus.FAILED
     assert failed.notes == ("spec-export 失败：build-failed：构建失败；查看 spec-export.log",)
     moved = spec.ensure(FakeClient(spec_export=WorktreeNotAtCommit), tmp_path, RELEASE)
-    assert moved.status is RunStatus.FAILED and f"tightrein worktree sync --commit {RELEASE}" in moved.notes[0]
+    assert moved.status is RunStatus.FAILED and f"tightrein project worktree sync --commit {RELEASE}" in moved.notes[0]
     assert spec.ensure(FakeClient(), tmp_path, None).status is RunStatus.FAILED
     assert spec.ensure(FakeClient(), None, RELEASE).notes == ("没有只读 worktree，无法取得接口描述",)
 

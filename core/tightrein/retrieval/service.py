@@ -52,7 +52,7 @@ from tightrein.store.repos import knowledge
 
 KB_AGENT = "kb"
 NO_SIMILAR_REASON = "没有相似条目，直接新增"
-WARNING_INVALID = "知识文件有格式错误，本次检索未包含最新改动；运行 tightrein kb sync 查看详情："
+WARNING_INVALID = "知识文件有格式错误，本次检索未包含最新改动；运行 tightrein admin kb sync 查看详情："
 WARNING_LOCKED = "知识索引正在被其他进程更新，本次检索基于现有索引"
 
 

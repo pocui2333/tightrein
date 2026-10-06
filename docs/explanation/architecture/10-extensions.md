@@ -46,8 +46,8 @@ core/tightrein/extensions/
 | `authz_endpoints(repo, commit) -> EndpointsResult` | `authz-endpoints` | `sources/api_fuzz/authz`、`pipeline/verify/steps/scope.py` |
 | `authz_roles(repo, commit, roles) -> RolesResult` | `authz-roles` | `sources/api_fuzz/authz` |
 | `error_tracking(since, until) -> PointResult` | `error-tracking` | `sources/platform_errors` |
-| `log_platform(query, since, until, limit) -> PointResult` | `log-platform` | `sources/platform_errors`、`sources/access_log`、`tightrein probe logs` |
-| `log_parse(chunks, state) -> ParseResult` | `log-parse` | `sources/platform_errors`、`tightrein probe logs` |
+| `log_platform(query, since, until, limit) -> PointResult` | `log-platform` | `sources/platform_errors`、`sources/access_log`、`tightrein project probe logs` |
+| `log_parse(chunks, state) -> ParseResult` | `log-parse` | `sources/platform_errors`、`tightrein project probe logs` |
 | `alert_source() -> PointResult` | `alert-source` | `sources/alerts` |
 | `static_tools(repo, commit, scope, raw_dir) -> ToolsResult` | `static-tools` | `sources/static` |
 | `page_routes(repo, commit) -> RoutesResult` | `page-routes` | `pipeline/verify/steps/scope.py` |
@@ -70,7 +70,7 @@ core/tightrein/extensions/
 | 技术栈方法 | `extensions/stacks/<技术栈>/<扩展点>/<方法>/` | 某一技术栈通用的方法，例如 Swashbuckle 导出接口描述、解析 .NET 控制台日志、静态解析 Vue Router 路由、npm audit |
 | 项目自定义 | `workspaces/<项目>/extensions/` | 目录中没有适用方法时的项目专属实现 |
 
-**方法的描述**：每种方法有一份清单，写明编号(`<来源>/<方法名>`，例如 `core/sentry`、`aspnetcore/dotnet-console`)、所属扩展点、一句话说明、适用条件、参数 schema(`optionsSchema`)、依赖的外部工具，以及方法参考的其余部分(`doc`：前提、输出、限制、示例配置)。`tightrein ext methods [<扩展点>]` 列出可选的方法及其说明；`docs/reference/methods.md` 由 `core/dev/contract_reference.py methods` 从清单生成，按 00-documentation.md 的方法参考模板列出全部核心方法与后续平台。
+**方法的描述**：每种方法有一份清单，写明编号(`<来源>/<方法名>`，例如 `core/sentry`、`aspnetcore/dotnet-console`)、所属扩展点、一句话说明、适用条件、参数 schema(`optionsSchema`)、依赖的外部工具，以及方法参考的其余部分(`doc`：前提、输出、限制、示例配置)。`tightrein admin ext methods [<扩展点>]` 列出可选的方法及其说明；`docs/reference/methods.md` 由 `core/dev/contract_reference.py methods` 从清单生成，按 00-documentation.md 的方法参考模板列出全部核心方法与后续平台。
 
 **各扩展点的方法目录**
 
@@ -103,7 +103,7 @@ core/tightrein/extensions/
 | 5 | 以上都不满足 | 核心默认 |
 
 - `mode: extend` 而下一层没有实现时，启动时报错并给出完整键名，不静默降级为 `replace`。
-- 解析结果在启动时计算一次，`tightrein ext list` 列出每个扩展点的实现来源、方法编号、命令与生效的 `options`。
+- 解析结果在启动时计算一次，`tightrein admin ext list` 列出每个扩展点的实现来源、方法编号、命令与生效的 `options`。
 
 ### 1.6 在 project.yaml 中的声明
 
@@ -526,7 +526,7 @@ extensions:
 | `authz-endpoints` | 没有端点权限数据 | 不注册越权检查；`status_code_conformance` 的 401、403 失败无法判断是否为预期的拒绝，不产出信号，计入 `stats.unjudgedAuthFailures` |
 | `authz-roles` | 没有角色能力数据 | 同上 |
 | `error-tracking`、`log-platform`、`alert-source` | 没有接入平台 | 对应的采集方法为 `skipped`(未启用)，运行摘要列出；运行时缺陷由 api-fuzz 与静态巡检发现 |
-| `log-parse` | 没有解析器 | `sources.platform-errors.logQuery` 有值而没有 `log-parse` 时启动报错(4.2)；`tightrein probe logs` 返回原文行 |
+| `log-parse` | 没有解析器 | `sources.platform-errors.logQuery` 有值而没有 `log-parse` 时启动报错(4.2)；`tightrein project probe logs` 返回原文行 |
 | `static-tools` | 没有确定性工具 | 静态巡检只运行 Semgrep 与审查，运行摘要注明「未配置确定性工具」 |
 | `page-routes` | 没有页面路由清单 | `coverage.pagesTotal` 为空，页面覆盖率记为未知；`coverage.pages` 记录实际页面路径；verify 只用 `fix` 交接文档中的 `affectedPages` |
 | `local-run` | 没有启动计划 | 需要本机服务的 `api`、`page` 类检查一律记为「未验证」，原因「未提供 local-run 扩展」；`static` 类检查照常 |
@@ -786,8 +786,8 @@ workspaces/demo/extensions/
 
 | 命令 | 作用 |
 |---|---|
-| `tightrein ext list` | 列出每个扩展点的实现层、命令、生效的 `options` 与超时 |
-| `tightrein ext run <扩展点> [--input <文件>] [--commit <commit>]` | 调用一次扩展点并输出经过校验的响应；`--input` 给出 `input` 部分的 JSON，省略时按当前工作区与只读 worktree 组装；不写缓存，不更新读取位置 |
-| `tightrein ext test [--stack <技术栈>] [--workspace-extensions]` | 以 7.1 的夹具运行技术栈扩展或当前工作区的项目扩展，逐个比对 `expected.json` |
+| `tightrein admin ext list` | 列出每个扩展点的实现层、命令、生效的 `options` 与超时 |
+| `tightrein admin ext run <扩展点> [--input <文件>] [--commit <commit>]` | 调用一次扩展点并输出经过校验的响应；`--input` 给出 `input` 部分的 JSON，省略时按当前工作区与只读 worktree 组装；不写缓存，不更新读取位置 |
+| `tightrein admin ext test [--stack <技术栈>] [--workspace-extensions]` | 以 7.1 的夹具运行技术栈扩展或当前工作区的项目扩展，逐个比对 `expected.json` |
 
 本篇用到的基础层定义(编号、枚举、表、路径、配置)统一见 01-foundation.md。

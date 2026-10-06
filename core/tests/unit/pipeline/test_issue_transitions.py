@@ -146,7 +146,7 @@ def test_edit_validates_records_the_changed_sections_and_restores_on_abandon(tmp
     result = service(world).edit(issue_id, rewrite("status: needs-decision", "status: todo"),
                                  lambda errors: asked.append(errors) or False)
     assert not result.saved and path.read_text(encoding="utf-8") == original
-    assert asked == [["status 与 closeReason 只能用 tightrein issue approve、close、reopen 修改"]]
+    assert asked == [["status 与 closeReason 只能用 tightrein approve、close、reopen 修改"]]
     missing = service(world).edit(issue_id, rewrite("### 复现", "### 重现"), lambda errors: False)
     assert not missing.saved and path.read_text(encoding="utf-8") == original
     saved = service(world).edit(issue_id, rewrite("在 OrderService.Get 中按公司过滤", "在查询入口按公司过滤"),

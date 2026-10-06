@@ -75,7 +75,7 @@ skills/triage/
 
 | 文件 | 内容要点 |
 |---|---|
-| `SKILL.md` | 何时使用(分诊新发现与回归问题、查看发现报告、处理人工队列、改判)；可用命令与参数；如何解读运行结果：四档判定、去向、人工队列的含义；人工队列的处理方式(补充信息后 `retriage --note`，或直接 `retriage --verdict`)；明确 skill 本身不做判断，判断都由 `tightrein triage` 完成 |
+| `SKILL.md` | 何时使用(分诊新发现与回归问题、查看发现报告、处理人工队列、改判)；可用命令与参数；如何解读运行结果：四档判定、去向、人工队列的含义；人工队列的处理方式(补充信息后 `problem retriage --note`，或直接 `problem retriage --verdict`)；明确 skill 本身不做判断，判断都由 `tightrein triage` 完成 |
 | `references/evidence-standard.md` | 取证底线，写给所有分诊角色：每条事实带 `文件路径:行号`；只写读到的；打开文件读，不凭匹配行下判断；同一概念试多种命名；数字要有来源，读不到标「未确认」；「证据不足」写清缺什么即合格；缺陷类四步与「追到入口」的反证要求；前端拦截不算反证；判不成立必须指出挡住它的代码位置或现象来源(引用主张中的某条事实)；反证检查每条写明入口位置与上游有无校验；预估改动的文件要数出来、不含测试文件；反模式清单。与 12.2 分诊的验收标准逐项对应，五项都由代码判定；不要求交付前再验证一遍 |
 | `references/findings-template.md` | 发现报告的结构说明：frontmatter 字段、各节标题与每节取自交接文档的哪个字段、写作要求(第一句是结论、带位置、绝对日期)。`render/findings.py` 的输出须与本文件的节标题一致，由单元测试比对 |
 | `references/severity.md` | 严重度 P0 到 P3 的标准与 Issue 报告的写法(4.5) |
@@ -107,18 +107,18 @@ skills/triage/
 | 命令 | 特有参数 | 作用 |
 |---|---|---|
 | `tightrein triage` | `--limit <n>`(默认取 `thresholds.triage.perRun`，即 5)、`--commit <commit>`(在指定 commit 上取证，默认 `origin/main` 最新) | 分诊选中的问题 |
-| `tightrein retriage <问题>` | 无额外参数 | 对已分诊的问题重新分诊，新结论的 `attempt` 加一 |
-| `tightrein retriage <问题> --note <补充信息>` | `--note` | 把用户补充的信息作为「用户提供的事实」加入主张后重新分诊，用于人工队列 |
-| `tightrein retriage <问题> --verdict <判定> --reason <原因>` | `--verdict`、`--reason`、可选 `--severity`、`--disposition` | 用户改判：不调用任何角色，直接写入新的分诊结论，`outcome` 记为 `overridden` |
+| `tightrein problem retriage <问题>` | 无额外参数 | 对已分诊的问题重新分诊，新结论的 `attempt` 加一 |
+| `tightrein problem retriage <问题> --note <补充信息>` | `--note` | 把用户补充的信息作为「用户提供的事实」加入主张后重新分诊，用于人工队列 |
+| `tightrein problem retriage <问题> --verdict <判定> --reason <原因>` | `--verdict`、`--reason`、可选 `--severity`、`--disposition` | 用户改判：不调用任何角色，直接写入新的分诊结论，`outcome` 记为 `overridden` |
 | `tightrein triage queue` | 无 | 列出人工队列中的问题：标题、判定、缺少的信息、发现报告路径 |
 
 ### 3.2 前置条件
 
 | 条件 | 不满足时 |
 |---|---|
-| 问题状态为 `new` 或 `regressed`；或 `problem_events` 中有未处理(`handled_at` 为空)的 `retriage-requested` 事件；或由 `retriage` 指定 | 「P-0042 已分诊，重新分诊请用 `retriage`」 |
+| 问题状态为 `new` 或 `regressed`；或 `problem_events` 中有未处理(`handled_at` 为空)的 `problem retriage-requested` 事件；或由 `problem retriage` 指定 | 「P-0042 已分诊，重新分诊请用 `problem retriage`」 |
 | 问题没有被合并为别名 | 「P-0042 已并入 P-0031」 |
-| 只读 worktree 可以切换到取证 commit | 调用与 `collect` 共用的只读 worktree 同步函数切换；切换失败时停止并提示「先执行 `tightrein worktree sync`」 |
+| 只读 worktree 可以切换到取证 commit | 调用与 `collect` 共用的只读 worktree 同步函数切换；切换失败时停止并提示「先执行 `tightrein project worktree sync`」 |
 | 当天 `triage` 的费用累计未超过 `stages.triage.budgetPerDay` | 停止启动新的问题，运行摘要中说明 |
 | 能获取问题的对象锁 | 跳过该问题，交接文档不写，运行摘要中列出「正被其他运行处理」 |
 
@@ -165,7 +165,7 @@ skills/triage/
 | `title` | 短标题，写现象不写原因，例如「`POST /api/Material/Query` 在分页参数为负数时返回 500」；后续作为 Issue 标题与提交信息的描述 |
 | `facts` | 附带的事实：请求与响应摘要、复现命令、堆栈中本项目的帧、出现次数与时间分布 |
 | `entryPoints` | 从事实中直接得到的入口：路由模板、页面路由、堆栈中本项目的首帧 |
-| `userNotes` | `retriage --note` 提供的信息，标明「用户提供」 |
+| `userNotes` | `problem retriage --note` 提供的信息，标明「用户提供」 |
 | `priorVerdicts` | 不填。给角色的输入中不包含任何已有判定与聚合阶段的推测 |
 
 只放观察到的事实，不放推测。组装结果写入交接文档的 `outputs.claim`，便于评测时核对输入。
@@ -324,7 +324,7 @@ skills/triage/
 
 | 条件 | 去向 | 问题状态变化 | 附带动作 |
 |---|---|---|---|
-| 不成立(P0 须经过 4.7) | `false-positive` | 转为 `ignored` | 生成抑制规则：匹配条件为指纹，到期日期为当天加 `thresholds.suppressionDays` |
+| 不成立(P0 须经过 4.7) | `problem false-positive` | 转为 `ignored` | 生成抑制规则：匹配条件为指纹，到期日期为当天加 `thresholds.suppressionDays` |
 | 命中已接受的取舍 | `accepted-tradeoff` | 转为 `ignored` | 记录取舍编号 |
 | 取证给出 `fixedOnMain` | `awaiting-deploy` | 转为 `ongoing` | 由聚合在部署后按 2.8 判定已解决 |
 | 成立或条件成立，处理标签为立即修或排期修 | `create-issue` | 转为 `ongoing` | 交接文档 `nextAction` 为「交给 issue 创建」 |
@@ -344,7 +344,7 @@ skills/triage/
 | 读取 | 用途 |
 |---|---|
 | `problems`、`problem_signals`、`signals`、`problem_aliases` | 组装主张 |
-| `problem_events` | `retriage-requested` 事件、历史改判 |
+| `problem_events` | `problem retriage-requested` 事件、历史改判 |
 | `issues`、`triage_results` | 查重候选 |
 | `knowledge_meta`、`knowledge_fts` 与知识条目文件 | 经 `retrieval` 预取上下文、核对已接受的取舍 |
 | 上游交接文档 `aggregate-<问题编号>.json`(或 `--input`) | 输入 |
@@ -353,7 +353,7 @@ skills/triage/
 | 写入 | 内容 |
 |---|---|
 | `triage_results` | 分诊结论，主键为问题编号加 `attempt` |
-| `problems`、`problem_aliases`、`problem_events` | 状态变化、合并、改判；处理 `retriage-requested` 事件时写入 `handled_at` |
+| `problems`、`problem_aliases`、`problem_events` | 状态变化、合并、改判；处理 `problem retriage-requested` 事件时写入 `handled_at` |
 | `suppressions.yaml` | 判为误报时的抑制规则 |
 | `scores` | 分诊条目表各项的结果 |
 | `runs` | 本次运行记录 |
@@ -423,9 +423,9 @@ skills/triage/
 
 | 场景 | 用户操作 | 模块的处理 |
 |---|---|---|
-| 人工队列 | `retriage <问题> --note <补充信息>` | 以补充信息重新分诊 |
-| 人工队列或抽查 | `retriage <问题> --verdict <判定> --reason <原因>` | 写入新结论，`outcome` 为 `overridden`；原结论保留；按新判定重新计算去向并执行 4.12 |
-| 每周误报抽查 | 在运行摘要中查看自动判为误报的问题，改判用 `retriage` | 改判为成立的，原结论的 `outcome` 回填为 `false-refute` |
+| 人工队列 | `problem retriage <问题> --note <补充信息>` | 以补充信息重新分诊 |
+| 人工队列或抽查 | `problem retriage <问题> --verdict <判定> --reason <原因>` | 写入新结论，`outcome` 为 `overridden`；原结论保留；按新判定重新计算去向并执行 4.12 |
+| 每周误报抽查 | 在运行摘要中查看自动判为误报的问题，改判用 `problem retriage` | 改判为成立的，原结论的 `outcome` 回填为 `false-refute` |
 
 ### 7.2 效果反馈
 
@@ -435,12 +435,12 @@ skills/triage/
 |---|---|
 | `correct` | Issue 完成并通过部署后确认(`staging-verified`)时写入，`issue` 的同步步骤补写遗漏的；误报问题在之后覆盖运行中不再出现由 `learn` 写入 |
 | `false-confirm` | Issue 以「不是缺陷」关闭时由 `issue` 写入；PR 以「不是缺陷」「无法复现」理由被关闭时由 `release` 写入 |
-| `false-refute`、`overridden` | `retriage` |
+| `false-refute`、`overridden` | `problem retriage` |
 
 ### 7.3 幂等与重跑
 
 - 同一问题每次分诊产生一个新的 `attempt`，交接文档按「模块 + 对象」覆盖，旧版本改名保留(15.7)。
-- 未满足 3.2 的条件时不会重复分诊；结论按指纹缓存，只有回归、新类型的证据(聚合写入 `retriage-requested`)、用户要求三种情况重新分诊。
+- 未满足 3.2 的条件时不会重复分诊；结论按指纹缓存，只有回归、新类型的证据(聚合写入 `problem retriage-requested`)、用户要求三种情况重新分诊。
 - 运行中途中断时，已落库的问题不受影响；未落库的问题没有 `triage_results` 新行，下次运行时仍满足前置条件，从头重新处理。每个问题的落库在一个事务内完成，不会留下半个结论。
 - 合并操作按目标问题与本问题的编号幂等：已并入的再次执行不做任何改动。
 
@@ -511,12 +511,12 @@ skills/issue/
 | 命令 | 特有参数 | 作用 | 前置条件 |
 |---|---|---|---|
 | `issue create` | — | 为选中的问题创建或追加 Issue | 最新分诊结论的去向为 `create-issue`；问题尚无 `issue_id` |
-| `issue create --manual` | `--title`、`--body` 或 `--body-file`(二选一)、`--severity`(缺省 P2)、`--type`(任务类型，缺省 `fix.manualTaskType`) | 新建用户需求的 Issue(10.7) | 不与 `--select`、`--input`、`--dry-run`、`--output` 同用 |
+| `new` | `--title`、`--body` 或 `--body-file`(二选一)、`--severity`(缺省 P2)、`--type`(任务类型，缺省 `fix.manualTaskType`) | 新建用户需求的 Issue(10.7) | 不与 `--select`、`--input`、`--dry-run`、`--output` 同用 |
 | `issue sync` | — | 执行 4.7 的同步与待决定超时提醒；`issues.tracker` 为 `github` 时再对齐 GitHub 镜像(10.8)并列出未同步项 | 无 |
 | `issue list` | `--status`(六种状态之一)、`--severity` | 列出 Issue：按处理标签(立即修在前)、严重度、创建时间排序(`domain.triage.urgency_key`，design 13.2) | 无 |
 | `issue show <编号>` | — | 显示 Issue 全文与关联问题的最新状态、出现次数 | Issue 存在 |
 | `issue edit <编号>` | — | 用 `$EDITOR` 打开 Issue 文件，保存后校验 | Issue 存在 |
-| `issue approve <编号>` | — | 放行：状态改为「待修」，随后确认建分支与 worktree；用户需求已是「待修」，不改状态只申请建分支 | 状态为 `needs-decision`，或用户需求处于 `todo` |
+| `approve <编号>` | — | 放行：状态改为「待修」，随后确认建分支与 worktree；用户需求已是「待修」，不改状态只申请建分支 | 状态为 `needs-decision`，或用户需求处于 `todo` |
 | `issue close <编号>` | `--reason <关闭原因>`、`--note`、`--duplicate-of <编号>` | 关闭为取消 | Issue 未关闭(不是 `done`、`cancelled`)；`--reason duplicate` 时必须给 `--duplicate-of` |
 | `issue reopen <编号>` | `--note` | 重新打开，状态回到「待修」 | 状态为 `done` 或 `cancelled` |
 | `issue rerender [<编号>...]` | — | 按当前版式重写正文(10.3)，之后刷新镜像 | 不带编号时处理全部未关闭的 Issue |
@@ -526,7 +526,7 @@ skills/issue/
 
 ### 9.2 放行与建分支的衔接
 
-`issue approve` 是编排层提供的组合命令：先调用 `issue` 服务完成状态转换，再调用 `fix` 服务的 `prepare` 步骤，由它向 `vcs` 申请建分支与 worktree 的待确认操作，当场交用户确认(见 `07-fix-verify-release.md` 3.3)。`issue` 模块自身不调用任何 `vcs` 写操作。用户拒绝建分支时，Issue 仍为「待修」，之后执行 `fix prepare` 再次申请。
+`approve` 是编排层提供的组合命令：先调用 `issue` 服务完成状态转换，再调用 `fix` 服务的 `prepare` 步骤，由它向 `vcs` 申请建分支与 worktree 的待确认操作，当场交用户确认(见 `07-fix-verify-release.md` 3.3)。`issue` 模块自身不调用任何 `vcs` 写操作。用户拒绝建分支时，Issue 仍为「待修」，之后执行 `fix prepare` 再次申请。
 
 ### 9.3 自动放行
 
@@ -535,7 +535,7 @@ skills/issue/
 - 全部满足：经 `transitions.apply_event` 放行为待修(事件 `approve`，actor `autonomy`，备注「自动放行：满足 …」，GitHub 镜像的放行评论带上这句)，本次 create 结束后调用组装层注入的 `IssueDeps.prepare`(即 `fix prepare`)申请建分支；`gates.release-writes: auto` 时直接建成。
 - 任一条不满足：留在待决定，「历史」与镜像评论写「需要用户决定：…」。
 - 每次决定写 `gate` 事件(decision `auto-approve` 或 `needs-decision`)，交接文档写 `autonomy: {approved, reasons}`，运行摘要「自动决定」列出。
-- 用户需求(`issue create --manual`)创建即视为已放行：「历史」写「自动放行(gates.issue-approve 为 auto)」，镜像评论放行，随后调用 `IssueDeps.prepare` 申请建分支。修复计划拆分出的后续子任务等前一个完成后由 `run` 的无人值守推进建分支(07 篇 4.6)。
+- 用户需求(`new`)创建即视为已放行：「历史」写「自动放行(gates.issue-approve 为 auto)」，镜像评论放行，随后调用 `IssueDeps.prepare` 申请建分支。修复计划拆分出的后续子任务等前一个完成后由 `run` 的无人值守推进建分支(07 篇 4.6)。
 - 无人值守修复停下的 Issue 转为待决定(带 `hold`)，镜像的状态标签随之为 `<前缀>needs-decision`(10.8)。
 
 ## 10. issue：处理步骤
@@ -547,7 +547,7 @@ skills/issue/
 | 1. 选取 | `steps/select.py` | 读取问题的最新 `triage_results` 与交接文档 `triage-<问题编号>.json`(或 `--input`) |
 | 2. 查找已有 Issue | `steps/locate.py` | 幂等键为根因位置：把 `rootCauses` 规范化为「文件 + 所在方法」的集合，与未关闭 Issue 的 `rootCause` 求交集；有交集即视为同一根因 |
 | 3a. 追加 | `steps/append.py` | 把问题编号加入该 Issue 的 `problems`，「引用」一节(旧版式为「关联」)补充问题，「历史」一节追加一行；严重度更高时提升 Issue 的 `severity` 并记录；问题的 `issue_id` 回写 |
-| 2b. 补全与核对 | `service.py` | 按代码快照补全分诊结论中的代码位置(`pipeline/common/locations.py`，同 4.6)；新建前渲染正文并核对「引用」中完整证据的位置，补不全或不存在时不建 Issue：交接文档 `failed`，`nextAction` 提示 `retriage` |
+| 2b. 补全与核对 | `service.py` | 按代码快照补全分诊结论中的代码位置(`pipeline/common/locations.py`，同 4.6)；新建前渲染正文并核对「引用」中完整证据的位置，补不全或不存在时不建 Issue：交接文档 `failed`，`nextAction` 提示 `problem retriage` |
 | 3b. 新建 | `steps/create.py` | 从 `sequences` 分配编号；`slug.py` 生成简称；`body.py` 与 `render/issue.py` 按 `project.language` 生成正文；`frontmatter.py` 生成头信息并按 `handoff/frontmatter/issue.schema.json` 校验；写文件 `issues/<编号>-<简称>.md`，写 `issues` 表，回写问题的 `issue_id`，写 `problem_events` |
 | 4. 代码检查 | `steps/frontmatter.py` | 12.2「提 Issue 与报告」一项：必需小节齐全(按小节键)、「引用」中的完整证据每条带位置、日期为绝对日期；结果写 `scores` |
 | 5. 通知 | `observability/notify.py` | 新建或追加的问题为 P0 时立即发本机通知，幂等键为「事件类型 + Issue 编号 + 日期」 |
@@ -633,9 +633,9 @@ Issue 正文是交接文档的 issue 类型(版式与依据见 [redesign/04-issu
 
 ### 10.7 用户需求
 
-`issue create --manual` 由 `IssueService.create_manual` 与 `steps/create.create_manual` 实现：分配编号，简称取标题中的英文词(取不到时为 `manual-<序号>`)，头信息的 `origin` 为 `manual`、`from` 为 `user`、`problems` 为空、`taskType` 取 `--type`、状态为 `todo`；正文同为交接文档版式(`render/issue.manual_document`)：「问题」为用户原文(原文中的验收标准提到「验收标准」一节，其余标题降为加粗文字)，验收标准为原文中的验收标准(没有时写说明)加固定三条，其余小节写「—」。修复计划拆分出的后续子任务同样以这种 Issue 建立，`parent` 为父 Issue、`dependsOn` 为前一个子任务、`from` 为 `fix`。不写运行记录、交接文档与评分(「提 Issue 与报告」的代码检查针对分诊生成的正文)；P0 照常通知；`--output` 模式不支持。`issue rerender` 把旧版式的「需求」转为「问题」。
+`new` 由 `IssueService.create_manual` 与 `steps/create.create_manual` 实现：分配编号，简称取标题中的英文词(取不到时为 `manual-<序号>`)，头信息的 `origin` 为 `manual`、`from` 为 `user`、`problems` 为空、`taskType` 取 `--type`、状态为 `todo`；正文同为交接文档版式(`render/issue.manual_document`)：「问题」为用户原文(原文中的验收标准提到「验收标准」一节，其余标题降为加粗文字)，验收标准为原文中的验收标准(没有时写说明)加固定三条，其余小节写「—」。修复计划拆分出的后续子任务同样以这种 Issue 建立，`parent` 为父 Issue、`dependsOn` 为前一个子任务、`from` 为 `fix`。不写运行记录、交接文档与评分(「提 Issue 与报告」的代码检查针对分诊生成的正文)；P0 照常通知；`--output` 模式不支持。`issue rerender` 把旧版式的「需求」转为「问题」。
 
-没有关联问题时各环节的处理：关闭与重开的问题同步、回填分诊结果、`sync` 的回归检查都按空列表跳过；`next` 与运行摘要对还没有修复分支的用户需求给出 `issue approve`；`--from triage` 报错；fix 按任务类型(`--type`，缺省 `fix.manualTaskType`)与中档查流程表，第 5 步按验收标准写测试(见 `07-fix-verify-release.md`)；learn 不为它写缺陷规则，交付时长从创建算起。
+没有关联问题时各环节的处理：关闭与重开的问题同步、回填分诊结果、`sync` 的回归检查都按空列表跳过；`next` 与运行摘要对还没有修复分支的用户需求给出 `approve`；`--from triage` 报错；fix 按任务类型(`--type`，缺省 `fix.manualTaskType`)与中档查流程表，第 5 步按验收标准写测试(见 `07-fix-verify-release.md`)；learn 不为它写缺陷规则，交付时长从创建算起。
 
 ### 10.8 GitHub 镜像
 
@@ -660,13 +660,13 @@ Issue 正文是交接文档的 issue 类型(版式与依据见 [redesign/04-issu
 
 **正文**(`github.mirror_body`，创建时写，`issue rerender` 时更新)：本地正文去掉「历史」(旧版式另去掉标题行)；`` `路径:行号` `` 与 `` `路径:起-止` ``(文件在项目仓库中存在时)换成取证 commit 的永久链接 `https://github.com/<仓库>/blob/<triageCommit>/<路径>#L<起>-L<止>`(用户需求没有取证 commit，不链接；代码块内不处理)；「引用」中的完整证据(旧版式为「完整证据」一节)放进 `<details>` 折叠；末尾是按语言的说明，整段经 `Redactor` 脱敏；最后是本地标记 `<!-- tightrein:<项目名>:<编号> -->`。状态标签的描述与关键节点评论的固定部分同样按 `project.language`。
 
-**重新渲染**(`issue rerender [<编号>...]`，`IssueService.rerender`)：分诊 Issue 用现有分诊交接文档按当前版式重写正文与标题，用户需求的 Issue 把原「需求」转为「问题」，都保留原历史并追加一行；旧版式的文件由此转为新版式。之后 `GithubMirror.refresh` 为已有镜像加一步 `gh issue edit --title --body-file`(遵守 `gates.mirror-writes`)，再照常对齐。不调用模型：交接文档中没有的字段显示「—」，命令输出列出缺少的字段，完整格式需先 `retriage`。
+**重新渲染**(`issue rerender [<编号>...]`，`IssueService.rerender`)：分诊 Issue 用现有分诊交接文档按当前版式重写正文与标题，用户需求的 Issue 把原「需求」转为「问题」，都保留原历史并追加一行；旧版式的文件由此转为新版式。之后 `GithubMirror.refresh` 为已有镜像加一步 `gh issue edit --title --body-file`(遵守 `gates.mirror-writes`)，再照常对齐。不调用模型：交接文档中没有的字段显示「—」，命令输出列出缺少的字段，完整格式需先 `problem retriage`。
 
 **关键节点评论**：放行(含用户需求的放行)、修复计划确认、PR 创建、PR 合并、关闭(带原因)。由 `transitions.apply_event` 在转换的同一事务中写进 `github_mirror_comments`(`github_comments.queue`)，修复计划确认由 fix 的 follow_up 写入。
 
-**何时对齐**：`IssueService` 在 create、create --manual、approve、close、reopen 之后对齐涉及的 Issue；`issue sync` 之后与 run 的 `issue-mirror` 步骤对齐全部。
+**何时对齐**：`IssueService` 在 create、new、approve、close、reopen 之后对齐涉及的 Issue；`issue sync` 之后与 run 的 `issue-mirror` 步骤对齐全部。
 
-**确认与幂等。** `gates.mirror-writes` 为 `user` 时，每个 Issue 每次对齐最多生成一个 `github-issue` 待确认操作(发起环节 `issue`，内含这次的全部 gh 命令；还没有镜像时只含建 Issue)，`tightrein confirm` 执行后由 issue 的 FollowUp 按每步输出记下编号、标签、已发评论与开关状态；同一 Issue 已有待确认或已确认未执行的操作时不再生成，内容与被拒绝的操作相同时不再生成。为 `auto` 时直接执行，每步成功即记下结果。建 Issue 以幂等键 `github-issue:<仓库>:<编号>` 记下编号与链接后再写 Issue 文件；键处于进行中(上次在 gh 返回后被中断)时按本地标记在仓库 Issue 中找回。
+**确认与幂等。** `gates.mirror-writes` 为 `user` 时，每个 Issue 每次对齐最多生成一个 `github-issue` 待确认操作(发起环节 `issue`，内含这次的全部 gh 命令；还没有镜像时只含建 Issue)，`tightrein approve` 执行后由 issue 的 FollowUp 按每步输出记下编号、标签、已发评论与开关状态；同一 Issue 已有待确认或已确认未执行的操作时不再生成，内容与被拒绝的操作相同时不再生成。为 `auto` 时直接执行，每步成功即记下结果。建 Issue 以幂等键 `github-issue:<仓库>:<编号>` 记下编号与链接后再写 Issue 文件；键处于进行中(上次在 gh 返回后被中断)时按本地标记在仓库 Issue 中找回。
 
 **失败。** gh 失败、Issue 文件冲突等只记进 `github_mirror.error`，不影响本地流程；下次对齐重算差异重试。`issue sync` 的输出与运行摘要的「未同步到 GitHub」列出没有镜像、标签或开关状态未对齐、待发评论、等待确认的操作与最近一次失败。确认模式下一个操作中途失败时，已执行的步骤(例如已发出的评论)会在重新生成的操作中再执行一次。
 

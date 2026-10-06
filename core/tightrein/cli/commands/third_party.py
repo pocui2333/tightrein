@@ -62,14 +62,14 @@ def _verify(invocation: Any) -> Outcome:
     if issues:
         return Outcome("third-party verify", exit_codes.FAILED, [f"有 {len(issues)} 处与锁定清单不符", *lines],
                        result=[issue.to_dict() for issue in issues],
-                       errors=[error("HashMismatch", issue.describe(), "缓存缺失时执行 tightrein install 下载")
+                       errors=[error("HashMismatch", issue.describe(), "缓存缺失时执行 tightrein admin install 下载")
                                for issue in issues])
     return Outcome("third-party verify", exit_codes.OK, ["第三方 skill 与锁定清单一致", *notes], result=[])
 
 
 def register(commands: Any, common: argparse.ArgumentParser) -> None:
     third = group(commands, "third-party", "第三方 skill 的锁定与校验")
-    lock = leaf(third, common, "lock", _lock, "锁定或更新第三方 skill 的 commit 与哈希", "third-party lock")
+    lock = leaf(third, common, "lock", _lock, "锁定或更新第三方 skill 的 commit 与哈希")
     lock.add_argument("names", nargs="*", help="只锁定这些条目；省略时为全部")
     lock.add_argument("--ref", help="锁定到这个 commit(40 位)，只能与一个名称同用；省略时取来源仓库的最新 commit")
-    leaf(third, common, "verify", _verify, "按锁定清单校验缓存中的第三方 skill", "third-party verify")
+    leaf(third, common, "verify", _verify, "按锁定清单校验缓存中的第三方 skill")

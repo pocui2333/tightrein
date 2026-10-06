@@ -194,13 +194,13 @@ class _Execution:
         deps = self.deps
         if self.spent >= deps.settings.budget_usd:
             return self.stop(f"累计费用 {self.spent:.2f} USD 已达到 evaluation.budgetUsd({deps.settings.budget_usd:g})"
-                             f"，调整预算后执行 tightrein eval resume {self.evaluation_id}")
+                             f"，调整预算后执行 tightrein admin eval resume {self.evaluation_id}")
         output_dir = self.layout.eval_run_output(self.evaluation_id, variant.label, case.id, attempt)
         outcome = deps.module_runner.run(SandboxRequest(case, variant, snapshot, self.layout.project, output_dir,
                                                         attempt))
         if outcome.unavailable:
             return self.stop(f"变体 {variant.label} 的执行器无法启动(工具未安装或未登录)，这是环境问题；"
-                             f"处理后执行 tightrein eval resume {self.evaluation_id}")
+                             f"处理后执行 tightrein admin eval resume {self.evaluation_id}")
         self.spent += outcome.usage.cost_usd or 0.0
         run = self.score(case, variant, attempt, outcome, output_dir, project)
         self.runs.append(run)
@@ -211,7 +211,7 @@ class _Execution:
         limit = self.deps.settings.max_consecutive_crashes
         if self.crashes[variant.label] >= limit:
             return self.stop(f"变体 {variant.label} 连续 {limit} 次没有交接文档，"
-                             f"检查 {output_dir} 中的 stderr.log 后执行 tightrein eval resume {self.evaluation_id}")
+                             f"检查 {output_dir} 中的 stderr.log 后执行 tightrein admin eval resume {self.evaluation_id}")
         return True
 
     def score(self, case: ModuleCase, variant: Variant, attempt: int, outcome: SandboxOutcome, output_dir: Path,

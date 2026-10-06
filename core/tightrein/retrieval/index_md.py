@@ -3,7 +3,7 @@
 - `knowledge/<类型>/INDEX.md`：该类型 active 的条目，每行 `- <编号> <摘要> (<文件名>)`，按编号排序；
 - `knowledge/INDEX.md`：每个类型一节，列出条目数与该类型 INDEX.md 的相对链接；全部类型的条目合计不超过 rootListingLimit(默认 60)条时
   直接列出各条目，否则只给链接；
-- 内容只取自 knowledge_meta，不读文件；第一行写明由 tightrein kb sync 生成；
+- 内容只取自 knowledge_meta，不读文件；第一行写明由 tightrein admin kb sync 生成；
 - 每个文件不超过 indexMaxLines(默认 200)行：某一类型超出时，该类型的 INDEX.md 只列出分页文件，条目按编号每
   indexPageSize(默认 180)条一页写入
   `INDEX-<起始编号>-<结束编号>.md`，不再需要的分页文件删除；
@@ -26,7 +26,7 @@ from tightrein.store.files.layout import WorkspaceLayout
 from tightrein.store.repos import knowledge
 from tightrein.store.repos.knowledge import KnowledgeRecord
 
-GENERATED_NOTICE = "<!-- 本文件由 tightrein kb sync 生成，不要手工编辑 -->"
+GENERATED_NOTICE = "<!-- 本文件由 tightrein admin kb sync 生成，不要手工编辑 -->"
 
 
 def _heading(kind: KnowledgeType) -> str:

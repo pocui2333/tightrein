@@ -106,7 +106,7 @@ def test_without_an_exported_spec_the_answer_is_an_ai_draft_confirmed_by_the_use
     world, flow, _ = workspace(tmp_path, target={"baseUrl": "https://demo.example.test"})
     flow.start()
     spec = next(item for item in flow.check().items if item.item == "spec")
-    assert spec.state == "blocked" and "tightrein spec draft" in spec.detail
+    assert spec.state == "blocked" and "tightrein project spec draft" in spec.detail
     (world.layout.root / service.SPEC_DRAFT).write_text("openapi: 3.0.0\n", encoding="utf-8")
     spec = next(item for item in flow.check().items if item.item == "spec")
     assert f"{service.SPEC_DRAFT} 待确认" in spec.detail

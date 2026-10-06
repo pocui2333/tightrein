@@ -68,7 +68,7 @@ def _create(invocation: Any, root: Path) -> None:
         language = _ask(invocation, f"给人读的文字的语言 zh、en、ja(回车采用 {language})：") or language
     data = {"project": {"name": name, "repo": str(repo_path), "mainBranch": branch, "language": language}}
     root.mkdir(parents=True, exist_ok=True)
-    atomic.write_text(root / "project.yaml", "# 由 tightrein workspace init 生成；接入清单见 onboarding.md\n"
+    atomic.write_text(root / "project.yaml", "# 由 tightrein project init 生成；接入清单见 onboarding.md\n"
                       + yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
 
 
@@ -104,9 +104,9 @@ def _init(invocation: Any) -> Outcome:
         report = flow.check()
     lines = [("已新建工作区 " if created else "工作区 ") + str(root), *_report_lines(report), *notes]
     code = exit_codes.GATE if report.remaining else exit_codes.OK
-    next_step = "tightrein workspace answer <项> --recommended" if report.remaining else None
+    next_step = "tightrein project answer <项> --recommended" if report.remaining else None
     if not app.layout.readonly_worktree().exists():
-        next_step = f"tightrein worktree init --workspace {root}"
+        next_step = f"tightrein project worktree init --workspace {root}"
     return Outcome("workspace init", code, lines, result=_result(report, app), next=next_step)
 
 
@@ -131,14 +131,13 @@ def _answer(invocation: Any) -> Outcome:
 
 
 def register(commands: Any, common: argparse.ArgumentParser) -> None:
-    workspace = group(commands, "workspace", "工作区的接入")
-    init = leaf(workspace, common, "init", _init, "新建或继续接入：检查清单并逐项提问", "workspace init")
+    init = leaf(commands, common, "init", _init, "新建或继续接入：检查清单并逐项提问")
     init.add_argument("--repo", help="新建工作区时的项目仓库路径")
     init.add_argument("--name", help="新建工作区时的项目名(缺省为目录名)")
     init.add_argument("--main-branch", help="新建工作区时的主分支")
     init.add_argument("--language", help="新建工作区时给人读的文字的语言")
-    leaf(workspace, common, "check", _check, "对工作区生成一次接入清单检查", "workspace check")
-    answer = leaf(workspace, common, "answer", _answer, "回答一项接入问题", "workspace answer")
+    leaf(commands, common, "check", _check, "对工作区生成一次接入清单检查")
+    answer = leaf(commands, common, "answer", _answer, "回答一项接入问题")
     answer.add_argument("item", help="清单项，如 conventions、platform:deploy-source")
     answer.add_argument("--recommended", action="store_true", help="采用推荐答案")
     answer.add_argument("--skip", action="store_true", help="跳过(不接入)")

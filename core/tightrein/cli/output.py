@@ -45,7 +45,7 @@ def emit(outcome: Outcome, json_mode: bool, stdout: TextIO) -> None:
         lines.append(f"错误({item['type']})：{item['message']}" + (f"；{item['hint']}" if item.get("hint") else ""))
     for operation in outcome.pending:
         lines.append(operation["description"])
-        lines.append(f"同意后执行：tightrein confirm {operation['id']}；拒绝：tightrein reject {operation['id']}")
+        lines.append(f"同意后执行：tightrein approve {operation['id']}；拒绝：tightrein reject {operation['id']}")
     if outcome.next:
         lines.append(f"下一步：{outcome.next}")
     stdout.write("\n".join(lines) + ("\n" if lines else ""))

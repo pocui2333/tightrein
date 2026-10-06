@@ -199,7 +199,7 @@ class ParsedRun:
 | `outputSchema` | `--json-schema <schema 文件>`，结果在 `result` 的 `structured_output` 中；接受 `$schema` 声明 |
 | `access: read-only` | 缺省权限模式加 `--sandbox`，不跳过权限：文件写入与绝大部分 shell 命令被自动拒绝 |
 | `access: workspace-write` | `--mode accept-edits`：文件编辑放行，shell 命令仍被自动拒绝 |
-| `allowedCommands` | 命令行上没有逐条放行的参数：按 agy 自己的白名单(settings.json 的 `permissions.allow`)放行，`tightrein install` 补上只读命令；提示末尾列出其中已放行的只读命令与工具调用上限，要求先用 `git grep` 定位再读文件。只读任务在 `--sandbox` 中，终端写入被拦住；`--dangerously-skip-permissions` 放开全部命令，不使用 |
+| `allowedCommands` | 命令行上没有逐条放行的参数：按 agy 自己的白名单(settings.json 的 `permissions.allow`)放行，`tightrein admin install` 补上只读命令；提示末尾列出其中已放行的只读命令与工具调用上限，要求先用 `git grep` 定位再读文件。只读任务在 `--sandbox` 中，终端写入被拦住；`--dangerously-skip-permissions` 放开全部命令，不使用 |
 | `limits.maxTurns` | 无原生上限，由核心按完成的 `tool` 步骤计数(2.7) |
 | `limits.maxCostUsd` | 无原生上限，费用由核心按各 `agent_response` 步骤的用量估算 |
 | `model` | `--model`(`agy models` 列出，例如 `gemini-3.1-pro-high`、`claude-sonnet-4-6`) |
@@ -559,7 +559,7 @@ class GuardReport:
 - 修复 worktree 的创建与清理；只读 worktree 的初始化与切换。
 - 写操作的幂等(15.7)。
 
-写操作只能由 `fix`(建分支与 worktree)与 `release` 调用(00 依赖规则 4)。只读 worktree 的切换不改动任何分支与用户的工作区，由编排层、`collect` 与 `triage` 调用；只读 worktree 的首次创建是写操作，由 `tightrein worktree init` 生成待确认操作。
+写操作只能由 `fix`(建分支与 worktree)与 `release` 调用(00 依赖规则 4)。只读 worktree 的切换不改动任何分支与用户的工作区，由编排层、`collect` 与 `triage` 调用；只读 worktree 的首次创建是写操作，由 `tightrein project worktree init` 生成待确认操作。
 
 ### 4.2 文件划分
 
@@ -677,9 +677,9 @@ def run_unattended(op_id: str, *, reason: str, clock: Clock) -> OperationResult 
 
 ### 4.5 确认与执行
 
-**确认(`confirm`)**
+**确认(`approve`)**
 
-1. 确认只来自用户：终端中 `tightrein confirm <操作编号>`，或 agent 工具中由用户明确同意后 `loop` skill 调用同一命令。无人值守运行从不调用 `confirm`，待确认操作只进入运行摘要；项目声明不逐次确认的操作经下文的直接执行处理。
+1. 确认只来自用户：终端中 `tightrein approve <操作编号>`，或 agent 工具中由用户明确同意后 `loop` skill 调用同一命令。无人值守运行从不调用 `approve`，待确认操作只进入运行摘要；项目声明不逐次确认的操作经下文的直接执行处理。
 2. `confirmations_required` 为 2 的操作(删除 worktree 与分支，7.9)，第一次确认后状态仍为 `pending`，`confirmations_given` 记为 1 并提示风险，第二次确认才改为 `confirmed`。
 3. 每次确认写 `user_action` 事件，`decided_at` 记录确认时间。
 4. 确认只对这一个操作有效，不连带确认同一 Issue 的后续操作。
@@ -712,9 +712,9 @@ def run_unattended(op_id: str, *, reason: str, clock: Clock) -> OperationResult 
 
 | 操作 | 位置 | 做法 |
 |---|---|---|
-| 创建修复 worktree | `workspaces/<项目>/worktrees/fix-<Issue 编号>/` | `issue approve` 经 `fix prepare` 构造 `create-fix-worktree`，用户确认后执行(5.3)。分支从最新的 `origin/main` 创建。幂等键为 Issue 编号：分支与 worktree 已存在且对应时复用，不重复创建 |
-| 初始化只读 worktree | `workspaces/<项目>/worktrees/readonly/` | 首次使用前由 `tightrein worktree init` 构造 `init-readonly-worktree`，确认后执行；本地已有 `origin/main` 时不 fetch |
-| 切换只读 worktree(`sync_readonly(commit)`) | 同上 | 目标 commit 在本地已存在时不 fetch；本地没有或没有给出 commit(取 `origin/main`)时先 `git fetch origin`，fetch 失败或超时以 `NetworkError` 结束并写明需要 fetch 的 commit。然后在只读 worktree 中执行 `git checkout --detach <commit>`。只移动这个 worktree 的游离 HEAD，不建分支、不动用户的工作区，不需要逐次确认；命令行入口为 `tightrein worktree sync [--commit <commit>]`。执行前检查它是干净的；不干净说明有东西写入了只读 worktree，停止并报告，不清理 |
+| 创建修复 worktree | `workspaces/<项目>/worktrees/fix-<Issue 编号>/` | `approve` 经 `fix prepare` 构造 `create-fix-worktree`，用户确认后执行(5.3)。分支从最新的 `origin/main` 创建。幂等键为 Issue 编号：分支与 worktree 已存在且对应时复用，不重复创建 |
+| 初始化只读 worktree | `workspaces/<项目>/worktrees/readonly/` | 首次使用前由 `tightrein project worktree init` 构造 `init-readonly-worktree`，确认后执行；本地已有 `origin/main` 时不 fetch |
+| 切换只读 worktree(`sync_readonly(commit)`) | 同上 | 目标 commit 在本地已存在时不 fetch；本地没有或没有给出 commit(取 `origin/main`)时先 `git fetch origin`，fetch 失败或超时以 `NetworkError` 结束并写明需要 fetch 的 commit。然后在只读 worktree 中执行 `git checkout --detach <commit>`。只移动这个 worktree 的游离 HEAD，不建分支、不动用户的工作区，不需要逐次确认；命令行入口为 `tightrein project worktree sync [--commit <commit>]`。执行前检查它是干净的；不干净说明有东西写入了只读 worktree，停止并报告，不清理 |
 | 清理修复 worktree | 修复 worktree 与分支 | 用户执行 `fix cleanup <Issue 编号>` 时由 `release` 的清理步骤构造 `cleanup`，二次确认后执行(7.9)。`git worktree remove` 不加强制参数：worktree 中还有未提交改动时 git 会拒绝，此时停下报告 |
 
 - 两类 worktree 都在工作区的 `worktrees/` 下，路径由 `store/files/layout.py` 给出，不纳入本工具仓库的版本管理。

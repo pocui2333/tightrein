@@ -60,7 +60,7 @@ git remote add origin ~/demo-app-origin.git && git push -q -u origin main
 ## 2. 新建工作区
 
 ```sh
-tightrein workspace init --workspace workspaces/demo --repo ~/demo-app
+tightrein project init --workspace workspaces/demo --repo ~/demo-app
 ```
 
 预期输出(节选)：
@@ -73,14 +73,14 @@ tightrein workspace init --workspace workspaces/demo --repo ~/demo-app
 - [需要回答] conventions 项目约定(分支、提交、PR)：……
 ```
 
-输出的最后一行提示下一步：`下一步：tightrein worktree init --workspace workspaces/demo`。工作区 `workspaces/demo/` 保存这个项目的配置(`project.yaml`)、Issue 与运行数据。接入完成之前，tightrein 只做只读的事。
+输出的最后一行提示下一步：`下一步：tightrein project worktree init --workspace workspaces/demo`。工作区 `workspaces/demo/` 保存这个项目的配置(`project.yaml`)、Issue 与运行数据。接入完成之前，tightrein 只做只读的事。
 
 ## 3. 建只读 worktree：你的第一个审批
 
 tightrein 在项目的一份独立检出(worktree)上取证和运行检查，不碰你正在用的工作目录。
 
 ```sh
-tightrein worktree init --workspace workspaces/demo
+tightrein project worktree init --workspace workspaces/demo
 ```
 
 tightrein 不会直接执行，而是列出将要做什么、会不会影响远程、怎样撤销，然后停下：
@@ -89,13 +89,13 @@ tightrein 不会直接执行，而是列出将要做什么、会不会影响远�
 ……
 是否影响远程：否
 能否撤销：能；撤销方法：git worktree remove .../workspaces/demo/worktrees/readonly
-同意后执行：tightrein confirm OP-0001；拒绝：tightrein reject OP-0001
+同意后执行：tightrein approve OP-0001；拒绝：tightrein reject OP-0001
 ```
 
 这就是审批关卡。确认执行：
 
 ```sh
-tightrein confirm OP-0001 --workspace workspaces/demo
+tightrein approve OP-0001 --workspace workspaces/demo
 ```
 
 预期输出：`OP-0001 已执行`。
@@ -105,7 +105,7 @@ tightrein confirm OP-0001 --workspace workspaces/demo
 检查命令是修复后自检的依据。只读 worktree 里没有示例项目的 `.venv`，所以这里写虚拟环境中 Python 的绝对路径：
 
 ```sh
-tightrein workspace answer checks --workspace workspaces/demo \
+tightrein project answer checks --workspace workspaces/demo \
   --value "$HOME/demo-app/.venv/bin/python -m pytest -q"
 ```
 
@@ -119,7 +119,7 @@ tightrein 会立即在主分支上运行这条命令，预期输出中出现：
 
 ```sh
 for item in conventions platform:deploy-source platform:error-tracking platform:log-platform platform:alert-source; do
-  tightrein workspace answer "$item" --workspace workspaces/demo --recommended
+  tightrein project answer "$item" --workspace workspaces/demo --recommended
 done
 ```
 

@@ -117,8 +117,8 @@ tightrein collect deployments
 | api-fuzz | `target.healthcheck` 在 `target.healthTimeoutSeconds` 内返回 2xx | 跳过本次采集：运行记为 `blocked`，不产出信号，交接文档 `status` 为 `blocked`，提示「staging 不可用」；没有配置 `healthcheck` 时不检查，`notes` 中写明「未配置 target.healthcheck，未做健康检查」 |
 | api-fuzz | 有目标地址(`target.baseUrl` 或 `--target`)；没有 `accounts` 时以匿名身份运行(04 篇 1.6)；生产环境只测 GET 与允许清单(04 篇 2.4) | 没有目标地址时由方法返回 `skipped` 并写明原因，不视为错误；生产环境的限制配置不对时启动报错 |
 | api-fuzz | `spec-export` 有实现(10 篇 1.4) | 运行记为 `skipped`，原因「未提供 spec-export 扩展」 |
-| api-fuzz | `data/specs/<release>/openapi.json` 已缓存且缓存键一致，或只读 worktree 的 HEAD 等于 `release` | 「先执行 `tightrein worktree sync --commit <release>`」 |
-| static | 只读 worktree 的 HEAD 等于 `origin/main`(经 `vcs` 只读查询) | 「先执行 `tightrein worktree sync`」 |
+| api-fuzz | `data/specs/<release>/openapi.json` 已缓存且缓存键一致，或只读 worktree 的 HEAD 等于 `release` | 「先执行 `tightrein project worktree sync --commit <release>`」 |
+| static | 只读 worktree 的 HEAD 等于 `origin/main`(经 `vcs` 只读查询) | 「先执行 `tightrein project worktree sync`」 |
 | static | `budget_usage` 中 `collect` 当天的累计费用未超过 `stages.collect` 的上限 | 「今日静态巡检预算已用尽」 |
 | platform-errors、access-log、alerts、project-probe | 已配置(04 篇第 4 节) | 运行记为 `skipped`，原因「未启用：…」，不视为错误 |
 | incidental | 无 | — |
@@ -145,7 +145,7 @@ tightrein collect deployments
 | 基线审查 | `roles/baseline-review.md`，加载 `sharp-edges` | 一批文件与行数、本批的确定性工具结果；按本批文件预取的缺陷模式与已接受取舍 | 同上 | `read-only` |
 | 全量扫描 | `roles/variant-scan.md`，加载 `variant-analysis` | 一个缺陷模式的全文、已接受取舍的摘要 | 同上 | `read-only` |
 | 取证 | `skills/triage/references/roles/claim-verifier.md` | 只有主张与位置 | `runner/roles/claim-verifier.schema.json` | `read-only` |
-| 起草接口描述(`tightrein spec draft`) | `roles/spec-drafter.md` | 被测地址 | `runner/roles/spec-drafter.schema.json` | `read-only` |
+| 起草接口描述(`tightrein project spec draft`) | `roles/spec-drafter.md` | 被测地址 | `runner/roles/spec-drafter.schema.json` | `read-only` |
 
 增量审查与基线审查都用强档(`roleCapabilities.static-review`、`baseline-review` 为 `strong`)：增量审查是新代码缺陷的主要发现者。
 
@@ -260,10 +260,10 @@ aggregate 是确定性的，不调用执行器，没有角色说明；命令、�
 ```
 tightrein aggregate [--select <选择器>] [--input <collect 交接文档>] [--output <目录>] [--dry-run]
                      [--reproduce live|skip] [--rebuild] [--no-wait] [--target <地址>] [--now <时间>]
-tightrein ignore <问题> --reason <原因> [--until <条件>]
-tightrein false-positive <问题> --reason <原因> [--expires <日期>]
-tightrein merge <问题A> <问题B>
-tightrein reopen <问题>
+tightrein problem ignore <问题> --reason <原因> [--until <条件>]
+tightrein problem false-positive <问题> --reason <原因> [--expires <日期>]
+tightrein problem merge <问题A> <问题B>
+tightrein problem reopen <问题>
 ```
 
 | 参数 | 作用 |
@@ -315,8 +315,8 @@ tightrein reopen <问题>
 
 | 命令 | 变化 |
 |---|---|
-| `ignore` | 问题转为 `ignored`，`ignore_until` 写入恢复条件(日期、再出现 N 次、出现在新版本)；不给条件即永久 |
-| `false-positive` | 问题转为 `ignored`；在 `suppressions.yaml` 追加一条以指纹匹配的规则，写明原因、添加日期、到期日期(缺省取 `thresholds.suppressionDays`) |
+| `problem ignore` | 问题转为 `ignored`，`ignore_until` 写入恢复条件(日期、再出现 N 次、出现在新版本)；不给条件即永久 |
+| `problem false-positive` | 问题转为 `ignored`；在 `suppressions.yaml` 追加一条以指纹匹配的规则，写明原因、添加日期、到期日期(缺省取 `thresholds.suppressionDays`) |
 | `merge` | B 的信号关联改到 A，B 的指纹写入 `problem_aliases` 指向 A，B 标记为已合并并写事件；B 已有 Issue 时拒绝，提示先按 4.7 处理 Issue |
 | `reopen` | `resolved` 或 `ignored` 的问题转为 `new`，清除 `ignore_until` 与 `clean_covered_runs` |
 
@@ -346,7 +346,7 @@ tightrein reopen <问题>
 | `triage_results` | 问题是否已分诊(决定「新发现 → 持续」) | — |
 | `issues` 与 Issue 文件 | 问题关联的 Issue 状态 | 回归时重新打开 |
 | `handoffs` | — | 本次交接文档索引 |
-| 文件 | `project.yaml` 的 `thresholds`、`normalize.yaml`、`suppressions.yaml` | `suppressions.yaml`(仅 `false-positive`)；`data/runs/<运行编号>/handoff/`；`data/reports/run-<运行编号>.md`；`data/archive/`(仅重放) |
+| 文件 | `project.yaml` 的 `thresholds`、`normalize.yaml`、`suppressions.yaml` | `suppressions.yaml`(仅 `problem false-positive`)；`data/runs/<运行编号>/handoff/`；`data/reports/run-<运行编号>.md`；`data/archive/`(仅重放) |
 | 锁 | `data/aggregate.lock` | 同左 |
 
 ### 3.8 交接文档 outputs

@@ -117,7 +117,7 @@ def test_a_problem_is_triaged_once_until_it_regresses_or_a_retriage_is_requested
                                          NOW - timedelta(hours=1)))
     assert not select.eligible(world.conn, problem)
     assert select.choose(world.conn, 5, ("P-0001",)).rejected == [
-        ("P-0001", "P-0001 已分诊，重新分诊请用 tightrein retriage")]
+        ("P-0001", "P-0001 已分诊，重新分诊请用 tightrein problem retriage")]
     assert select.choose(world.conn, 5, ("P-0001",), retriage=True).chosen == [problem]
     _event(world, "P-0001", ProblemEvent.RETRIAGE_REQUESTED, None, NOW, ProblemStatus.NEW)
     assert select.eligible(world.conn, problem)

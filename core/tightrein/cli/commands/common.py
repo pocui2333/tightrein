@@ -21,17 +21,56 @@ from tightrein.vcs.process import VcsProcess
 
 Handler = Callable[[Any], Outcome]
 
+PROG = "tightrein"
+# 接受 --dry-run 的命令(命令名为去掉 tightrein 的完整路径)；其余命令的帮助不显示 --dry-run，收到时报错
+DRY_RUN_COMMANDS = frozenset({"run", "collect", "aggregate", "triage", "issue", "issue create", "new", "admin install",
+                              "admin uninstall", "project schedule install", "project schedule uninstall",
+                              "admin third-party lock"})
+# 根帮助的分节：(标题, 命令名)；不在这里的命令(tick)不出现在帮助里
+HELP_SECTIONS = (
+    ("日常", ("status", "watch", "show", "find", "new", "continue", "approve", "reject", "run", "pause", "resume")),
+    ("分组", ("issue", "problem", "project", "admin")),
+    ("单步执行(高级)", ("collect", "aggregate", "triage", "fix", "verify", "release", "learn")),
+)
 
-def leaf(commands: Any, common: argparse.ArgumentParser, name: str, handler: Handler, help_text: str,
-         command_name: str | None = None) -> argparse.ArgumentParser:
-    parser = commands.add_parser(name, parents=[common], help=help_text, description=help_text)
-    parser.set_defaults(handler=handler, command_name=command_name or name)
+
+class CommonParsers(argparse.ArgumentParser):
+    """公共参数的父解析器；dry_run 是另一份显示 --dry-run 的，接受 --dry-run 的命令用它。"""
+    dry_run: argparse.ArgumentParser
+
+
+def path_of(commands: Any, name: str) -> str:
+    """子命令的完整路径(不含 tightrein)，例如 project probe new。"""
+    prefix = getattr(commands, "_prog_prefix", PROG).split(" ", 1)
+    return f"{prefix[1]} {name}" if len(prefix) > 1 else name
+
+
+def leaf(commands: Any, common: argparse.ArgumentParser, name: str, handler: Handler, help_text: str
+         ) -> argparse.ArgumentParser:
+    path = path_of(commands, name)
+    parent = getattr(common, "dry_run", common) if path in DRY_RUN_COMMANDS else common
+    parser = commands.add_parser(name, parents=[parent], help=help_text, description=help_text)
+    parser.set_defaults(handler=handler, command_name=path)
     return parser
 
 
 def group(commands: Any, name: str, help_text: str) -> Any:
     parser = commands.add_parser(name, help=help_text, description=help_text)
-    return parser.add_subparsers(dest=f"{name}_command", required=True, parser_class=type(parser))
+    return parser.add_subparsers(dest=f"{path_of(commands, name).replace(' ', '_')}_command", required=True,
+                                 parser_class=type(parser), metavar="<子命令>")
+
+
+def root_help(description: str, commands: Any) -> str:
+    """根帮助：按 HELP_SECTIONS 分节，每个命令一行说明。"""
+    helps = {action.dest: action.help or "" for action in commands._choices_actions}
+    width = max(len(name) for _, names in HELP_SECTIONS for name in names) + 3
+    lines = [description, "", f"用法：{PROG} <命令> [参数]；不带命令时等同 {PROG} status", ""]
+    for title, names in HELP_SECTIONS:
+        lines.append(title)
+        lines += [f"  {name.ljust(width)}{helps.get(name, '')}" for name in names]
+        lines.append("")
+    lines.append(f"每条命令的用法：{PROG} <命令> --help")
+    return "\n".join(lines) + "\n"
 
 
 def orchestrator(app: App) -> Orchestrator:

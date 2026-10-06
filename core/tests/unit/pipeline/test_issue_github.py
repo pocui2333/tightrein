@@ -386,7 +386,7 @@ def test_humanized_mirror_body_for_handoff_triage_issue(tmp_path):
         "### 验收标准\n\n- [ ] 复现测试修复前失败修复后通过\n- [ ] 现有测试全部通过\n\n"
         "### 修复方向\n\n添加 try/except 并在写入时使用原子写入。\n\n"
         "## 需要决定\n\n无\n\n"
-        "## 下一步\n\n- [ ] 审阅并放行：tightrein issue approve 1(user)\n\n"
+        "## 下一步\n\n- [ ] 审阅并放行：tightrein approve 1(user)\n\n"
         "## 引用\n\n- `data/findings/P-001.md` 报告\n- `processors/review.py:10` 没有容错\n\n"
         "## 历史\n\n- 2026-10-04 创建\n"
     )
@@ -409,7 +409,7 @@ def test_humanized_mirror_body_for_handoff_triage_issue(tmp_path):
     assert "## 内容" not in found
     assert "## 需要决定" not in found
     assert "## 下一步" not in found
-    assert "tightrein issue approve" not in found
+    assert "tightrein approve" not in found
     assert "### 注意事项" not in found
     assert "不能改：接口签名" not in found
     assert "### 验收标准" not in found

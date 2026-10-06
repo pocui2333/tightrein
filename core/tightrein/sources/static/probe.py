@@ -230,7 +230,7 @@ class StaticProbe:
             return failed("没有注入审查器(Reviewer)，由 collect 提供")
         head = self.deps.git.head(repo).commit
         if target.release is not None and not head_matches(head, target.release):
-            return failed(f"只读 worktree 不在 {target.release}，先执行 tightrein worktree sync")
+            return failed(f"只读 worktree 不在 {target.release}，先执行 tightrein project worktree sync")
         if options.pending:
             return self._selected(target, repo, head, reviewer, options)
         found, reason = scoping.resolve(self.deps.git, repo, options.base_commit,

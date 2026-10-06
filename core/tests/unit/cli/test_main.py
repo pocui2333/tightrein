@@ -48,10 +48,10 @@ def database(world):
 
 
 @pytest.mark.parametrize("argv", [
-    ["run", "--scheduled"], ["run", "--select", "triage+", "--subject", "P-0001"], ["status"], ["next", "7"],
+    ["run", "--scheduled"], ["run", "--select", "triage+", "--subject", "P-0001"], ["status"], ["show", "7"],
     ["continue", "7", "P-0001", "--until", "release"], ["continue", "7", "--from", "fix"],
-    ["find", "订单", "--since", "2026-10-01", "--type", "issue"], ["pending", "--stage", "fix"],
-    ["confirm", "OP-0001"], ["reject", "OP-0001", "--note", "不需要"], ["config", "show", "--key", "loop"],
+    ["find", "订单", "--since", "2026-10-01", "--type", "issue"], ["status", "--pending", "--stage", "fix"],
+    ["approve", "OP-0001"], ["reject", "OP-0001", "--note", "不需要"], ["project", "config", "--key", "loop"],
 ])
 def test_commands_parse(argv):
     args = build_parser().parse_args([*argv, "--json", "--now", "2026-10-05"])
@@ -96,17 +96,17 @@ def test_errors_map_to_exit_codes(failure, code):
     assert exit_codes.for_error(failure) == code
 
 
-def test_next_and_find(tmp_path):
+def test_show_and_find(tmp_path):
     world = make_cli_world(tmp_path)
     conn = database(world)
     save_issue(conn, "0007", IssueStatus.NEEDS_DECISION)
     save_problem(conn, "P-0001", title="订单查询返回 500")
     save_problem(conn, "P-0002", "second", title="订单导出返回 500")
     conn.close()
-    code, values = call_json(world, "next", "7")
-    assert code == 0 and values["next"] == "tightrein issue approve 7"
+    code, values = call_json(world, "show", "7")
+    assert code == 0 and values["next"] == "tightrein approve 7"
     assert values["result"][0]["gate"] == "issue-approval" and values["result"][0]["canContinue"] is False
-    code, values = call_json(world, "next", "8")
+    code, values = call_json(world, "show", "8")
     assert code == exit_codes.USAGE and "0008" in values["errors"][0]["message"]
     code, values = call_json(world, "find", "订单")
     assert code == exit_codes.GATE and values["stoppedAt"]["gate"] == "candidate-choice"
@@ -120,10 +120,10 @@ def test_continue_stops_at_a_gate_with_exit_code_4(tmp_path):
     conn.close()
     code, values = call_json(world, "continue", "7")
     assert code == exit_codes.GATE and values["stoppedAt"]["gate"] == "issue-approval"
-    assert values["next"] == "tightrein issue approve 7"
+    assert values["next"] == "tightrein approve 7"
 
 
-def test_pending_lists_operations_and_reject_records_the_note(tmp_path):
+def test_status_pending_lists_operations_and_reject_records_the_note(tmp_path):
     world = make_cli_world(tmp_path)
     conn = database(world)
     pending_operations.save(conn, PendingOperationRecord(
@@ -132,7 +132,7 @@ def test_pending_lists_operations_and_reject_records_the_note(tmp_path):
         description={"repo": "/tmp/r", "branch": None, "files": [], "affectsRemote": False, "undo": "无",
                      "text": "应用迁移"}))
     conn.close()
-    code, values = call_json(world, "pending")
+    code, values = call_json(world, "status", "--pending")
     assert code == 0 and values["pendingOperations"][0]["id"] == "OP-0001"
     code, values = call_json(world, "reject", "OP-0001", "--note", "暂不应用")
     assert code == 0 and values["result"]["status"] == "rejected"
@@ -140,10 +140,10 @@ def test_pending_lists_operations_and_reject_records_the_note(tmp_path):
 
 def test_config_show_lists_layers(tmp_path):
     world = make_cli_world(tmp_path)
-    code, values = call_json(world, "config", "show", "--key", "loop.findLimit")
+    code, values = call_json(world, "project", "config", "--key", "loop.findLimit")
     assert code == 0 and values["result"] == [{"key": "loop.findLimit", "value": 20, "source": "core",
                                                "layers": {"core": 20}}]
-    code, values = call_json(world, "config", "show", "--key", "nothing.here")
+    code, values = call_json(world, "project", "config", "--key", "nothing.here")
     assert code == exit_codes.USAGE
 
 

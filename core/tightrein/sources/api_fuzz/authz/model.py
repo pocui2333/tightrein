@@ -140,7 +140,7 @@ def _call(call: Callable[..., PointResult], *args: Any) -> tuple[PointResult | N
     try:
         return call(*args), None
     except WorktreeNotAtCommit as error:
-        return None, f"{error}；先执行 tightrein worktree sync --commit {error.commit}"
+        return None, f"{error}；先执行 tightrein project worktree sync --commit {error.commit}"
 
 
 def ensure(client: ExtensionClient, repo: Path, release: str, roles: Sequence[str], spec: Mapping[str, Any],

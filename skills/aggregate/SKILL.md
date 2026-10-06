@@ -14,10 +14,10 @@ description: 把 collect 采集的信号归并成问题、更新问题状态并�
 ```
 tightrein aggregate [--select run:<运行编号>|probe:<方法>] [--input <collect 交接文档>] [--output <目录>] [--dry-run]
                      [--reproduce live|skip] [--rebuild] [--no-wait] [--target <地址>] [--now <时间>]
-tightrein ignore <问题> --reason <原因> [--until <条件>]
-tightrein false-positive <问题> --reason <原因> [--expires <日期>]
-tightrein merge <问题A> <问题B>
-tightrein reopen <问题>
+tightrein problem ignore <问题> --reason <原因> [--until <条件>]
+tightrein problem false-positive <问题> --reason <原因> [--expires <日期>]
+tightrein problem merge <问题A> <问题B>
+tightrein problem reopen <问题>
 ```
 
 - 输出「没有新信号」表示没有待聚合的运行，也没有需要重试的待确认问题，这不是错误。

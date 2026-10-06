@@ -45,19 +45,19 @@ def test_workspace_init_creates_a_workspace_and_lists_the_questions(tmp_path):
     (repo / ".git").mkdir(parents=True)
     (repo / "package.json").write_text("{}", encoding="utf-8")
     target = tmp_path / "new-workspace"
-    code, values = call(world, "workspace", "init", "--workspace", str(target), "--repo", str(repo), "--json")
+    code, values = call(world, "project", "init", "--workspace", str(target), "--repo", str(repo), "--json")
     assert code == exit_codes.GATE and values["result"]["phase"] == "onboarding"
     states = {item["item"]: item["state"] for item in values["result"]["items"]}
     assert states["stack"] == "done" and states["checks"] == "blocked"
     assert (target / "project.yaml").is_file() and (target / "onboarding.md").is_file()
-    assert values["next"] == f"tightrein worktree init --workspace {target}"
+    assert values["next"] == f"tightrein project worktree init --workspace {target}"
     code, values = call(world, "status", "--workspace", str(target), "--json")
     assert values["result"]["onboarding"].startswith("new-workspace：接入中，还差")
-    code, values = call(world, "workspace", "answer", "platform:log-platform", "--skip", "--workspace", str(target),
+    code, values = call(world, "project", "answer", "platform:log-platform", "--skip", "--workspace", str(target),
                         "--json")
     assert code == 0 and {item["item"]: item["state"] for item in values["result"]["items"]}[
         "platform:log-platform"] == "done"
-    code, values = call(world, "workspace", "check", "--workspace", str(world.root), "--json")
+    code, values = call(world, "project", "check", "--workspace", str(world.root), "--json")
     accounts = next(item for item in values["result"]["items"] if item["item"] == "accounts")
     assert code == 0 and values["result"]["phase"] == "running" and accounts["state"] == "failed"
 

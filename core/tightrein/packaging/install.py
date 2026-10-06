@@ -6,6 +6,8 @@
 - agy 的命令白名单：为 agy 安装时在 ~/.gemini/antigravity-cli/settings.json 的 permissions.allow 中补上只读命令
   (runner/adapters/agy.READ_COMMANDS)，无人值守时 agy 据此可以用 git grep 等搜索代码；只补缺的，记进安装记录的
   allowedCommands，uninstall 只移除记录中的这些。
+- 命令链接：`~/.local/bin` 存在时在其中建立指向 `core/.venv/bin/tightrein` 的 `tightrein` 链接，不覆盖别的同名文件；
+  记进安装记录的 commandLink，全部工具卸载后删除。
 - 锁定的第三方 skill：缓存缺失时按锁定的 commit 下载，在 `skills/<名称>` 建立指向缓存的链接，核心的提示拼装与
   各工具都经这个位置取得。
 - 先检查、后执行：`skills check` 不通过、第三方缓存与清单不符、目标位置已有不是本工具安装的条目时，列出全部问题
@@ -57,6 +59,9 @@ COMMAND = "command"
 REMOVE_DIR = "remove"
 ALLOW = "allow"
 UNALLOW = "unallow"
+COMMAND_LINK = "command-link"
+LOCAL_BIN = ".local/bin"
+PROGRAM = "core/.venv/bin/tightrein"
 PERMISSIONS = "permissions"
 
 OK = "ok"
@@ -129,6 +134,7 @@ class Action:
             REMOVE_DIR: f"删除目录 {self.path}",
             ALLOW: f"在 agy 白名单 {self.path} 中放行只读命令 {'、'.join(self.argv)}",
             UNALLOW: f"从 agy 白名单 {self.path} 中移除本工具放行的命令 {'、'.join(self.argv)}",
+            COMMAND_LINK: f"建立命令链接 {self.path} → {self.source}",
         }
         return texts[self.kind]
 
@@ -244,7 +250,7 @@ def _link(plan: Plan, destination: Path, source: Path, owned: set[Path], planned
 def _third_party(ctx: Context, plan: Plan, lock: Sequence[LockedSkill], owned: set[Path], planned: set[Path]) -> None:
     for skill in lock:
         if not skill.locked or skill.ref is None:
-            plan.notes.append(f"{skill.name} 尚未锁定，未安装；先执行 tightrein third-party lock")
+            plan.notes.append(f"{skill.name} 尚未锁定，未安装；先执行 tightrein admin third-party lock")
             continue
         cache = ctx.cache(skill.name, skill.ref)
         if cache.is_dir():
@@ -296,7 +302,23 @@ def plan_install(ctx: Context, chosen: Sequence[Target]) -> tuple[Plan, dict[str
                 plan.actions += [Action(COMMAND, argv=tuple(argv)) for argv in
                                  claude.install_commands(ctx.claude(), target.path, previous is None)]
         record["tools"][target.tool] = entry
+    _command_link(ctx, plan, record)
     return plan, record
+
+
+def _command_link(ctx: Context, plan: Plan, record: dict[str, Any]) -> None:
+    """在 ~/.local/bin 建立 tightrein 链接，在任何目录都能直接敲 tightrein；目录不存在时不建，不覆盖别的同名文件。"""
+    directory = ctx.home / LOCAL_BIN
+    link, program = directory / "tightrein", ctx.tool.root / PROGRAM
+    if not directory.is_dir():
+        return
+    if link.is_symlink() and Path(os.readlink(link)) == program:
+        record["commandLink"] = str(link)
+    elif link.exists() or link.is_symlink():
+        plan.notes.append(f"{link} 已存在且不是本工具建立的，没有建立命令链接")
+    else:
+        plan.actions.append(Action(COMMAND_LINK, link, program))
+        record["commandLink"] = str(link)
 
 
 def _source_hash(ctx: Context, source: Path, lock: Sequence[LockedSkill]) -> str:
@@ -313,7 +335,7 @@ def plan_uninstall_repo(ctx: Context) -> tuple[Plan, dict[str, Any]]:
     installed = read_installed(ctx)
     if installed["tools"]:
         plan.problems.append(f"{'、'.join(sorted(installed['tools']))} 仍经 skills/<名称> 使用第三方 skill，"
-                             "先执行 tightrein uninstall 卸载这些工具")
+                             "先执行 tightrein admin uninstall 卸载这些工具")
         return plan, installed
     record = json.loads(json.dumps(installed))
     for name in sorted(installed["repo"]["links"]):
@@ -344,6 +366,10 @@ def plan_uninstall(ctx: Context, chosen: Sequence[Target]) -> tuple[Plan, dict[s
             if Path(entry["path"]).is_dir():
                 plan.actions.append(Action(REMOVE_DIR, Path(entry["path"])))
         del record["tools"][tool]
+    link = Path(installed.get("commandLink") or "")
+    if not record["tools"] and installed.get("commandLink") and link.is_symlink():
+        plan.actions.append(Action(REMOVE_LINK, link))
+        record.pop("commandLink", None)
     return plan, record
 
 
@@ -367,6 +393,8 @@ def _apply(ctx: Context, action: Action, lock: Mapping[str, LockedSkill], source
         ctx.run(action.argv)
     elif action.kind == REMOVE_DIR and action.path is not None:
         shutil.rmtree(action.path)
+    elif action.kind == COMMAND_LINK and action.path is not None and action.source is not None:
+        action.path.symlink_to(action.source)
     elif action.kind in (ALLOW, UNALLOW) and action.path is not None:
         _edit_allow(action.path, action.argv, add=action.kind == ALLOW)
 
