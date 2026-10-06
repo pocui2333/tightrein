@@ -16,6 +16,8 @@ from datetime import tzinfo
 from pathlib import Path
 from typing import Any
 
+from tightrein.config import gates
+from tightrein.config.gates import Gate
 from tightrein.config.project import ProjectConfig
 from tightrein.contracts import versions
 from tightrein.domain.clock import Clock, format_iso, local_date, parse_iso
@@ -88,7 +90,7 @@ def conclusion(waiting_items: Sequence[Mapping[str, Any]], failed: Sequence[str]
 def outputs(conn: sqlite3.Connection, layout: WorkspaceLayout, config: ProjectConfig, steps: Sequence[Any],
             anomalies: Sequence[Mapping[str, Any]], run_ids: Sequence[str],
             reroutes: Sequence[str] = (), halted: Mapping[str, str] | None = None) -> dict[str, Any]:
-    items = inbox.items(conn, layout)
+    items = inbox.items(conn, layout, unattended=gates.auto(config, Gate.FIX_SESSION))
     failed = [step.name for step in steps if step.status is RunStatus.FAILED]
     return {"conclusion": conclusion(items, failed), "waiting": items, "steps": [step.to_dict() for step in steps],
             "produced": produced(conn, layout, run_ids), "anomalies": [dict(item) for item in anomalies],

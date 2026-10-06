@@ -49,7 +49,8 @@ OPERATION_ADVICE = {
 }
 OPERATION_DEFAULT = ("核对操作内容后确认执行，不同意时拒绝并说明", "写操作按关卡表需要逐次确认")
 GATE_ADVICE = {
-    resume.FIX_PLAN: ("审阅修复计划(data/fixes/<编号>/plan.md)，范围合适时确认；需要调整时用 --reject --note 说明",
+    resume.FIX_PLAN: ("审阅修复计划(data/fixes/<编号>/plan.md)，范围合适时确认；需要调整时 tightrein reject <操作编号> -m <要求>，"
+                      "按要求重出计划",
                       "计划不满足自动确认的规则，或关卡 plan-confirm 为 user"),
     resume.MANUAL_QUEUE: ("补充复现条件或证据后重新分诊", "取证证据不足或需要人工判断"),
     resume.ISSUE_APPROVAL: ("核对问题与范围后放行", "分诊判为需要修复，放行由用户决定(关卡 issue-approve)"),
@@ -59,10 +60,13 @@ GATE_ADVICE = {
 HELD_ADVICE = ("查看停下的原因(Issue 历史与当天汇总)，处理后强制继续修复，或关闭 Issue",
                "无人值守修复停下、熔断或其他需要用户决定的原因")
 FIX_ADVICE = ("在终端启动修复会话", "关卡 fix-session 为 user，修复需要交互会话")
+UNATTENDED_ADVICE = ("推进修复，停在下一个需要你的关口", "关卡 fix-session 为 auto，修复不需要交互会话")
 
 
-def _issue_gate(issue: Issue) -> tuple[str, str] | None:
-    """Issue 等待用户的关口与命令：待放行(含还没有修复分支的用户需求)、待决定后继续、交互修复、审核 PR、等待部署。"""
+def _issue_gate(issue: Issue, unattended: bool = False) -> tuple[str, str] | None:
+    """Issue 等待用户的关口与命令：待放行(含还没有修复分支的用户需求)、待决定后继续、修复(unattended 为真即关卡 fix-session
+    为 auto 时用 continue 推进，否则在终端启动修复会话)、审核 PR、等待部署。"""
+    fix = "tightrein continue {n}" if unattended else "tightrein fix start {n}"
     if issue.status is IssueStatus.NEEDS_DECISION:
         if issue.hold is not None:
             return resume.INTERACTIVE_FIX, "tightrein fix start {n} --force"
@@ -70,9 +74,9 @@ def _issue_gate(issue: Issue) -> tuple[str, str] | None:
     if issue.status is IssueStatus.TODO:
         if issue.is_manual and issue.branch is None:
             return resume.ISSUE_APPROVAL, "tightrein approve {n}"
-        return resume.INTERACTIVE_FIX, "tightrein fix start {n}"
+        return resume.INTERACTIVE_FIX, fix
     if in_phase(issue, IssuePhase.FIX):
-        return resume.INTERACTIVE_FIX, "tightrein fix start {n}"
+        return resume.INTERACTIVE_FIX, fix
     if issue.status is IssueStatus.PENDING_MERGE:
         return resume.PR_REVIEW, "{url}"
     if in_phase(issue, IssuePhase.DEPLOY_CHECK):
@@ -128,8 +132,9 @@ def _release_items(conn: sqlite3.Connection, layout: WorkspaceLayout, issue: Iss
     return items
 
 
-def items(conn: sqlite3.Connection, layout: WorkspaceLayout | None = None) -> list[dict[str, Any]]:
-    """全部待用户处理的事项。layout 为空时不读交接文档(决策简报与 CI 状态不列出)。"""
+def items(conn: sqlite3.Connection, layout: WorkspaceLayout | None = None, *, unattended: bool = False
+          ) -> list[dict[str, Any]]:
+    """全部待用户处理的事项。layout 为空时不读交接文档(决策简报与 CI 状态不列出)；unattended 见 _issue_gate。"""
     found: list[dict[str, Any]] = []
     for record in pending_operations.find(conn, status=OperationStatus.PENDING):
         kind = resume.FIX_PLAN if record.kind is OperationKind.FIX_PLAN else resume.PENDING_OPERATION
@@ -142,7 +147,8 @@ def items(conn: sqlite3.Connection, layout: WorkspaceLayout | None = None) -> li
             found.append(_item(resume.MANUAL_QUEUE, problem.id, problem.title,
                                f"tightrein problem retriage {problem.id} --note <补充信息>", GATE_ADVICE[resume.MANUAL_QUEUE],
                                latest.result.treatment, latest.result.severity))
-    gated = [(record.issue, gate) for record in issues.find(conn) if (gate := _issue_gate(record.issue)) is not None]
+    gated = [(record.issue, gate) for record in issues.find(conn)
+             if (gate := _issue_gate(record.issue, unattended)) is not None]
     for issue, gate in sorted(gated, key=lambda pair: GATE_ORDER.index(pair[1][0])):
         if split.waiting_on(conn, issue) is not None:
             continue
@@ -151,7 +157,8 @@ def items(conn: sqlite3.Connection, layout: WorkspaceLayout | None = None) -> li
         text = command.format(n=_number(issue.id), url=pull.url if pull else f"tightrein issue show {issue.id}")
         title = f"{issue.title}({issue.status.label}" + (f"：{issue.hold.reason}" if issue.hold else "") + ")"
         treatment, _ = _triaged(conn, issue.problems)
-        advice = HELD_ADVICE if issue.hold is not None else GATE_ADVICE.get(kind, FIX_ADVICE)
+        advice = HELD_ADVICE if issue.hold is not None else GATE_ADVICE.get(
+            kind, UNATTENDED_ADVICE if unattended else FIX_ADVICE)
         found.append(_item(kind, issue.id, title, text, advice, issue.treatment or treatment, issue.severity))
         if layout is not None and issue.status is IssueStatus.PENDING_MERGE:
             found += _release_items(conn, layout, issue)

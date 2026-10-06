@@ -123,6 +123,22 @@ def test_continue_stops_at_a_gate_with_exit_code_4(tmp_path):
     assert values["next"] == "tightrein approve 7"
 
 
+def test_rejecting_a_fix_plan_with_a_note_asks_for_a_new_plan(tmp_path):
+    world = make_cli_world(tmp_path)
+    conn = database(world)
+    save_issue(conn, "0001", IssueStatus.IN_PROGRESS)
+    pending_operations.save(conn, PendingOperationRecord(
+        "OP-0001", Stage.FIX, "0001", OperationKind.FIX_PLAN, OperationExecutor.VCS, "确认修复计划",
+        True, "fix-plan:0001", 1, OperationStatus.PENDING, WHEN,
+        description={"repo": "/tmp/r", "branch": None, "files": [], "affectsRemote": False, "undo": "无",
+                     "text": "计划"}))
+    conn.close()
+    code, values = call_json(world, "reject", "OP-0001", "-m", "只改导出")
+    assert values["command"] == "reject" and "fix prepare" in values["result"]["message"]
+    conn = database(world)
+    assert pending_operations.get(conn, "OP-0001").status is OperationStatus.REJECTED
+
+
 def test_status_pending_lists_operations_and_reject_records_the_note(tmp_path):
     world = make_cli_world(tmp_path)
     conn = database(world)

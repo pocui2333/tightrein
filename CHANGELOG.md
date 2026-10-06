@@ -6,6 +6,13 @@
 
 ## [未发布]
 
+### 修复
+
+- 关卡 merge 为 auto 时，`continue` 遇到待合并的 PR 当场跟踪并按条件自动合并，不再只靠定时运行(工作区暂停时 PR 一直停在待合并)。
+- `status` 在关卡 fix-session 为 auto 时推荐 `tightrein continue <编号>`，不再推荐交互会话；`new` 之后的下一步同样如此。
+- `tightrein reject <计划的操作编号> -m <要求>` 按要求重出修复计划(原来只记为拒绝)；待确认计划的提示改为这种写法。
+- agy 的提示要求每次只执行一条命令(用 `&&`、`||` 串起的命令中只要有一条不在白名单里，整条会被拒绝并结束本轮)；输出格式说明写明格式由调用方提供，不必在项目里查找。
+
 ### 变更(不兼容)
 
 - 命令行重新规整：日常命令在顶层(`status` `watch` `show` `find` `new` `continue` `approve` `reject` `run` `pause` `resume`)，其余收进 `issue`、`problem`、`project`、`admin` 四组，流水线单步命令不变。不带命令时等同 `status`；`-w` 可写项目名；帮助只列人会用到的参数。老写法(`next`、`pending`、`confirm`、`issue approve`、`issue create --manual`、`retriage`、`workspace`、`install` 等)已删除，敲老写法时提示新写法。全部命令见 `docs/reference/cli.md`。
