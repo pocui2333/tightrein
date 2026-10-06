@@ -122,6 +122,31 @@ def test_the_view_fits_wide_and_narrow_terminals(tmp_path):
     assert view.duration(timedelta(hours=2, minutes=5)) == "2时05分"
 
 
+def test_a_continue_run_shows_the_fix_progress_attempts_and_last_failure():
+    """continue 推进的运行只有状态恢复一步：脉络与明细改为进行中的 Issue 的修复步骤；正在调用的排在前面，
+    上一次超时的调用写进备注。"""
+    loop = Run(LOOP_ID, RunStage.LOOP, AT - timedelta(minutes=20), RunStatus.RUNNING)
+    steps = (snapshot.StepState("recovery", "done", AT - timedelta(minutes=20), timedelta(seconds=1)),
+             *(snapshot.StepState(name, "waiting") for name in snapshot.LOOP_STEPS[1:]))
+    fix_steps = tuple(snapshot.FixStep(label, state) for label, state in (
+        ("分流", "done"), ("准备", "done"), ("勘察", "pending"), ("出计划", "pending")))
+    idle = snapshot.ActiveIssue("0015", "体检", "P2", None, "standard", fix_steps)
+    busy = snapshot.ActiveIssue("0017", "登录", "P2", None, "standard", fix_steps, calls=(
+        snapshot.FixCall("fix-scout", "agy gemini", "ok", 450000, 3_400_000),
+        snapshot.FixCall("fix-scout", "agy gemini", "limit-reached", 906000, 656_000)))
+    agent = snapshot.AgentCall("fix-scout", "0017", "agy", "gemini", None, AT - timedelta(minutes=3))
+    taken = snapshot.Snapshot("demo", AT, loop, steps, 0, 0, (idle, busy), (agent,), (), ())
+    console = Console(width=140, record=True, file=io.StringIO())
+    console.print(view.render(taken, 140, ZONE, 2))
+    text = console.export_text()
+    assert "流程脉络: Issue 0017 已完成(2) ── 勘察 (当前) ── 等待(1)" in text
+    lines = text.splitlines()
+    first = next(index for index, line in enumerate(lines) if "1. Issue" in line)
+    assert "Issue 0017 勘察" in lines[first] and "运行中" in lines[first] and "fix-scout 第 3 次" in lines[first]
+    assert "上一次到达上限(15分06秒)，正在重试" in lines[first + 1]
+    assert "2. Issue 0015 勘察" in text and len(lines) == view.HEIGHT
+
+
 def test_watch_once_prints_a_frame_and_rejects_json(tmp_path):
     world, _ = seeded(tmp_path)
     out = io.StringIO()

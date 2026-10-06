@@ -63,6 +63,17 @@ class AgentCall:
 class FixStep:
     label: str
     state: str
+    note: str = ""
+
+
+@dataclass(frozen=True)
+class FixCall:
+    """本次运行中这个 Issue 已结束的一次模型调用。"""
+    role: str
+    agent: str
+    result: str
+    duration_ms: int | None
+    tokens: int | None
 
 
 @dataclass(frozen=True)
@@ -73,6 +84,7 @@ class ActiveIssue:
     treatment: str | None
     lane: str | None
     steps: tuple[FixStep, ...]
+    calls: tuple[FixCall, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -131,7 +143,7 @@ def take(conn: sqlite3.Connection, layout: WorkspaceLayout, workspace: str, now:
     return Snapshot(
         workspace, now, loop, _steps(conn, layout, loop, run_events, now),
         _tokens(run_events), _tokens(item for item in logged if item.timestamp >= day_start),
-        _issues(conn, layout, problems), _agents(conn, layout, since, gone), _documents(layout, problems),
+        _issues(conn, layout, problems, run_events), _agents(conn, layout, since, gone), _documents(layout, problems),
         _event_lines(logged), problems, _pid(conn, loop), paused)
 
 
@@ -248,8 +260,10 @@ def _model(call: event_log.Event) -> str:
     return f"{text} ({effort})" if effort else text
 
 
-def _issues(conn: sqlite3.Connection, layout: WorkspaceLayout, problems: list[str]) -> tuple[ActiveIssue, ...]:
-    found = []
+def _issues(conn: sqlite3.Connection, layout: WorkspaceLayout, problems: list[str],
+            found: Sequence[event_log.Event] = ()) -> tuple[ActiveIssue, ...]:
+    """进行中的 Issue、修复进度与本次运行中它已结束的模型调用(found 为本次运行的事件)。"""
+    active = []
     for record in issues.find(conn, status=IssueStatus.IN_PROGRESS):
         issue = record.issue
         path = layout.fixes_dir(issue.id) / fix_progress.FILE
@@ -259,11 +273,15 @@ def _issues(conn: sqlite3.Connection, layout: WorkspaceLayout, problems: list[st
                 data = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError) as error:
                 problems.append(f"修复进度 {layout.relative(path)} 无法读取：{error}")
-        steps = tuple(FixStep(fix_progress.STEPS.get(int(key), key), value["state"])
+        steps = tuple(FixStep(fix_progress.STEPS.get(int(key), key), value["state"], value.get("note", ""))
                       for key, value in data.get("steps", {}).items())
-        found.append(ActiveIssue(issue.id, issue.title, issue.severity.value,
-                                 issue.treatment.label if issue.treatment else None, data.get("lane"), steps))
-    return tuple(found)
+        calls = tuple(FixCall(str(item.attributes.get("role", "")), _model(item), item.status or "", item.duration_ms,
+                              _used(item))
+                      for item in found if item.operation == "invoke_agent"
+                      and str(item.attributes.get("subjectId", "")) == issue.id)
+        active.append(ActiveIssue(issue.id, issue.title, issue.severity.value,
+                                  issue.treatment.label if issue.treatment else None, data.get("lane"), steps, calls))
+    return tuple(active)
 
 
 def _agents(conn: sqlite3.Connection, layout: WorkspaceLayout, since: datetime,
