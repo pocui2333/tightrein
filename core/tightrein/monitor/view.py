@@ -2,7 +2,7 @@
 
 自上而下：顶栏(工作区与运行状态、时间)；运行总览两行(阶段、运行与进程号、模型；总耗时、今日 token 用量、状态)；最新一份交接文档(路径与时间、结论两行)；
 流程脉络(连续跳过的折叠为「跳过(N)」，当前步之后第一个等待的单列、其余折叠为「等待(N)」)；步骤明细只展开上一步、当前步与
-下一步；最近 LOG_LINES 条事件(带表头)；底栏(按键与建议的命令)。数据列定宽，超长的文字在末尾以省略号截断，一行不折行。
+下一步；continue 推进的运行(只有状态恢复一步)改为显示进行中的 Issue 的修复步骤、第几次调用与上一次失败的原因；最近 LOG_LINES 条事件(带表头)；底栏(按键与建议的命令)。数据列定宽，超长的文字在末尾以省略号截断，一行不折行。
 状态只用文字加颜色表示，不用符号；配色在浅色与深色背景上都清楚(见 STYLES)。
 """
 
@@ -17,7 +17,7 @@ from rich.table import Table
 from rich.text import Text
 
 from tightrein.domain.enums import RunStatus
-from tightrein.monitor.snapshot import AgentCall, FixStep, Snapshot, StepState
+from tightrein.monitor.snapshot import ActiveIssue, AgentCall, FixStep, Snapshot, StepState
 
 LOG_LINES = 3
 HEIGHT = 26  # 界面总行数：顶栏、分隔、总览 2、空行、交接文档 2、分隔、脉络、空行、标题、明细 7、空行、标题、
@@ -68,10 +68,20 @@ TIME_WIDTH = 18
 def render(snapshot: Snapshot, width: int, zone: tzinfo | None, interval: float) -> RenderableType:
     current = _current(snapshot.steps)
     gap = Text("")
+    if _continuing(snapshot):
+        flow, details = _fix_streamline(_fix_order(snapshot)[0], snapshot), _fix_details(snapshot)
+    else:
+        flow, details = _streamline(snapshot.steps, current), _details(snapshot, current)
     return Group(_header(snapshot, zone), _divider(), _summary(snapshot, current), gap, _handoff(snapshot, zone),
-                 _divider(), _streamline(snapshot.steps, current), gap, Text("步骤明细:", style=STYLES["title"]),
-                 *_details(snapshot, current), gap, Text(f"最新日志 ({LOG_LINES} 条):", style=STYLES["title"]),
+                 _divider(), flow, gap, Text("步骤明细:", style=STYLES["title"]),
+                 *details, gap, Text(f"最新日志 ({LOG_LINES} 条):", style=STYLES["title"]),
                  *_logs(snapshot, zone), _divider(), _footer(snapshot, interval))
+
+
+def _continuing(snapshot: Snapshot) -> bool:
+    """continue 推进的运行只有状态恢复一步，没有定时运行的其他步骤：改为显示进行中的 Issue 的修复进度。"""
+    return bool(snapshot.issues) and all(step.name == "recovery" for index, step in enumerate(snapshot.steps)
+                                         if index in _executed(snapshot.steps))
 
 
 def duration(value: timedelta | float | None) -> str:
@@ -295,6 +305,84 @@ def _step_title(number: int, name: str) -> Text:
 def _issue_note(issue_id: str, steps: Sequence[FixStep]) -> str:
     pending = next((step.label for step in steps if step.state not in ("done", "skipped")), None)
     return f"Issue {issue_id} {pending or '完成'}"
+
+
+FIX_STATES = {"done": "done", "skipped": "skipped", "pending": "waiting", "blocked": "failed", "failed": "failed"}
+
+
+def _fix_order(snapshot: Snapshot) -> list[ActiveIssue]:
+    """正在调用模型的 Issue 排在前面。"""
+    busy = {agent.subject for agent in snapshot.agents}
+    return sorted(snapshot.issues, key=lambda issue: issue.id not in busy)
+
+
+def _fix_current(issue: ActiveIssue) -> int | None:
+    """第一个没有完成也没有跳过的修复步骤。"""
+    return next((index for index, step in enumerate(issue.steps) if step.state not in ("done", "skipped")), None)
+
+
+def _fix_streamline(issue: ActiveIssue, snapshot: Snapshot) -> Text:
+    """Issue 的修复步骤：已完成的折叠为「已完成(N)」，当前步单列，之后的折叠为「等待(N)」。"""
+    current = _fix_current(issue)
+    line = Text("流程脉络: ", style=STYLES["label"]).append(f"Issue {issue.id} ", style=STYLES["ident"])
+    finished = len(issue.steps) if current is None else current
+    parts = [Text(f"已完成({finished})", style=STYLES["done"])] if finished else []
+    if current is not None:
+        step = issue.steps[current]
+        busy = any(agent.subject == issue.id for agent in snapshot.agents)
+        key = "running" if busy else FIX_STATES.get(step.state, "waiting")
+        parts.append(Text(f"{step.label} (当前)", style=STYLES[key]))
+        if len(issue.steps) - current - 1:
+            parts.append(Text(f"等待({len(issue.steps) - current - 1})", style=STYLES["waiting"]))
+    for number, part in enumerate(parts):
+        if number:
+            line.append(" ── ", style=STYLES["decor"])
+        line.append_text(part)
+    return _single(line)
+
+
+def _fix_details(snapshot: Snapshot) -> list[RenderableType]:
+    """每个进行中的 Issue 两行：当前步、状态、已运行时长、本次运行的用量与第几次调用；正在调用的模型与备注
+    (上一次结束的调用的结果，或这一步记录的卡点)。"""
+    rows: list[RenderableType] = []
+    for number, issue in enumerate(_fix_order(snapshot)[:2], start=1):
+        current = _fix_current(issue)
+        step = issue.steps[current] if current is not None else None
+        agents = [agent for agent in snapshot.agents if agent.subject == issue.id]
+        if agents:
+            state, started = Text("运行中", style=STYLES["running"]), duration(snapshot.now - agents[-1].started_at)
+        else:
+            key = FIX_STATES.get(step.state, "waiting") if step else "done"
+            state, started = _state(key), "-"
+        used = sum(call.tokens or 0 for call in issue.calls)
+        role = agents[-1].role if agents else (issue.calls[-1].role if issue.calls else "")
+        tries = sum(1 for call in issue.calls if call.role == role) + (1 if agents else 0)
+        head = _grid(NAME_WIDTH, STATUS_WIDTH, DURATION_WIDTH, USAGE_WIDTH, None)
+        title = Text(STEP_PREFIX.format(number=number), style=STYLES["decor"])
+        title.append(f"Issue {issue.id} {step.label if step else '完成'}", style=STYLES["ident"])
+        head.add_row(title, _pair("状态", state), _pair("已运行", started, "number"),
+                     _pair("用量", tokens(used), "number"),
+                     Text(f"{role} 第 {tries} 次" if role else "", style=STYLES["decor"]))
+        body = _grid(INDENT, MODEL_WIDTH, None)
+        model = _model_text(_call_model(agents[-1])) if agents else _model_text(
+            issue.calls[-1].agent if issue.calls else None)
+        body.add_row("", _pair("模型", model), _pair("备注", _fix_note(issue, step, role, bool(agents)) or "-"))
+        if rows:
+            rows.append(Text(""))
+        rows += [head, body]
+    rows += [Text("")] * max(0, DETAIL_LINES - len(rows))
+    return rows[:DETAIL_LINES]
+
+
+def _fix_note(issue: ActiveIssue, step: FixStep | None, role: str, busy: bool) -> str:
+    """同一角色上一次结束的调用没有成功时写出结果(超时、格式不符等)，正在调用时注明在重试；否则为这一步记录的说明。"""
+    finished = [call for call in issue.calls if call.role == role]
+    if finished and finished[-1].result != "ok":
+        call = finished[-1]
+        label = RESULTS.get(call.result, (call.result, ""))[0]
+        spent = duration(None if call.duration_ms is None else call.duration_ms / 1000)
+        return f"上一次{label}({spent})" + ("，正在重试" if busy else "")
+    return step.note if step else ""
 
 
 def _waiting_row(number: int, step: StepState) -> Table:

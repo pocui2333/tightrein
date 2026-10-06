@@ -77,6 +77,14 @@ def test_sync_merges_only_when_main_moved_and_reports_conflicts(tmp_path):
     assert resolved.operation is not None and f"{SERVICE_PATH}：both" in resolved.message
 
 
+def test_sync_overlap_counts_only_files_main_changed(tmp_path):
+    world, git = to_submit(tmp_path)
+    git.incoming = [Commit("d" * 40, "li", world.clock.now(), "docs: readme")]
+    git.base = {path: (world.worktree / path).read_text() for path in git.base}
+    git.main_paths = ("README.md",)
+    assert "与本修复改动文件的交集：无" in releaser(world, git).sync(world.issue_id).message
+
+
 def test_conflict_resolutions():
     assert sync.resolution("a\n", "b\n", "a\n") == "fix-side"
     assert sync.resolution("a\n", "b\n", "b\n") == "main-side"

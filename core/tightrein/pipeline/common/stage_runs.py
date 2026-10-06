@@ -85,3 +85,16 @@ def latest_outputs(conn: sqlite3.Connection, layout: WorkspaceLayout, stage: Run
         return None
     document = handoff_files.read(layout.root / record.path)
     return document["status"], document["outputs"]
+
+
+def review_base(conn: sqlite3.Connection, layout: WorkspaceLayout, issue_id: str, base_commit: str) -> str:
+    """修复改动的比较基准：合并过 origin/main 后为最近一次合并进来的 main 版本，否则为修复的基准版本。
+
+    无冲突的合并不改动修复碰过的文件，以合并进来的 main 版本为基准时修复的改动与合并前逐字节相同，
+    评审时的 diffHash 仍然成立，只需重新执行合并前验证；main 改到同一文件或解决过冲突时改动不同，需要重新评审。
+    """
+    if layout.output_dir is not None:
+        return base_commit
+    found = latest_outputs(conn, layout, RunStage.RELEASE, issue_id)
+    merged = [item for item in (found[1].get("syncs") or []) if item.get("mergeCommit")] if found else []
+    return merged[-1]["mainCommit"] if merged else base_commit

@@ -130,6 +130,32 @@ def test_diff_between_commits_and_diff_hash(setup):
     assert git.diff(repo, base, head).paths == ("notes.md",)
 
 
+def test_diff_hash_against_merged_main_matches_the_reviewed_fix(setup):
+    """提交与合并只改了其他文件的 main 都不改变 diffHash(以合并进来的 main 为基准)；main 改到同一文件时不同。"""
+    repos, origin, repo, git = setup
+    other = repos.root / "other"
+    repos.git(repos.root, "clone", "-q", str(origin), str(other))
+    base = repos.head(repo)
+    repos.write(repo, "src/OrderService.cs", "fixed\n")
+    repos.write(repo, "tests/test_order.py", "def test_order(): ...\n")
+    reviewed = git.diff_hash(repo, base)
+    repos.commit(repo, "fix: order")
+    assert git.diff_hash(repo, base) == reviewed  # 新文件从未跟踪变为已提交，结果不变
+    upstream = repos.commit(other, "feat: readme", {"README.md": "upstream\n"})
+    repos.git(other, "push", "-q", "origin", "main")
+    git.fetch(repo)
+    assert git.merge_base(repo, "HEAD", "origin/main") == base
+    assert git.diff(repo, base, "origin/main").paths == ("README.md",)
+    repos.git(repo, "merge", "--no-ff", "--no-edit", "origin/main")
+    assert git.diff_hash(repo, base) != reviewed
+    assert git.diff_hash(repo, upstream) == reviewed
+    overlapping = repos.commit(other, "feat: order", {"src/OrderService.cs": "fixed\nupstream\n"})
+    repos.git(other, "push", "-q", "origin", "main")
+    git.fetch(repo)
+    repos.git(repo, "merge", "-q", "-X", "theirs", "--no-edit", "origin/main")
+    assert git.diff_hash(repo, overlapping) != reviewed
+
+
 def test_fetch_branches_containing_and_conflicts(setup):
     repos, origin, repo, git = setup
     other = repos.root / "other"

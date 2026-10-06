@@ -213,7 +213,7 @@ agents:
       agy: {model: gemini-3.1-pro-high, inputUsdPerMTok: 2, outputUsdPerMTok: 12}
 ```
 
-agy 在无人值守模式下没有命令白名单：只读任务中文件写入与 shell 命令一律被拒绝，可写任务只能编辑文件、不能运行命令(检查由核心之后执行)；它也不支持交互会话，`defaultTool: agy` 时把 `stages.fix.session.tool` 设为 claude 或 codex。详见 architecture/02 2.5。
+agy 在无人值守模式下按它自己的命令白名单放行命令，`tightrein install` 为它补上 `git grep` 等只读命令；只读任务在沙箱中不能写文件，白名单以外的命令被拒绝，检查由核心之后执行；它也不支持交互会话，`defaultTool: agy` 时把 `stages.fix.session.tool` 设为 claude 或 codex。详见 architecture/02 2.5。
 
 个别角色或任务可以单独指定工具、模型或档：在 `stages.<环节>.roles.<角色>` 或 `tasks.<任务>` 下写 `tool`、`model`、`capability`(用户配置与 `project.yaml` 都可写)，优先于环节的工具；证伪复核、评审与截图评审仍用 `refuter`、`review.*`、`screenshotReview`。核心只给能力档，不写死工具与模型。例如出计划(方向错了后续全部白做)用 Fable、写复现测试与写代码用 Opus：
 
@@ -260,7 +260,7 @@ agents:
       agy: {model: gemini-3.8-flash-high, inputUsdPerMTok: 0.5, outputUsdPerMTok: 3}
 ```
 
-agy 做勘察时不能运行 `git log` 等命令，看不到提交历史。
+agy 做勘察时用白名单中的 `git grep`、`git log` 等只读命令搜索代码与提交历史；没有执行 `tightrein install` 时只能逐个打开文件，又慢又费 token。
 
 价格以各产品当时的价目为准。配置了 `network.proxy` 后，tightrein 启动的子进程(agent 工具、git、gh、Schemathesis、Playwright、Semgrep、扩展、本机服务)与核心自己的 HTTP 请求都走代理，`noProxy` 与本机回环地址直连；没有配置时沿用当前进程环境中的代理变量。`tightrein config show --key network`、`--key stages.fix` 可查看生效值与来源层。
 

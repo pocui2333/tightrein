@@ -113,7 +113,7 @@ def test_dry_run_has_no_side_effects(world):
     world.downloads.urls.clear()
     before = everything(world.home)
     plan = run_install(world, dry_run=True)
-    assert {action.kind for action in plan.actions} == {"link", "build", "command"}
+    assert {action.kind for action in plan.actions} == {"link", "build", "command", "allow"}
     assert everything(world.home) == before
     assert world.commands.calls == [] and world.downloads.urls == []
     assert not world.tool.third_party_installed().exists()
@@ -132,7 +132,7 @@ def test_the_user_config_moves_a_target(world, tmp_path):
 
 def test_codex_and_agy_share_links_and_uninstalling_one_keeps_them(world):
     run_install(world, install.CODEX)
-    assert run_install(world, install.AGY).actions == []
+    assert [action.kind for action in run_install(world, install.AGY).actions] == ["allow"]
     assert sorted(installed(world)["tools"]) == ["agy", "codex"]
     ctx, codex = targets(world, install.CODEX)
     assert install.uninstall(ctx, codex).actions == []
@@ -144,13 +144,32 @@ def test_codex_and_agy_share_links_and_uninstalling_one_keeps_them(world):
     assert installed(world)["tools"] == {}
 
 
+def test_agy_gets_the_read_only_commands_and_uninstall_removes_only_those(world):
+    settings = world.home / ".gemini" / "antigravity-cli" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text(json.dumps({"model": "x", "permissions": {"allow": ["command(git grep)", "command(npm)"]}}),
+                        encoding="utf-8")
+    plan = run_install(world, install.AGY)
+    assert [(action.kind, action.argv[:2]) for action in plan.actions if action.kind == "allow"] == [
+        ("allow", ("git ls-files", "git log"))]
+    allow = json.loads(settings.read_text(encoding="utf-8"))["permissions"]["allow"]
+    assert allow[:2] == ["command(git grep)", "command(npm)"] and "command(wc)" in allow
+    assert "git grep" not in installed(world)["tools"]["agy"]["allowedCommands"]
+    ctx, agy = targets(world, install.AGY)
+    assert all(item.status == "ok" for item in install.check(ctx, agy) if item.name == install.PERMISSIONS)
+    install.uninstall(ctx, agy)
+    data = json.loads(settings.read_text(encoding="utf-8"))
+    assert data["permissions"]["allow"] == ["command(git grep)", "command(npm)"] and data["model"] == "x"
+
+
 def test_uninstall_only_removes_what_this_tool_created(world, tmp_path):
     run_install(world)
     foreign = agents(world) / "someone-else"
     foreign.symlink_to(tmp_path, target_is_directory=True)
     ctx, chosen = targets(world)
     plan = install.uninstall(ctx, chosen)
-    assert sorted(action.kind for action in plan.actions) == ["command", "command", "remove", "unlink", "unlink"]
+    assert sorted(action.kind for action in plan.actions) == ["command", "command", "remove", "unallow", "unlink",
+                                                              "unlink"]
     assert foreign.is_symlink()
     assert not build_dir(world).exists()
     assert world.commands.named("claude")[-2:] == [["claude", "plugin", "uninstall", "tightrein@tightrein-local"],

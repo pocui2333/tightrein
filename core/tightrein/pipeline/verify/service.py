@@ -229,7 +229,8 @@ class VerifyService:
         if fix is None or fix[0] != HandoffStatus.OK.value:
             return VerifyResult(issue_id, HandoffStatus.BLOCKED, None, f"修复没有通过评审，先执行 fix apply {issue_id}")
         outputs = fix[1]
-        if deps.git.diff_hash(worktree, outputs["baseCommit"]) != outputs["diffHash"]:
+        base = stage_runs.review_base(deps.conn, deps.layout, issue_id, outputs["baseCommit"])
+        if deps.git.diff_hash(worktree, base) != outputs["diffHash"]:
             return VerifyResult(issue_id, HandoffStatus.BLOCKED, None,
                                 f"工作区改动与修复评审时不一致，先执行 fix apply {issue_id} --review-only")
         return _LocalRun(self, issue_id, outputs, worktree).run(confirm_migration)

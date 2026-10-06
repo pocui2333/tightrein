@@ -6,7 +6,8 @@ import pytest
 from runner_samples import ENV, fixture, invocation_files, task
 
 from tightrein.domain.enums import Access
-from tightrein.runner.adapters.agy import SHELL_NOTE, WEB_NOTE, AgyAdapter
+from tightrein.runner.adapters.agy import SHELL_NOTE, TURNS_NOTE, WEB_NOTE, AgyAdapter, read_commands
+from tightrein.runner.task import Limits
 from tightrein.runner.adapters.base import RetryContext, SessionRef, to_events
 from tightrein.runner.result import RunnerConfigError, Usage
 
@@ -15,8 +16,8 @@ TOOLS_ID = "29ff8053-3b71-4a70-a242-6773efc6fe25"
 
 
 @pytest.fixture
-def adapter():
-    return AgyAdapter()
+def adapter(tmp_path):
+    return AgyAdapter(tmp_path / "no-settings.json")  # 没有白名单：说明 shell 不可用
 
 
 def test_readonly_runs_in_the_sandbox_with_the_schema_file(adapter, tmp_path):
@@ -27,16 +28,29 @@ def test_readonly_runs_in_the_sandbox_with_the_schema_file(adapter, tmp_path):
     assert invocation.argv == (
         "agy", "--sandbox", "--model", "gemini-3.1-pro-high", "--effort", "high", "--add-dir", "/shots",
         "--output-format", "stream-json", "--json-schema", str(files.schema),
-        "-p", "# 任务\n判断以下主张是否成立\n" + SHELL_NOTE,
+        "-p", "# 任务\n判断以下主张是否成立\n" + SHELL_NOTE + TURNS_NOTE.format(turns=40),
     )
     assert "--dangerously-skip-permissions" not in invocation.argv
     assert (invocation.cwd, invocation.stdin) == (Path("/ws/worktrees/readonly"), None)
 
 
+def test_allow_listed_read_commands_are_offered_with_the_tool_call_limit(tmp_path):
+    settings = tmp_path / "settings.json"
+    settings.write_text(json.dumps({"permissions": {"allow": [
+        "command(git grep)", "command(cat)", "command(git push -u origin x)", "command(rm)", "read(/tmp)"]}}),
+        encoding="utf-8")
+    assert read_commands(settings) == ("git grep", "cat")
+    files = invocation_files(tmp_path / "raw")
+    reader = task().with_limits(Limits(max_turns=60))
+    prompt = AgyAdapter(settings).build(reader, files, executable="agy", model=None, env=ENV, retry=None).argv[-1]
+    assert "可以执行这些只读命令：`git grep`、`cat`" in prompt and "git push" not in prompt and "`rm`" not in prompt
+    assert "先用 `git grep -n" in prompt and "工具调用最多 60 次" in prompt and "shell 命令会被自动拒绝" not in prompt
+
+
 def test_web_tasks_are_told_to_answer_from_search_results_only(adapter, tmp_path):
     files = invocation_files(tmp_path / "raw")
     invocation = adapter.build(task(web=True), files, executable="agy", model=None, env=ENV, retry=None)
-    assert invocation.argv[-1] == "# 任务\n判断以下主张是否成立\n" + SHELL_NOTE + WEB_NOTE
+    assert invocation.argv[-1] == "# 任务\n判断以下主张是否成立\n" + SHELL_NOTE + TURNS_NOTE.format(turns=40) + WEB_NOTE
 
 
 def test_writable_tasks_accept_edits_and_retries_continue_the_conversation(adapter, tmp_path):

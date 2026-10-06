@@ -5,12 +5,15 @@
   最后一行 result(conversation_id、status、response、structured_output、usage、denied_actions、error)。
 - 用量：agent_response 步骤完成时带本步 usage，按步骤求和；result.usage 是整个会话的累计(续接后包含此前各次调用)，
   只在 --output-format json 的单个对象中使用。input_tokens 不含缓存读取，统一用量的输入为两者之和。没有费用字段。
-- 访问级别：无人值守模式不读 settings.json 的 permissions.allow，没有逐条放行命令的办法。只读为缺省权限模式加
-  --sandbox，可写为 --mode accept-edits；两者都不跳过权限，需要确认的写入与命令被自动拒绝(不挂起)，拒绝后本轮随即
-  结束，result.denied_actions 记为一条 error 事件。首次调用的提示末尾说明 shell 命令不可用。
+- 访问级别：只读为缺省权限模式加 --sandbox(终端写入被拦住)，可写为 --mode accept-edits；两者都不跳过权限。
+  无人值守模式按 ~/.gemini/antigravity-cli/settings.json 的 permissions.allow 放行命令(`command(git grep)` 放行以它开头的
+  命令，1.2.17 实测)，其余需要确认的写入与命令被自动拒绝(不挂起)，拒绝后本轮随即结束，result.denied_actions 记为一条
+  error 事件。首次调用的提示末尾列出白名单中已放行的只读命令(READ_COMMANDS 与白名单的交集)，要求先用 git grep 定位、
+  再打开命中的文件；`tightrein install` 为 agy 补齐这些命令。白名单里一条都没有时说明 shell 命令不可用。
 - 联网：只读模式下 search_web 放行，读取网页(read_url_content)被拒绝并结束本轮(实测)；task.web 为真时提示末尾
   另说明只依据搜索摘要作答。
-- 没有原生的轮数与费用上限，由核心按工具步骤计数、按价格表估算费用；推理强度为 --effort。
+- 没有原生的轮数与费用上限，由核心按工具步骤计数、按价格表估算费用；提示末尾写明工具调用的上限，让 agy 自己留出
+  输出结论的余量。推理强度为 --effort。
 - 格式重试以 --conversation <会话 ID> 续接同一会话。
 - 不支持交互会话与收尾调用：不能预先指定会话 ID，会话记录在工具自己的数据目录中。
 """
@@ -18,7 +21,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -58,10 +61,21 @@ RESPONSE_STEP = "agent_response"
 FINISHED_STATES = frozenset({"DONE", "ERROR"})
 ERROR_STATE = "ERROR"
 DONE_STATE = "DONE"
+SETTINGS_PATH = ".gemini/antigravity-cli/settings.json"  # 相对用户主目录
+SETTINGS = Path.home() / SETTINGS_PATH
+# 交给 agy 的只读命令：在 --sandbox 中不能写文件；按白名单的写法逐条放行(放行以它开头的命令)
+READ_COMMANDS = ("git grep", "git ls-files", "git log", "git show", "git diff", "grep", "ls", "cat", "head", "tail",
+                 "wc")
 SHELL_NOTE = (
     "\n# 工具说明\n本次运行中 shell 命令会被自动拒绝，并立即结束本轮。读取、列目录、搜索与编辑文件请只用内置工具，"
     "不要调用 shell；需要运行的检查命令由调用方在之后执行。\n"
 )
+SEARCH_NOTE = (
+    "\n# 工具说明\n本次运行可以执行这些只读命令：{commands}。其他命令会被自动拒绝，并立即结束本轮；需要运行的检查命令"
+    "(测试、构建)由调用方在之后执行。\n定位代码先用 `git grep -n <标识符或关键词>` 搜索(同一概念换几种命名)，再打开命中"
+    "的文件；不要逐个打开文件浏览，同一个文件读过就不要重复打开。\n"
+)
+TURNS_NOTE = "工具调用最多 {turns} 次，超过后本轮被终止、结论作废：先搜索、再读命中的位置，留出输出结论的余量。\n"
 WEB_NOTE = (
     "\n# 联网\n联网检索只能用 search_web。打开网页(read_url_content 等)会被自动拒绝，并立即结束本轮；"
     "只依据搜索结果的摘要作答，出处写摘要中的链接并注明来源站点。\n"
@@ -129,6 +143,27 @@ def _is_whole_output(data: Mapping[str, Any]) -> bool:
     return "event" not in data and "status" in data
 
 
+def allowed(settings: Path) -> tuple[str, ...]:
+    """agy 白名单中 `command(<命令>)` 放行的命令；文件不存在或读不出时为空。"""
+    try:
+        entries = json.loads(settings.read_text(encoding="utf-8"))["permissions"]["allow"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return ()
+    return tuple(item[len("command("):-1] for item in entries
+                 if isinstance(item, str) and item.startswith("command(") and item.endswith(")"))
+
+
+def read_commands(settings: Path) -> tuple[str, ...]:
+    """READ_COMMANDS 中已在 agy 白名单里放行的。"""
+    found = set(allowed(settings))
+    return tuple(command for command in READ_COMMANDS if command in found)
+
+
+def tool_note(commands: Sequence[str], max_turns: int | None) -> str:
+    note = SEARCH_NOTE.format(commands="、".join(f"`{item}`" for item in commands)) if commands else SHELL_NOTE
+    return note + (TURNS_NOTE.format(turns=max_turns) if max_turns else "")
+
+
 class AgyAdapter:
     name = "agy"
     supports_schema = True
@@ -137,6 +172,9 @@ class AgyAdapter:
     supports_resume_by_id = True
     supports_image_input = True
     env_names: tuple[str, ...] = ()
+
+    def __init__(self, settings: Path = SETTINGS) -> None:
+        self.settings = settings
 
     def build(self, task: RunnerTask, files: InvocationFiles, *, executable: str, model: str | None,
               env: Mapping[str, str], retry: RetryContext | None, effort: str | None = None) -> Invocation:
@@ -153,7 +191,8 @@ class AgyAdapter:
         if retry is not None and retry.session_id is not None:
             argv += ["--conversation", retry.session_id, "-p", retry.note]
         else:
-            argv += ["-p", files.prompt.read_text(encoding="utf-8") + SHELL_NOTE + (WEB_NOTE if task.web else "")]
+            note = tool_note(read_commands(self.settings), task.limits.max_turns)
+            argv += ["-p", files.prompt.read_text(encoding="utf-8") + note + (WEB_NOTE if task.web else "")]
         return Invocation(tuple(argv), task.workdir, env)
 
     def new_session_id(self) -> str | None:

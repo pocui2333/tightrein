@@ -19,6 +19,7 @@ FILE = "decisions.json"
 PLAN_NOTE = "fix plan --note"
 REJECT_NOTE = "fix confirm --reject --note"
 ACCEPT_DESIGN = "fix plan --accept-design"
+MANUAL_DESIGN = "用户需求"  # 用户亲自提出的需求：需求正文就是用户给出的修复方向，视为已同意按设计层面修复
 DESIGN_TEXT = ("用户已同意按设计层面的根因修复。勘察中的设计问题照常写进 designIssue，但不要把它作为中止理由：照常给出"
                "完整的勘察结论与修复计划。")
 
@@ -58,9 +59,9 @@ def record(directory: Path, clock: Clock, source: str, text: str) -> Decisions:
     return updated
 
 
-def accept_design(directory: Path, clock: Clock) -> Decisions:
+def accept_design(directory: Path, clock: Clock, source: str = ACCEPT_DESIGN) -> Decisions:
     current = load(directory)
     if current.design_accepted:
         return current
     _save(directory, Decisions(current.entries, True))
-    return record(directory, clock, ACCEPT_DESIGN, DESIGN_TEXT)
+    return record(directory, clock, source, DESIGN_TEXT)

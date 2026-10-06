@@ -1,3 +1,4 @@
+import hashlib
 import json
 import shutil
 from dataclasses import replace
@@ -494,6 +495,41 @@ def test_done_checks_the_diff_hash_and_abandon_holds(tmp_path):
     assert world.issue().hold.details == "改为找作者讨论"
 
 
+class MergedGit(FakeGit):
+    """合并 origin/main 后的 worktree：以某个 main 版本为基准时，main 到该版本为止改动的文件不算修复的改动。"""
+
+    def __init__(self, root, base, merged):
+        super().__init__(root, base)
+        self.merged = merged
+
+    def diff_hash(self, repo, base):
+        digest = hashlib.sha256()
+        current = self._current()
+        for path in self._changed():
+            if path not in self.merged.get(base, ()):
+                digest.update(f"{path}\0{current.get(path, '')}\0".encode())
+        return digest.hexdigest()
+
+
+def test_done_after_merging_main_compares_against_the_merged_main(tmp_path):
+    main = "d" * 40
+    world, _ = standard(tmp_path)
+    git = MergedGit(world.worktree, {SERVICE_PATH: SERVICE, CONTROLLER_PATH: CONTROLLER}, {main: (CONTROLLER_PATH,)})
+    fix = service(world, git=git)
+    world.runner.edits.append({SERVICE_PATH: FIXED})
+    world.runner.add("fix-executor", EXECUTED).add("fix-reviewer", PASS)
+    fix.apply(world.issue_id)
+    (world.worktree / CONTROLLER_PATH).write_text(CONTROLLER + "from main\n", encoding="utf-8")
+    assert "--review-only" in fix.done(world.issue_id).message
+    run = stage_runs.begin(RunStage.RELEASE, world.layout, world.conn, world.clock, world.events)
+    run.handoff(RunStage.RELEASE, world.issue_id, HandoffStatus.OK,
+                {"issueId": world.issue_id, "branch": "cty/fix-order-500", "commits": [], "push": None, "pr": None,
+                 "deployments": [], "masterAt": None, "pendingOperations": [], "acceptedFindings": [], "cleanup": None,
+                 "syncs": [{"mainCommit": main, "conflicts": [], "mergeCommit": "e" * 40}]}, "verify local")
+    assert stage_runs.review_base(world.conn, world.layout, world.issue_id, BASE) == main
+    assert fix.done(world.issue_id).status is HandoffStatus.OK
+
+
 def test_prepare_checks_the_base_and_the_start_session(tmp_path):
     world = make_fix_world(tmp_path, signal=api_signal(), checks={"prepare": [
         {"name": "deps", "cwd": ".", "command": "make deps"}], **PROJECT["checks"]})
@@ -574,6 +610,19 @@ def test_a_manual_issue_takes_lane_b_and_its_feature_test_is_registered(tmp_path
     world.runner.add("fix-executor", WRITTEN, EXECUTED).add("fix-reviewer", PASS)
     assert fix.apply(world.issue_id).status is HandoffStatus.OK
     assert manifest.load(world.layout.regression_dir(world.issue_id)).problems == ()
+
+
+def test_a_manual_issue_does_not_stop_on_a_design_issue(tmp_path):
+    """用户亲自提出的需求：正文就是用户给出的方向，勘察标出的设计问题不再中止，记为用户的决定交给各角色。"""
+    world = fixing(tmp_path, manual=("登录只在正常启动后判断", "去掉采集前单独的无头登录检查。"))
+    issue = {"rootCause": "登录判断有两条路径", "reason": "只改参数治不了根", "locations": [f"{SERVICE_PATH}:3"]}
+    world.runner.add("fix-scout", scouting(designIssue=issue)).add("fix-planner", plan_output(world))
+    result = service(world).plan(world.issue_id)
+    assert result.status is HandoffStatus.BLOCKED and result.operation is not None, result.message
+    assert world.issue().hold is None
+    decided = decisions.load(world.layout.fixes_dir(world.issue_id))
+    assert decided.design_accepted and decided.entries[0]["source"] == decisions.MANUAL_DESIGN
+    assert "不要把它作为中止理由" in world.runner.tasks[0].instructions.prompt
 
 
 AUTONOMY = {"gates": {"issue-approve": "auto", "plan-confirm": "auto", "fix-session": "auto"}}

@@ -289,6 +289,12 @@ class Orchestrator:
             return self._fix(target.id)
         if command == "verify local":
             result = self._call(RunStage.VERIFY.value, lambda: modules.verify().local(target.id))
+            if (result.status is HandoffStatus.BLOCKED and gates.auto(self.config, Gate.FIX_SESSION)
+                    and modules.fix().resume_point(target.id) is ResumePoint.REVIEW):
+                reviewed = self._fix_unattended(target.id)  # 合并 main 后改动与评审时不同：重新评审后再验证
+                if reviewed.status is not HandoffStatus.OK:
+                    return reviewed
+                result = self._call(RunStage.VERIFY.value, lambda: modules.verify().local(target.id))
             return StepResult(result.status, result.message)
         if command == "verify staging":
             result = self._call(RunStage.VERIFY.value, lambda: modules.verify().staging(target.id))
@@ -350,7 +356,8 @@ class Orchestrator:
             if result is None:
                 return HandoffStatus.BLOCKED, f"修复计划需要用户确认：fix confirm {issue_id}", None
         else:
-            result = self._call(RunStage.FIX.value, lambda: fix.apply(issue_id))
+            review_only = point is ResumePoint.REVIEW
+            result = self._call(RunStage.FIX.value, lambda: fix.apply(issue_id, review_only=review_only))
         return result.status, result.message, result.operation
 
     def _unattended_stop(self, issue_id: str, status: HandoffStatus, message: str,
