@@ -120,6 +120,7 @@
         "properties": {"path": {"type": "string", "minLength": 1}, "reason": {"type": "string", "minLength": 1}}
       }
     },
+    "deferredAcceptance": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "拆分时留给后续子任务的 Issue 验收标准(原文)；本次的写代码与评审不以它们为准"},
     "acceptanceMapping": {
       "type": "array",
       "items": {

@@ -78,8 +78,13 @@ def check(plan: Mapping[str, Any], context: FixContext, worktree: Path, protecte
         problems += _size_problems(f"拆分的第 {number} 个子任务「{item['title']}」", item["estimate"], max_files,
                                    max_lines)
     mapped = {item["criterion"].strip() for item in plan["acceptanceMapping"]}
-    problems += [f"验收标准「{item}」没有出现在 acceptanceMapping 中" for item in context.acceptance
-                 if item not in mapped]
+    deferred = {item.strip() for item in plan.get("deferredAcceptance") or []}
+    problems += [f"验收标准「{item}」没有出现在 acceptanceMapping 或 deferredAcceptance 中" for item in context.acceptance
+                 if item not in mapped and item not in deferred]
+    problems += [f"deferredAcceptance 中的「{item}」不是本 Issue 的验收标准原文" for item in sorted(deferred)
+                 if item not in context.acceptance]
+    if deferred and not split.follow_ups(plan):
+        problems.append("写了 deferredAcceptance 却没有拆分出后续子任务(split.followUps)")
     # 每一步须对应至少一条验收标准(38-external-techniques.md 第 4 项)
     mapped_steps: set[int] = set()
     for item in plan["acceptanceMapping"]:
@@ -126,6 +131,8 @@ class ProposalSettings:
     # 用户已同意按设计层面的根因修复(fix plan --accept-design)：设计问题不再中止，照常出计划
     design_accepted: bool = False
     test_paths: tuple[str, ...] = ()  # 测试文件不要求根因假说给出修改位置
+    # 此前已通过的勘察结论(重出计划时)：直接复用，不再调用 fix-scout
+    scouting: Mapping[str, Any] | None = None
 
 
 def _design_from_flags(plan: Mapping[str, Any]) -> dict[str, Any]:
@@ -158,7 +165,9 @@ def _scout(calls: FixCalls, context: FixContext, settings: ProposalSettings, pro
 
 def propose(calls: FixCalls, context: FixContext, settings: ProposalSettings) -> Proposal:
     proposal = Proposal()
-    if settings.scout and (not _scout(calls, context, settings, proposal) or proposal.design is not None):
+    if settings.scout and settings.scouting is not None:
+        proposal.scouting = dict(settings.scouting)
+    elif settings.scout and (not _scout(calls, context, settings, proposal) or proposal.design is not None):
         return proposal
     proposal.risk = risk_step.plan_risk(context, proposal.scouting, settings.config, settings.endpoints)
     feedback: list[str] = []

@@ -41,7 +41,23 @@ def json_block(title: str, value: Any, tag: str | None = None) -> str:
 # 写代码与评审需要的计划字段；分析过程、证据与估算只在出计划与计划确认时用，不再交给后面的步骤
 PLAN_FOR_EXECUTOR = ("summary", "hypothesis", "steps", "files", "protectedTouches", "migration", "newDependencies",
                      "deletions", "notDoing", "frontendDesign", "userDecisions")
-PLAN_FOR_REVIEW = ("summary", "steps", "files", "notDoing", "acceptanceMapping", "userVisibleChange")
+PLAN_FOR_REVIEW = ("summary", "steps", "files", "notDoing", "acceptanceMapping", "deferredAcceptance", "userVisibleChange")
+
+
+def acceptance_scope(acceptance: Sequence[str], plan: Mapping[str, Any]) -> tuple[list[str], list[str]]:
+    """本次子任务负责的验收标准与留给后续子任务的(计划的 deferredAcceptance)。"""
+    deferred = {item.strip() for item in plan.get("deferredAcceptance") or []}
+    return [item for item in acceptance if item not in deferred], [item for item in acceptance if item in deferred]
+
+
+def acceptance_text(title: str, acceptance: Sequence[str], plan: Mapping[str, Any]) -> str:
+    """「验收标准」一节：本次负责的逐条列出；拆分留给后续子任务的单列，写明本次不以它们为准。"""
+    current, deferred = acceptance_scope(acceptance, plan)
+    text = f"## {title}\n\n" + ("\n".join(f"- {item}" for item in current) or "- 无")
+    if deferred:
+        text += ("\n\n## 留给后续子任务的验收标准(本次不做，不作为阻断项)\n\n"
+                 + "\n".join(f"- {item}" for item in deferred))
+    return text
 
 
 def plan_view(plan: Mapping[str, Any], keys: Sequence[str]) -> dict[str, Any]:

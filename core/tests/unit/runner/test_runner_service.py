@@ -174,6 +174,17 @@ def test_timeouts_native_limits_and_tool_errors(make_world):
     assert "Error: invalid API key" in world.spans()[-1].reason
 
 
+def test_transient_api_errors_retry_the_same_call(make_world):
+    """临时的接口或网络错误就地重试同一次调用，不算格式重试；其他失败不重试。"""
+    world = make_world(FakeRun(["not json"], exit_code=1, stderr='API error (attempt 1): request failed: Post "x": EOF'),
+                       FakeRun(claude_lines(VALID)), FakeRun(["not json"], exit_code=2, stderr="Error: invalid API key"))
+    runner = world.runner()
+    recovered = runner.run(triage_task(world), clock=world.clock)
+    assert (recovered.status, recovered.attempts) == (RunnerStatus.OK, 1) and len(world.launcher.invocations) == 2
+    failed = runner.run(triage_task(world, attempt=2), clock=world.clock)
+    assert failed.status is RunnerStatus.FAILED and len(world.launcher.invocations) == 3
+
+
 def test_missing_tools_are_reported(make_world):
     world = make_world(FileNotFoundError(2, "No such file"))
     world.registry.which = lambda name: None

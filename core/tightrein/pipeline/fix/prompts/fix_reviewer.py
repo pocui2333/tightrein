@@ -15,7 +15,8 @@ from typing import Any
 from tightrein.domain.enums import ReviewMode
 from tightrein.domain.issue_sections import ACCEPTANCE, CAUSE, PROBLEM
 from tightrein.evaluation import rubric
-from tightrein.pipeline.fix.prompts.common import PLAN_FOR_REVIEW, STAGE, FixPrompt, json_block, plan_view
+from tightrein.pipeline.fix.prompts.common import (PLAN_FOR_REVIEW, STAGE, FixPrompt, acceptance_scope, acceptance_text,
+                                                   json_block, plan_view)
 from tightrein.pipeline.fix.steps.context import FixContext
 from tightrein.runner.roles import join, read_only_task, reviewer_setting
 from tightrein.runner.task import RunnerTask
@@ -23,6 +24,13 @@ from tightrein.runner.task import RunnerTask
 ROLE = "fix-reviewer"
 SCHEMA = "handoff/outputs/fix-review.schema.json"
 REVIEW_SECTIONS = (PROBLEM, CAUSE, ACCEPTANCE)
+
+
+def deferred_text(acceptance: Sequence[str], plan: Mapping[str, Any]) -> str:
+    """计划拆分时留给后续子任务的验收标准：本次不做，不作为阻断项。"""
+    deferred = acceptance_scope(acceptance, plan)[1]
+    return ("## 留给后续子任务的验收标准(本次不做，不作为阻断项)\n\n" + "\n".join(f"- {item}" for item in deferred)
+            if deferred else "")
 
 
 REVIEW_SCOPE = ("## 评审范围\n\n以下面的改动(diff)为准，结合计划摘要与代码摘要判断；只在需要核对改动周围的上下文时打开文件的对应行段，"
@@ -35,17 +43,17 @@ def task(prompt: FixPrompt, context: FixContext, plan: Mapping[str, Any], diff_t
          mode: ReviewMode, attempt: int, *, results: str = "") -> RunnerTask:
     if mode is ReviewMode.DEEP:
         # 深度评审盲审：只看验收标准、最终 diff、测试与检查的真实输出
-        acceptance = "\n".join(f"- {item}" for item in context.acceptance) or "- 无"
         body = join(prompt.role(ROLE), f"本次为{mode.label}(盲审)，输出的 `mode` 写 `{mode.value}`。",
                     rubric.render(rubric.load(STAGE), "judge"),
-                    f"# Issue {context.issue_id} 验收标准\n\n{acceptance}",
+                    acceptance_text(f"Issue {context.issue_id} 验收标准", context.acceptance, plan),
                     f"## 最终 diff\n\n```diff\n{diff_text}\n```",
                     f"## 实际结果(第 7 步)\n\n{results}" if results else "",
                     SPECIAL_CASE)
     else:
         issue = "\n\n".join([f"# Issue {context.issue_id}：{context.issue.title}", *context.keyed(REVIEW_SECTIONS)])
         body = join(prompt.role(ROLE), f"本次为{mode.label}，输出的 `mode` 写 `{mode.value}`。",
-                    rubric.render(rubric.load(STAGE), "judge"), issue, REVIEW_SCOPE,
+                    rubric.render(rubric.load(STAGE), "judge"), issue, deferred_text(context.acceptance, plan),
+                    REVIEW_SCOPE,
                     json_block("已确认的修复计划(摘要)", plan_view(plan, PLAN_FOR_REVIEW), "plan"), context.brief,
                     f"## 相对基准 commit 的改动\n\n<diff>\n```diff\n{diff_text}\n```\n</diff>",
                     f"## 实际结果(第 7 步)\n\n{results}" if results else "",

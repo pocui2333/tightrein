@@ -1048,6 +1048,17 @@
             },
             "sessionClockSkewSeconds": {
               "$ref": "#/$defs/seconds"
+            },
+            "transientRetries": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "transientPatterns": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
             }
           }
         },

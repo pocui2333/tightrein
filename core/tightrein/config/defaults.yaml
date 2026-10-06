@@ -246,6 +246,10 @@ runtime:
     notifyTimeoutSeconds: 10    # 发送本机通知的超时秒数
   runner:
     maxCalls: 2                 # 一次任务最多调用工具的次数(首次加格式重试)
+    transientRetries: 2         # 工具因临时的接口或网络错误失败时，就地重试同一次调用的次数(不计入 maxCalls)
+    # 判定为临时错误的输出片段(工具的错误信息与错误输出尾部，不区分大小写)
+    transientPatterns: ["API error", "request failed", "stream was interrupted", "connection reset", ": EOF",
+                        "Service Unavailable", "UNAVAILABLE", "ECONNRESET", "ETIMEDOUT"]
     interruptGraceSeconds: 10   # 超时后发出中断信号到终止信号之间的等待
     terminateGraceSeconds: 5    # 终止信号到强制结束之间的等待
     stderrTailLines: 40         # 失败时保留的错误输出尾部行数

@@ -21,6 +21,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
@@ -144,6 +146,22 @@ def _is_whole_output(data: Mapping[str, Any]) -> bool:
     return "event" not in data and "status" in data
 
 
+NO_BROWSER_DIR = Path(tempfile.gettempdir()) / "tightrein-no-browser"
+NO_BROWSER = "#!/bin/sh\n# tightrein：无人值守调用 agy 时不打开浏览器(登录凭据读取被中断时 agy 会转入浏览器登录)\nexit 1\n"
+
+
+def no_browser(env: Mapping[str, str]) -> dict[str, str]:
+    """PATH 最前面放一个什么都不做的 open、xdg-open：agy 读取登录凭据失败时不会弹出浏览器登录页，直接以失败结束。"""
+    NO_BROWSER_DIR.mkdir(parents=True, exist_ok=True)
+    for name in ("open", "xdg-open"):
+        target = NO_BROWSER_DIR / name
+        if not target.is_file() or target.read_text(encoding="utf-8") != NO_BROWSER:
+            target.write_text(NO_BROWSER, encoding="utf-8")
+            target.chmod(0o755)
+    path = env.get("PATH") or os.environ.get("PATH", "")
+    return {**env, "PATH": os.pathsep.join(part for part in (str(NO_BROWSER_DIR), path) if part)}
+
+
 def allowed(settings: Path) -> tuple[str, ...]:
     """agy 白名单中 `command(<命令>)` 放行的命令；文件不存在或读不出时为空。"""
     try:
@@ -194,7 +212,7 @@ class AgyAdapter:
         else:
             note = tool_note(read_commands(self.settings), task.limits.max_turns)
             argv += ["-p", files.prompt.read_text(encoding="utf-8") + note + (WEB_NOTE if task.web else "")]
-        return Invocation(tuple(argv), task.workdir, env)
+        return Invocation(tuple(argv), task.workdir, no_browser(env))
 
     def new_session_id(self) -> str | None:
         raise RunnerConfigError(INTERACTIVE_UNSUPPORTED)

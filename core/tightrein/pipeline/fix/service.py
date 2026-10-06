@@ -623,10 +623,11 @@ class FixService:
             max_files=guard.max_files, max_lines=guard.max_lines, rounds=deps.config.whole_threshold("fix.planRounds"),
             endpoints=self._endpoint_files(issue_id), review_notes=review_notes,
             design_accepted=decided.design_accepted, scout=scout, large=route.lane is Lane.LARGE,
-            test_paths=tuple(guard.test_paths))
+            test_paths=tuple(guard.test_paths), scouting=brief_step.load_scouting(self.fix_dir(issue_id)))
         proposal = propose(self._calls(run, issue_id), ctx, settings)
         if proposal.brief is not None:
             brief_step.save(self.fix_dir(issue_id), proposal.brief)
+            brief_step.save_scouting(self.fix_dir(issue_id), proposal.scouting or {})
         if proposal.scouting is not None:
             writer = self.writer(issue_id)
             path = writer.write(documents.SCOUT, documents.scout(writer, deps.clock.now(), proposal.scouting))

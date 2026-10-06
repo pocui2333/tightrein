@@ -4,7 +4,7 @@ from fix_world import CONTROLLER_PATH, SERVICE_PATH, make_fix_world
 
 from tightrein.domain.enums import FixRiskLevel, OperationStatus, ReviewMode, RunnerStatus
 from tightrein.pipeline.fix.prompts import fix_reviewer
-from tightrein.pipeline.fix.prompts.common import FixCalls, FixPrompt
+from tightrein.pipeline.fix.prompts.common import FixCalls, FixPrompt, acceptance_text
 from tightrein.pipeline.fix.render import documents
 from tightrein.store.files import documents as document_files
 from tightrein.pipeline.fix.steps import context, plan, plan_gate
@@ -116,7 +116,7 @@ def test_plan_checks(tmp_path):
     assert problems(split={"reason": "超出上限", "followUps": [{**later, "estimate": {"files": 1, "lines": 151}}]}) == (
         "拆分的第 2 个子任务「清理旧调用」预估改动 1 个文件、151 行，超出上限 5 个文件、150 行(不含测试)：拆分为有先后顺序、"
         "各自单独成立的子任务，本计划只做第一个，其余写进 split",)
-    assert "没有出现在 acceptanceMapping 中" in problems(acceptanceMapping=[])[0]
+    assert "没有出现在 acceptanceMapping 或 deferredAcceptance 中" in problems(acceptanceMapping=[])[0]
     design = dict(FLAGS, design={"flagged": True, "reason": "状态机缺一种状态", "locations": [f"{SERVICE_PATH}:3"]})
     assert plan.check(fix_plan(ctx, flags=design), ctx, world.worktree, (), 5, 150, ()).design
 
@@ -310,3 +310,27 @@ def test_conditions_follow_the_risk_lane_and_frontend_root_causes(tmp_path):
     from tightrein.domain.fix import FixRisk
     from tightrein.pipeline.fix.prompts.fix_planner import PlanInputs, conditions
     assert conditions(PlanInputs(None, FixRisk(FixRiskLevel.HIGH), (), 1, 1, large=True)) == ("high-risk", "large")
+
+
+def test_acceptance_left_to_follow_ups_is_not_required_now(tmp_path):
+    """拆分时由后续子任务完成的验收标准写进 deferredAcceptance：本次不必对应步骤，写代码与评审另列为「本次不做」。"""
+    world, ctx, calls = setup(tmp_path)
+    later = {"title": "回填", "goal": "补存量", "files": ["scripts/b.py"], "estimate": {"files": 1, "lines": 30},
+             "acceptance": [ctx.acceptance[-1]]}
+    mapped = [{"criterion": item, "steps": [1]} for item in ctx.acceptance[:-1]]
+    deferred = plan.check(fix_plan(ctx, acceptanceMapping=mapped, deferredAcceptance=[ctx.acceptance[-1]],
+                                   split={"reason": "超出上限", "followUps": [later]}),
+                          ctx, world.worktree, (), 5, 150, ()).problems
+    assert deferred == ()
+    unsplit = plan.check(fix_plan(ctx, acceptanceMapping=mapped, deferredAcceptance=[ctx.acceptance[-1]]),
+                         ctx, world.worktree, (), 5, 150, ()).problems
+    assert "没有拆分出后续子任务" in unsplit[-1]
+    text = acceptance_text("验收标准", ctx.acceptance, {"deferredAcceptance": [ctx.acceptance[-1]]})
+    assert text.split("## 留给后续子任务")[1].strip().endswith(ctx.acceptance[-1])
+
+
+def test_replanning_reuses_the_earlier_scouting(tmp_path):
+    world, ctx, calls = setup(tmp_path)
+    world.runner.add("fix-planner", fix_plan(ctx))
+    proposal = plan.propose(calls, ctx, settings(world, scouting=scouting()))
+    assert world.runner.roles() == ["fix-planner"] and proposal.scouting == scouting()

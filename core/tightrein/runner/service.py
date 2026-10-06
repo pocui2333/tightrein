@@ -290,6 +290,15 @@ class Runner:
                     self._write_files(task, files, schema, None if adapter.supports_schema else schema, note)
                     call = self._process_call(task, adapter, files, self._agent_env(context), retry, attempts,
                                               transcript)
+                    for _ in range(int(self.config.get("runtime.runner.transientRetries"))):
+                        if not self._transient(call, attempts.detail):
+                            break
+                        # 临时的接口或网络错误：就地重试同一次调用，不算一次格式重试
+                        transcript.write(EventDraft(ERROR, SYSTEM, text=f"临时错误，重试同一次调用：{attempts.detail}"),
+                                         tool=adapter.name, model=attempts.model, session_id=call.parsed.session_id)
+                        attempts.usages.append(call.usage)
+                        call = self._process_call(task, adapter, files, self._agent_env(context), retry, attempts,
+                                                  transcript)
             finally:
                 report = self.guards.after(task, context, transcript.tool_calls())
             attempts.usages.append(call.usage)
@@ -313,6 +322,13 @@ class Runner:
             retry = RetryContext(note, attempts.session_id)
         return self._result(task, RunnerStatus.SCHEMA_INVALID, attempts, started,
                             report=self.layout.guard_report(task.run_id, task.role, task.subject_id))
+
+    def _transient(self, call: Call, detail: str | None) -> bool:
+        """工具以失败结束、错误信息含临时的接口或网络错误(runtime.runner.transientPatterns)。"""
+        if call.status is not RunnerStatus.FAILED or not detail:
+            return False
+        text = detail.lower()
+        return any(str(item).lower() in text for item in self.config.get("runtime.runner.transientPatterns"))
 
     def _replay_call(self, task: RunnerTask, number: int, transcript: TranscriptWriter) -> Call:
         if self.replay is None:

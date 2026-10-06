@@ -17,6 +17,7 @@ from typing import Any
 from tightrein.store.files import atomic
 
 FILE = "brief.json"
+SCOUTING_FILE = "scouting.json"  # 勘察结论原文：重出计划时直接复用，不再重新勘察
 CORE_GROUPS = ("existing", "problems")
 RELATED_GROUPS = ("reusable", "linkage", "dataStructure")
 CONTEXT = 2
@@ -110,4 +111,13 @@ def save(directory: Path, brief: Mapping[str, Any]) -> None:
 
 def load(directory: Path) -> dict[str, Any] | None:
     path = directory / FILE
+    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+
+
+def save_scouting(directory: Path, scouting: Mapping[str, Any]) -> None:
+    atomic.write_text(directory / SCOUTING_FILE, json.dumps(scouting, ensure_ascii=False, indent=2) + "\n")
+
+
+def load_scouting(directory: Path) -> dict[str, Any] | None:
+    path = directory / SCOUTING_FILE
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None

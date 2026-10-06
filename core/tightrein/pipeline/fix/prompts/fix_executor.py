@@ -11,7 +11,7 @@ from typing import Any
 
 from tightrein.domain.enums import Access
 from tightrein.pipeline.fix.prompts.common import (PLAN_FOR_EXECUTOR, STAGE, FixPrompt, decisions_text, json_block,
-                                                   plan_view, risk_conditions)
+                                                   acceptance_text, plan_view, risk_conditions)
 from tightrein.pipeline.fix.steps.context import FixContext
 from tightrein.runner.roles import READ_ONLY_COMMANDS, join
 from tightrein.runner.task import Instructions, RunnerTask
@@ -31,7 +31,6 @@ def task(prompt: FixPrompt, context: FixContext, plan: Mapping[str, Any], attemp
          check_commands: Sequence[str], approved_protected: Sequence[str], budget: float | None,
          task_text: str = "", repro_test: str = "", corrections: Sequence[str] = (),
          continued: bool = False) -> RunnerTask:
-    acceptance = "\n".join(f"- {item}" for item in context.acceptance) or "- 无"
     fixes = ""
     if corrections:
         fixes = join("## 按检查与评审意见修改", "只改下列不通过项指出的位置，修不了的如实说明：",
@@ -40,7 +39,8 @@ def task(prompt: FixPrompt, context: FixContext, plan: Mapping[str, Any], attemp
     body = join(*head, CODE_ROUND, json_block("已确认的修复计划", plan_view(plan, PLAN_FOR_EXECUTOR), "plan"),
                 DESIGN_NOTE if plan.get("frontendDesign") else "",
                 f"## 复现测试\n\n{repro_test}" if repro_test else "",
-                f"## Issue {context.issue_id} 的验收标准\n\n{acceptance}", decisions_text(context.decisions), fixes)
+                acceptance_text(f"Issue {context.issue_id} 的验收标准", context.acceptance, plan),
+                decisions_text(context.decisions), fixes)
     setting = prompt.role_setting(ROLE, context.complexity, risk_conditions(plan))
     limits = setting.limits if budget is None else replace(setting.limits, max_cost_usd=budget)
     return RunnerTask(

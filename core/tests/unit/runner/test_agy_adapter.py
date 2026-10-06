@@ -6,7 +6,8 @@ import pytest
 from runner_samples import ENV, fixture, invocation_files, task
 
 from tightrein.domain.enums import Access
-from tightrein.runner.adapters.agy import SHELL_NOTE, TURNS_NOTE, WEB_NOTE, AgyAdapter, read_commands
+from tightrein.runner.adapters.agy import (NO_BROWSER_DIR, SHELL_NOTE, TURNS_NOTE, WEB_NOTE, AgyAdapter,
+                                           read_commands)
 from tightrein.runner.task import Limits
 from tightrein.runner.adapters.base import RetryContext, SessionRef, to_events
 from tightrein.runner.result import RunnerConfigError, Usage
@@ -146,3 +147,11 @@ def test_interactive_sessions_are_not_supported(adapter, tmp_path):
     started = datetime(2026, 10, 5, 3, 0, tzinfo=timezone.utc)
     assert adapter.locate_session(Path("/ws"), started, None) is None
     assert adapter.session_events(SessionRef("x")) == []
+
+
+def test_unattended_calls_cannot_open_a_browser(adapter, tmp_path):
+    """agy 读取登录凭据失败时会调用 open 弹出浏览器登录页；PATH 最前面的 open 什么都不做。"""
+    invocation = adapter.build(task(), invocation_files(tmp_path / "raw"), executable="agy", model=None,
+                               env={"PATH": "/usr/bin"}, retry=None)
+    assert invocation.env["PATH"] == f"{NO_BROWSER_DIR}:/usr/bin"
+    assert (NO_BROWSER_DIR / "open").read_text(encoding="utf-8").rstrip().endswith("exit 1")
