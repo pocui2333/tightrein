@@ -24,7 +24,7 @@ MAX_LINES = 40
 LOCATION = re.compile(r"^(?P<path>.+?):(?P<start>\d+)(?:-(?P<end>\d+))?$")
 # 定义行：Python、JS/TS、Go、C#、Java 等常见写法；找不到时用位置所在行
 DEFINITION = re.compile(r"^\s*(?:(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:def|class|function|func|interface|type)\s|"
-                        r"(?:public|private|protected|internal|static|\s)*[\w<>\[\],\s]+\s+\w+\s*\([^;]*$|"
+                        r"(?:public|private|protected|internal)\b[^;=]*\(|"
                         r"(?:export\s+)?(?:const|let|var)\s+\w+\s*=\s*(?:async\s*)?(?:\(|function))")
 CORE_NOTE = ("以下原文由程序截取、位置已核对：直接采用，不要为了确认它们再去通读文件；只打开你要改动或核对的那几行。"
              "摘要里没有、又确实需要的代码再去查，并在输出中注明补看了哪里。")
