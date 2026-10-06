@@ -56,7 +56,7 @@ def open_service(workspace: Path, environ: Mapping[str, str], clock: Clock) -> K
     layout = WorkspaceLayout(workspace, output_dir)
     conn = open_index(layout)
     config_path = layout.project_config()
-    settings = RetrievalSettings.from_config(project.load(config_path, agents=user.load().agents)) \
+    settings = RetrievalSettings.from_config(project.load(config_path, routing=user.load().routing)) \
         if config_path.is_file() else RetrievalSettings.default()
     tracer = Tracer.from_environment(EventLog(layout, Redactor()), clock, environ)
     return KnowledgeService(layout, conn, clock, tracer, settings=settings, sandbox=sandbox)

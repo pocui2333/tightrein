@@ -303,7 +303,7 @@ schemathesis run <openapi.json>
 | `reproduce` | curl 形式的复现命令，凭证请求头的值为 `<TOKEN>`；匿名身份不带凭证请求头 |
 | `seed` | 本次运行的随机种子 |
 | `sameCaseCount` | 同类失败用例数 |
-| `requiredCapabilities`、`roleCapabilities` | 仅越权检查：端点要求的能力与该角色具备的能力 |
+| `requiredCapabilities`、`grantedCapabilities` | 仅越权检查：端点要求的能力与该角色具备的能力 |
 | `reportPath` | 该角色报告目录的相对路径 |
 
 **覆盖范围**：`coverage.endpoints` 为每个已测试操作的「方法 + 路由模板 + 角色」；`coverage.endpointsTotal` 为接口描述中扣除排除范围后的接口总数，供 `learn` 计算接口覆盖率；`coverage.methods` 浅跑为 `GET`，深跑为 `all`。只计入报告完整的角色。
@@ -487,7 +487,7 @@ class Reviewer(Protocol):
 | `statement` | 疑似问题 |
 | `trigger` | 触发条件 |
 
-**基线审查的分批**(`baseline.py`)：扫描范围内的文件先去掉匹配 `sources.static.baseline.exclude` 的(写法同 `protectedPaths`)、开头 8 KB 含 NUL 字节的(二进制)与空文件；其余按路径排序后按所在目录分组，相邻的目录(小模块)在不超过 `batchFiles`、`batchLines` 时并入同一批，减少审查调用次数；一个目录超过上限时按文件顺序拆开，单个文件超过行数上限时独占一批。每批一次只读任务，模型档缺省 `strong`(`roleCapabilities.baseline-review`)，上限取 `stages.collect.tasks.baseline-review`，当天预算照常受 `stages.collect.budgetPerDay` 约束。运行摘要列出批数、每批的文件数、行数、耗时与费用及合计；`stats` 带 `baselineBatches`、`baselineFiles`、`baselineExcludedFiles`、`baselineDurationMs`、`baselineCostUsd`(有费用数据时)。
+**基线审查的分批**(`baseline.py`)：扫描范围内的文件先去掉匹配 `sources.static.baseline.exclude` 的(写法同 `protectedPaths`)、开头 8 KB 含 NUL 字节的(二进制)与空文件；其余按路径排序后按所在目录分组，相邻的目录(小模块)在不超过 `batchFiles`、`batchLines` 时并入同一批，减少审查调用次数；一个目录超过上限时按文件顺序拆开，单个文件超过行数上限时独占一批。每批一次只读任务，模型按调用点 `collect.baseline-review` 的路由，上限取 `stages.collect.tasks.baseline-review`，当天预算照常受 `stages.collect.budgetPerDay` 约束。运行摘要列出批数、每批的文件数、行数、耗时与费用及合计；`stats` 带 `baselineBatches`、`baselineFiles`、`baselineExcludedFiles`、`baselineDurationMs`、`baselineCostUsd`(有费用数据时)。
 
 `ReviewResult` 另带该次调用的耗时、费用与「当天预算已用尽」标记。`Verification` 取 `claim-verifier` 的输出：四档判定、`文件:类名.方法名`、带 `文件路径:行号` 的证据、调用链、任务外发现。任务的 `access` 为 `read-only`，`allowedCommands` 为只读 git 命令，轮数与预算取 `stages.collect`。
 

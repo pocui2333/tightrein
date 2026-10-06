@@ -1,6 +1,7 @@
 """learn 各执行器任务共用：任务上下文、执行器调用与写入知识所需的依赖(architecture/08 2.1)。
 
-提示正文取自 skills/learn/references/roles/；上限与能力档取 stages.learn.tasks.<角色>(不按复杂度分档)。
+提示正文取自 skills/learn/references/roles/；上限取 stages.learn.tasks.<角色>(不按复杂度分档)，
+模型按调用点 learn.<角色> 的路由。
 工作目录缺省为工作区的 knowledge/ 目录，只读(rule-writer 为只读 worktree，improvement-writer 为本工具仓库)；
 来源材料(发现报告、修复报告、出问题的经过、原补丁)直接写进任务说明。
 """

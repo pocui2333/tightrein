@@ -50,4 +50,5 @@ def task(prompt: FixPrompt, context: FixContext, plan: Mapping[str, Any], diff_t
     return read_only_task(run_id=prompt.run_id, stage=STAGE, role=f"{ROLE}-{mode.value}",
                           subject=prompt.subject(context.issue_id), attempt=attempt, prompt=body,
                           workdir=prompt.workdir, output_schema=SCHEMA,
-                          role_setting=reviewer_setting(prompt.config, f"stages.fix.review.{mode.value}"))
+                          role_setting=reviewer_setting(prompt.config, f"stages.fix.review.{mode.value}",
+                                                        f"fix.review.{mode.value}"))

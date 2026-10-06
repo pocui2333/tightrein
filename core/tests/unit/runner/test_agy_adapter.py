@@ -136,7 +136,7 @@ def test_text_deltas_become_assistant_messages(adapter):
 def test_interactive_sessions_are_not_supported(adapter, tmp_path):
     files = invocation_files(tmp_path / "raw")
     session_task = task(interactive=True, output_schema=None, role="fix-session")
-    with pytest.raises(RunnerConfigError, match="stages.<环节>.session.tool"):
+    with pytest.raises(RunnerConfigError, match="routes.fix.session"):
         adapter.new_session_id()
     with pytest.raises(RunnerConfigError):
         adapter.build_interactive(session_task, files, "继续", executable="agy", model=None, env=ENV,

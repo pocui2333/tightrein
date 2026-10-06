@@ -10,7 +10,7 @@ from dataclasses import replace
 from typing import Any
 
 from tightrein.domain.enums import Access
-from tightrein.pipeline.fix.prompts.common import STAGE, FixPrompt, decisions_text, json_block
+from tightrein.pipeline.fix.prompts.common import STAGE, FixPrompt, decisions_text, json_block, risk_conditions
 from tightrein.pipeline.fix.steps.context import FixContext
 from tightrein.runner.roles import READ_ONLY_COMMANDS, join
 from tightrein.runner.task import Instructions, RunnerTask
@@ -40,12 +40,12 @@ def task(prompt: FixPrompt, context: FixContext, plan: Mapping[str, Any], attemp
                 DESIGN_NOTE if plan.get("frontendDesign") else "",
                 f"## 复现测试\n\n{repro_test}" if repro_test else "",
                 f"## Issue {context.issue_id} 的验收标准\n\n{acceptance}", decisions_text(context.decisions), fixes)
-    setting = prompt.role_setting(ROLE, context.complexity)
+    setting = prompt.role_setting(ROLE, context.complexity, risk_conditions(plan))
     limits = setting.limits if budget is None else replace(setting.limits, max_cost_usd=budget)
     return RunnerTask(
         run_id=prompt.run_id, stage=STAGE, role=ROLE, subject=prompt.subject(context.issue_id), attempt=attempt,
         instructions=Instructions(body), workdir=prompt.workdir, output_schema=SCHEMA, access=Access.WORKSPACE_WRITE,
         allowed_commands=(*dict.fromkeys(check_commands), *READ_ONLY_COMMANDS), limits=limits,
-        tool=setting.tool, model=setting.model, capability=setting.capability,
+        route=setting.route, conditions=setting.conditions,
         approved_protected_paths=tuple(approved_protected),
     )

@@ -120,8 +120,6 @@ sources:
 evaluation:
   repeats: 3                    # 每个用例在每个变体上的运行次数，不小于 3
   parallelism: 1                # 评测的并发数
-  judge:                        # 模型评审的工具(runner，缺省为 defaultTool)与模型档；capability 为空时使用工具自己的缺省模型
-    capability: null
   budgetUsd: 10                 # 单次评测的费用上限(美元)
 
 thresholds:
@@ -205,7 +203,7 @@ thresholds:
       minHeldOutCases: {value: 2, min: 1, max: 50}     # 未参与改进的评测用例少于它时不出建议
       repeats: {value: 3, min: 3, max: 10}             # 评测中每个用例每个变体的运行次数
     controls:                   # 分数驱动的控制措施，只以建议进收件箱
-      weeks: {value: 3, min: 2, max: 12}               # 某模型一次通过率连续这么多周偏低时建议升档或换模型
+      weeks: {value: 3, min: 2, max: 12}               # 某模型一次通过率连续这么多周偏低时建议换用更强或其他模型
       firstPassFloor: {value: 0.5, min: 0.1, max: 1}   # 一次通过率低于它为偏低
       corrections: {value: 3, min: 1, max: 20}         # 一周内用户纠正同一类自动决定达到这么多次时建议改为交用户确认
   autonomy:                     # 自动确认修复计划的改动量门槛(gates.plan-confirm 为 auto 时生效，design 5.4)，不大于 change
@@ -371,7 +369,7 @@ fix:
     taskTypes: [security, data]   # B 通道中这些类型总是先勘察；其余只在 Issue 缺根因位置或范围时勘察
   repro:
     skipTypes: [docs-config]      # 不写复现测试的类型
-    independentTypes: [security, data]  # 复现测试由另一会话的 repro-writer 写(可配置为另一种工具或模型)
+    independentTypes: [security, data]  # 复现测试由另一会话的 repro-writer 写(路由 fix.repro-writer 可指向另一种工具或模型)
     passOnBaseTypes: [refactor]   # 写表征测试，在基准版本上须通过；其余类型须失败
     siblingTests: 2               # 交给写测试的模型参考的已有测试文件个数(离根因文件最近的)
     siblingLines: 80              # 每个参考测试截取的行数上限(开头的导入与夹具加第一个测试)
@@ -609,28 +607,9 @@ git:
     minRatio: 0.8               # 统一比例达到它才认为有统一风格
   forbiddenPrefixes: [ai, agent, bot, claude, codex, gemini, agy, antigravity, copilot, cursor, gpt]  # 分支前缀不得使用的 AI 与工具名称
 
-# 各角色与任务默认使用的模型档(light、standard、strong，design 9.6)；某个环节需要不同档位时用
-# stages.<环节>.roles|tasks.<名称>.capability 覆盖。档对应的模型与推理强度写在 capabilities.<档>.<工具>(model、effort)。
-roleCapabilities:
-  static-review: strong         # 静态巡检的增量审查(新代码缺陷的主要发现者，redesign/01-collect.md 第 6 节)
-  baseline-review: strong       # 静态巡检的基线审查(一次性、影响大)
-  variant-scan: light           # 以一个缺陷模式为种子的全量扫描
-  claim-verifier: strong        # 取证(分诊与静态巡检)
-  spec-drafter: strong          # 没有自动导出时起草接口描述
-  refuter: strong
-  dedup: light                  # 分诊查重
-  fix-scout: light
-  fix-planner: strong
-  frontend-designer: strong     # 计划含前端文件时的前端设计说明
-  fix-executor: strong          # 写复现测试与写代码(同一会话的两轮)
-  repro-writer: strong          # 安全、数据类的复现测试(另一会话)
-  lesson-writer: standard
-  rule-writer: strong           # 缺陷变规则：规则要用原补丁验证，写错只是不收录
-  improvement-writer: strong    # 从出问题的来源归纳改进建议
-  knowledge-curator: light      # 知识写入去重判断
-
 # 角色与任务的上限。分诊与修复角色的上限按任务复杂度(design 13.3)分三档；没有写的上限项取 stages.<环节>.limits。
-# 评审类设置(review.light、review.deep、screenshotReview)带自己的模型档。
+# 评审类设置(review.light、review.deep、screenshotReview)只有上限。选模型不在这里：用本机用户配置或 project.yaml 顶层的
+# models(模型别名)与 routes(调用点 → 别名)，核心不给缺省。
 stages:
   collect:
     limits:
@@ -682,17 +661,14 @@ stages:
           low: {maxTurns: 60, maxDurationMs: 1800000}
           medium: {maxTurns: 100, maxDurationMs: 2700000}
           high: {maxTurns: 150, maxDurationMs: 3600000}
-      repro-writer: *executor   # 安全、数据类的复现测试，与写代码不同的会话
+      repro-writer: *executor   # 安全、数据类的复现测试，与写代码不同的会话(调用点 fix.repro-writer)
     review:
       light:                    # A 通道与 B 通道的轻量评审
-        capability: standard
         limits: {maxTurns: 40, maxDurationMs: 900000}
-      deep:                     # B 通道高风险时另加的深度评审；须与 fix-executor 使用不同的工具或模型
-        capability: strong
+      deep:                     # B 通道高风险时另加的深度评审；路由 fix.review.deep 须与 fix.executor 使用不同的工具或模型
         limits: {maxTurns: 70, maxDurationMs: 1800000}
   verify:
     screenshotReview:           # 合并前验证的截图查看
-      capability: standard
       limits: {maxTurns: 20, maxDurationMs: 600000}
   learn:
     tasks:

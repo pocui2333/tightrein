@@ -27,7 +27,7 @@
 | `learn` | `runner` | `lesson-writer`(写经验、比对同类条目)、`rule-writer`(写 Semgrep 规则) |
 | `learn` | `vcs`(只读)与 Semgrep | 取修复前后的文件与补丁，在临时目录与只读 worktree 上验证规则 |
 | `improve` | `runner` | `improvement-writer` |
-| `improve` | `evaluation` | 当前版本与候选的对比评测(候选为 HEAD 加补丁，或另一个能力档的模型) |
+| `improve` | `evaluation` | 当前版本与候选的对比评测(候选为 HEAD 加补丁，或另一个模型别名的模型) |
 
 ## 2. 文件划分
 
@@ -189,7 +189,7 @@ pipeline/improve/
   建议记录的 `target_path` 指向它；接受或拒绝时在文档历史中记下决定并把状态改为完成。
 - **控制措施**：
   - 模型一次通过率：`first-pass` 的 `model=` 维度连续 `learn.controls.weeks` 周(含本周，取快照)样本都不少于 `learn.minSamples` 且都低于
-    `learn.controls.firstPassFloor` 时，建议写代码的角色升档或换模型，给出配置键 `stages.fix.roles.fix-executor.capability` 与对比评测的命令；
+    `learn.controls.firstPassFloor` 时，建议写代码的调用点换用更强或其他模型的别名，给出配置键 `routes.fix.executor` 与对比评测的命令；
   - 用户频繁纠正：本周 `plan-rejected`、`issue-closed`、`reverted` 分别达到 `learn.controls.corrections` 次，且对应关卡 `plan-confirm`、
     `issue-approve`、`merge` 为 `auto` 时，建议改为 `user`；
   - 连续失败停下转待决定由编排的熔断完成，不生成建议。
@@ -203,18 +203,18 @@ pipeline/improve/
 
 1. `troubles.collect` 取 `learn.improve.lookbackDays`(或 `--days`)天内出问题的来源，少于 `learn.improve.minTroubles` 条时不调用模型。
 2. 运行 `improvement-writer`(工作目录为本工具的 `skills/`，只读)，输出 `suggestion` 为空(写明原因)或
-   `{stage, target: prompt|model, patch, capability, rationale, addresses[], expected}`。
-3. 校验：prompt 类补丁只改 `skills/` 下的文件，且不触及 `evaluation.versions.FORBIDDEN_PATTERNS`；model 类的能力档对应的模型与当前不同。
+   `{stage, target: prompt|model, patch, model, rationale, addresses[], expected}`(model 类的 `model` 为任务说明列出的别名之一)。
+3. 校验：prompt 类补丁只改 `skills/` 下的文件，且不触及 `evaluation.versions.FORBIDDEN_PATTERNS`；model 类的别名存在，且与该环节主要调用点当前的模型同工具、不同模型。
 4. 用例：注入的 `cases(stage)` 取该环节校验通过的用例(`evaluation.cases.verify_cases`：`evals/` 中封存的用例，fix 另加运行即评测的用例
    `data/eval/cases/`)。来源对象在 `addresses` 或出问题的来源中的为「参与改进」，其余为「未参与改进」；后者少于
    `learn.improve.minHeldOutCases` 时不出建议并写明原因。
-5. 评测：注入的 `evaluate(plan)`；prompt 类以 HEAD 加补丁为候选(`version_plan`)，model 类以候选能力档的模型对比当前模型
+5. 评测：注入的 `evaluate(plan)`；prompt 类以 HEAD 加补丁为候选(`version_plan`)，model 类以候选别名的模型对比主要调用点(`config.routes.PRIMARY`，triage 为 `triage.claim-verifier`，fix 为 `fix.executor`)当前的模型
    (`tool_model_plan`)，每个用例每个变体 `learn.improve.repeats` 次。
 6. 汇总两组的确定性项(code 评分项)通过率与平均分。评测完整、未参与改进的用例确定性通过率没有下降、参与改进的有提升时推荐批准，
    否则推荐拒绝并写明原因。
 7. 写 `data/improve/<建议编号>.md` 与 `.patch`，建议记录 kind `improvement`(`diff` 为补丁)；结果写进 learn 交接文档的 `improve`。
 
-接受只记录决定，应用方法写在决定文档的「下一步」：prompt 类在本工具仓库 `git apply` 补丁并提交，model 类在工作区配置中修改能力档。
+接受只记录决定，应用方法写在决定文档的「下一步」：prompt 类在本工具仓库 `git apply` 补丁并提交，model 类在 `routes` 中把主要调用点改为建议的别名。
 `cli/assemble.App.improve` 组装依赖：评测与 `admin eval run` 使用同一套依赖。
 
 ## 9. 读写的表与文件

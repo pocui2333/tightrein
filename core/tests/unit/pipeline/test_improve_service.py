@@ -28,12 +28,14 @@ from tightrein.store.repos import suggestions
 PATCH = ("--- a/skills/triage/references/evidence-standard.md\n+++ b/skills/triage/references/evidence-standard.md\n"
          "@@ -1 +1 @@\n-旧\n+判不成立前先追到入口\n")
 EVAL_ID = "EV-20261005-030000"
-TIERS = {"light": "haiku", "standard": "sonnet", "strong": "opus"}
+MODELS = {name: {"tool": "claude", "model": name, "inputUsdPerMTok": 1, "outputUsdPerMTok": 5}
+          for name in ("haiku", "sonnet", "opus")}
+ROUTES = {"default": "opus", "triage.refuter": "sonnet", "fix.review.deep": "sonnet"}
 
 
-def suggestion(target="prompt", patch=PATCH, capability=None, addresses=("P-0001",)):
+def suggestion(target="prompt", patch=PATCH, model=None, addresses=("P-0001",)):
     return {"reason": "三次误判都没有追到入口", "suggestion": {
-        "stage": "triage", "target": target, "patch": patch, "capability": capability,
+        "stage": "triage", "target": target, "patch": patch, "model": model,
         "rationale": "取证底线没有要求判不成立前追到入口", "addresses": list(addresses),
         "expected": "参与改进的用例反证检查通过"}}
 
@@ -71,8 +73,7 @@ class Evaluator:
 
 
 def make(tmp_path, evaluator, troubles=3, cases=CASES):
-    world = make_learn_world(tmp_path, stages={"triage": {"tool": "claude", "refuter": {"capability": "standard"}}}, capabilities={
-        tier: {"claude": {"model": model, "inputUsdPerMTok": 1, "outputUsdPerMTok": 5}} for tier, model in TIERS.items()})
+    world = make_learn_world(tmp_path, models=MODELS, routes=ROUTES)
     for number in range(1, troubles + 1):
         problem_with(world, f"P-000{number}")
         triaged(world, f"P-000{number}", outcome=TriageOutcome.FALSE_REFUTE, outcome_at=NOW - timedelta(days=1))
@@ -151,3 +152,15 @@ def test_patches_may_not_touch_evaluation_or_guards():
     assert patch_problem(None) == "补丁为空或不是统一格式"
     assert patch_problem(PATCH) is None
     assert patch_problem("+++ b/skills/improve/x.md\n") == "补丁只能改 skills/ 下的角色说明与参考资料：skills/improve/x.md"
+
+
+def test_a_model_suggestion_compares_the_alias_with_the_current_route(tmp_path):
+    evaluator = Evaluator({"E-0001": True, "E-0002": True, "E-0003": True})
+    world, service = make(tmp_path, evaluator)
+    world.runner.add("improvement-writer", suggestion(target="model", patch=None, model="sonnet"))
+    result = service.suggest()
+    assert result.suggestion_id == "LS-0001"
+    (plan,) = evaluator.plans
+    assert [(variant.runner, variant.model) for variant in plan.variants] == [("claude", "opus"), ("claude", "sonnet")]
+    assert "- sonnet：工具 claude，模型 sonnet" in world.runner.tasks[0].instructions.prompt
+    assert "`triage.claim-verifier: sonnet`" in world.layout.improve_file("LS-0001", ".md").read_text(encoding="utf-8")

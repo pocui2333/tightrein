@@ -76,7 +76,7 @@ def score_output(stage: Stage, handoff: Mapping[str, Any], context: ScoringConte
             results.update({result.item_id: result for result in judge.unknown_items(judged, NO_SNAPSHOT)})
         else:
             task = judge.judge_task(context.judge, judged, context.project_snapshot, _case_input(context), outputs)
-            results.update({result.item_id: result for result in judge.run_judge(runner, clock, task, judged)})
+            results.update({result.item_id: result for result in judge.run_judge(runner, clock, task, judged, context.judge.tool)})
     ordered = [results[item.id] for item in table.items]
     if context.case is not None:
         for assertion in context.case.assertions:

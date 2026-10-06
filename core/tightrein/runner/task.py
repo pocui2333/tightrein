@@ -1,7 +1,7 @@
 """执行器任务(architecture/02 2.3，design 9.4)，与 runner/runner-task.schema.json 互转。
 
-limits 中为空的项在执行时取 project.yaml 中该环节的值(Limits.filled)；tool、model、capability、effort 为空时按
-stages.<环节> 与能力档解析。
+limits 中为空的项在执行时取 project.yaml 中该环节的值(Limits.filled)；工具与模型由 route(调用点)与 conditions
+按路由表解析(config.routes)，命令行的 --runner、--model 可以改写。
 """
 
 from __future__ import annotations
@@ -99,10 +99,8 @@ class RunnerTask:
     allowed_commands: tuple[str, ...] = ()
     limits: Limits = field(default_factory=Limits)
     interactive: bool = False
-    tool: str | None = None
-    model: str | None = None
-    capability: str | None = None
-    effort: str | None = None
+    route: str | None = None
+    conditions: tuple[str, ...] = ()
     approved_protected_paths: tuple[str, ...] = ()
     web: bool = False
     read_paths: tuple[str, ...] = ()
@@ -128,8 +126,8 @@ class RunnerTask:
             "instructions": self.instructions.to_dict(), "workdir": str(self.workdir),
             "outputSchema": self.output_schema, "access": self.access.value,
             "allowedCommands": list(self.allowed_commands), "limits": self.limits.to_dict(),
-            "interactive": self.interactive, "tool": self.tool, "model": self.model, "capability": self.capability,
-            "effort": self.effort, "approvedProtectedPaths": list(self.approved_protected_paths), "web": self.web,
+            "interactive": self.interactive, "route": self.route, "conditions": list(self.conditions),
+            "approvedProtectedPaths": list(self.approved_protected_paths), "web": self.web,
             "readPaths": list(self.read_paths), "testsOnly": self.tests_only,
         }
         validate.check(SCHEMA, data)
@@ -144,7 +142,7 @@ class RunnerTask:
             instructions=Instructions.from_dict(data["instructions"]), workdir=Path(data["workdir"]),
             output_schema=data["outputSchema"], access=Access(data["access"]),
             allowed_commands=tuple(data["allowedCommands"]), limits=Limits.from_dict(data["limits"]),
-            interactive=data["interactive"], tool=data["tool"], model=data["model"], capability=data["capability"],
-            effort=data.get("effort"), approved_protected_paths=tuple(data["approvedProtectedPaths"]), web=data["web"],
+            interactive=data["interactive"], route=data["route"], conditions=tuple(data["conditions"]),
+            approved_protected_paths=tuple(data["approvedProtectedPaths"]), web=data["web"],
             read_paths=tuple(data["readPaths"]), tests_only=data.get("testsOnly", False),
         )

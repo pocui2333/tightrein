@@ -70,7 +70,7 @@ def test_messages_and_capabilities(tmp_path):
     denied = signals["unauthorized_role_access"]
     assert denied.message == "角色 Company 缺少能力 CanManageUsers，GET /api/User/List 却返回 200"
     assert denied.context["requiredCapabilities"] == ["CanManageUsers"]
-    assert denied.context["roleCapabilities"] == ["CanViewOrders"]
+    assert denied.context["grantedCapabilities"] == ["CanViewOrders"]
     assert "requiredCapabilities" not in signals["not_a_server_error"].context
 
 

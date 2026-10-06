@@ -33,6 +33,7 @@ from tightrein.evaluation.errors import CaseProblem, EvalCaseInvalid, EvalCaseTa
 from tightrein.evaluation.report import EvaluationReport
 from tightrein.evaluation.sandbox import ModuleRunner, SandboxOutcome, SandboxRequest
 from tightrein.evaluation.scorers.base import JudgeRequest, ScoringContext
+from tightrein.evaluation.scorers.judge import ROUTE as JUDGE_ROUTE
 from tightrein.evaluation.scoring import failed_run, score_output, summarize
 from tightrein.evaluation.stats import RunScore
 from tightrein.evaluation.variants import EvaluationPlan, Variant
@@ -63,10 +64,7 @@ class EvaluationSettings:
 
     @classmethod
     def from_config(cls, config: ProjectConfig) -> EvaluationSettings:
-        judge = config.get("evaluation.judge")
-        choice = config.capabilities.choose(
-            {"tool": judge.get("runner") or config.default_tool, "capability": judge.get("capability")},
-            "evaluation.judge")
+        choice = config.model_choice(JUDGE_ROUTE)
         return cls(config.get("evaluation.budgetUsd"), config.repo, choice.tool, choice.model,
                    GuardSettings.from_config(config), int(config.get("runtime.evaluation.maxConsecutiveCrashes")))
 

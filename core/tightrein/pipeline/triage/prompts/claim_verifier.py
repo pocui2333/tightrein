@@ -1,7 +1,7 @@
 """组装 claim-verifier 与 refuter 的执行器任务(architecture/06 4.5、4.7)。
 
-refuter 拿到与第一次取证完全相同的主张、事实与相关知识，看不到第一次的判定与输出；它的工具与模型取
-stages.triage.refuter(配置时)，输出 schema 与 claim-verifier 相同。两个角色在 fp-check 已安装时加载它。
+refuter 拿到与第一次取证完全相同的主张、事实与相关知识，看不到第一次的判定与输出；它的模型按调用点
+triage.refuter 的路由(须与 triage.claim-verifier 不同，加载配置时检查)，输出 schema 与 claim-verifier 相同。两个角色在 fp-check 已安装时加载它。
 """
 
 from __future__ import annotations

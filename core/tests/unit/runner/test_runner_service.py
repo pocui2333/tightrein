@@ -1,6 +1,5 @@
 import json
 import os
-from dataclasses import replace
 from datetime import date
 
 import pytest
@@ -113,14 +112,12 @@ def agy_lines(structured):
     )]
 
 
-def test_agy_format_retries_continue_the_conversation(make_world):
-    deep = {"claude": {"model": "claude-opus", "inputUsdPerMTok": 15, "outputUsdPerMTok": 75},
-            "codex": {"model": "gpt-5", "inputUsdPerMTok": 1.25, "outputUsdPerMTok": 10},
-            "agy": {"model": "gemini-3.1-pro-high", "inputUsdPerMTok": 2, "outputUsdPerMTok": 12}}
-    standard = {"claude": {"model": "claude-sonnet", "inputUsdPerMTok": 3, "outputUsdPerMTok": 15}}  # refuter 用
-    world = make_world(FakeRun(agy_lines(None)), FakeRun(agy_lines(VALID)),
-                       capabilities={"deep": deep, "standard": standard})
-    result = world.runner().run(triage_task(world, stage=Stage.IMPROVE, capability="deep"),
+def test_agy_format_retries_continue_the_conversation(make_world, make_config):
+    models = {**make_config().data["models"],
+              "gemini": {"tool": "agy", "model": "gemini-3.1-pro-high", "inputUsdPerMTok": 2, "outputUsdPerMTok": 12}}
+    world = make_world(FakeRun(agy_lines(None)), FakeRun(agy_lines(VALID)), models=models,
+                       routes={**make_config().data["routes"], "learn.rule-writer": "gemini"})
+    result = world.runner().run(triage_task(world, stage=Stage.IMPROVE, route="learn.rule-writer"),
                                 clock=world.clock)
     assert (result.status, result.tool, result.model, result.attempts, result.session_id) == (
         RunnerStatus.OK, "agy", "gemini-3.1-pro-high", 2, "a1")
@@ -142,7 +139,7 @@ def codex_lines(commands=0, input_tokens=200_000):
 
 def fix_task(world, **changes):
     return task(world.fix, stage=Stage.FIX, role="fix-executor", output_schema=SCHEMA, access=Access.WORKSPACE_WRITE,
-                subject=Subject("issue", "0007"), **changes)
+                subject=Subject("issue", "0007"), route="fix.executor", **changes)
 
 
 def test_costs_are_estimated_when_the_tool_does_not_report_them(make_world):
@@ -241,9 +238,6 @@ def test_replay_runs_without_processes(make_world, tmp_path):
     started = json.loads((raw / "started.json").read_text(encoding="utf-8"))
     assert (started["role"], started["subject"], started["tool"]) == ("claim-verifier", "P-0042", "replay")
     assert (raw / "result.json").stat().st_mtime >= (raw / "started.json").stat().st_mtime
-    configured = replace(replayed_task, tool="agy")  # 角色或评审设置给了工具时 --runner replay 照样回放
-    assert world.runner(replay=replay).run(configured, clock=world.clock, runner_override="replay").output == VALID
-    assert world.launcher.invocations == []
     missing = world.runner(replay=replay).run(triage_task(world, attempt=2), clock=world.clock,
                                               runner_override="replay")
     assert (missing.status, missing.error_type) == (RunnerStatus.FAILED, "replay-missing")
@@ -258,7 +252,7 @@ def test_programming_errors_raise(make_world):
     with pytest.raises(RunnerConfigError):
         world.runner().run(triage_task(world, interactive=True), clock=world.clock)
     with pytest.raises(RunnerConfigError):
-        world.runner().run(triage_task(world, stage=Stage.LEARN), clock=world.clock)
+        world.runner().run(triage_task(world, stage=Stage.LEARN, route="learn.rule-writer"), clock=world.clock)
 
 
 def test_the_output_mode_tells_agents_where_the_sandbox_is(make_world, tmp_path):

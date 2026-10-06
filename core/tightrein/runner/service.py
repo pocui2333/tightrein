@@ -28,7 +28,7 @@ from datetime import tzinfo
 from pathlib import Path
 from typing import Any
 
-from tightrein.config.capabilities import ModelChoice
+from tightrein.config.routes import ModelChoice
 from tightrein.config.project import ProjectConfig
 from tightrein.contracts import validate
 from tightrein.contracts.validate import SchemaValidationError
@@ -241,7 +241,7 @@ class Runner:
         if task.interactive:
             raise RunnerConfigError("交互任务须经 run_interactive 执行")
         started = self.monotonic()
-        replaying = REPLAY in (task.tool, runner_override)  # --runner replay 时任务自带的工具(角色或评审设置)也回放
+        replaying = runner_override == REPLAY  # --runner replay 时各调用点都回放
         if replaying:
             if self.replay is None:
                 raise RunnerConfigError("没有提供回放录制集(--replay-from)")
@@ -372,7 +372,7 @@ class Runner:
 
     def _costing(self, attempts: Attempts) -> Callable[[Usage], Usage]:
         def cost(usage: Usage) -> Usage:
-            return limits.with_cost(usage, self.config.capabilities, attempts.tool, attempts.model)
+            return limits.with_cost(usage, self.config.routes, attempts.tool, attempts.model)
         return cost
 
     def _unavailable(self, adapter: Adapter, attempts: Attempts, transcript: TranscriptWriter,

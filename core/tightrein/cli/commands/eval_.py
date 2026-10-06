@@ -15,6 +15,7 @@ from tightrein.cli import exit_codes
 from tightrein.cli.commands.common import group, leaf
 from tightrein.cli.exit_codes import UsageError
 from tightrein.cli.output import Outcome
+from tightrein.config import routes
 from tightrein.domain.enums import Stage
 from tightrein.evaluation import cases, manifest
 from tightrein.evaluation import service as evaluation
@@ -51,7 +52,7 @@ def _run(invocation: Any) -> Outcome:
     args = invocation.args
     app = invocation.app
     module = Stage(args.module)
-    runners: Sequence[str] = _split(args.runner) or [app.config.model_choice(module).tool]
+    runners: Sequence[str] = _split(args.runner) or [app.config.model_choice(routes.primary(module.value)).tool]
     models: Sequence[str | None] = _split(args.model) or [None]
     repeats = args.repeats or MIN_REPEATS
     chosen = _split(args.cases)

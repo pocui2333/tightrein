@@ -72,7 +72,7 @@ from tightrein.pipeline.checks.regressions.runner import RegressionExecutor, Reg
 from tightrein.pipeline.common import conventions, stage_runs
 from tightrein.pipeline.common.stage_runs import StageRun
 from tightrein.pipeline.fix.prompts import repro_test as repro_prompt
-from tightrein.pipeline.fix.prompts.common import FixCalls, FixPrompt
+from tightrein.pipeline.fix.prompts.common import FixCalls, FixPrompt, risk_conditions
 from tightrein.pipeline.fix.render import documents, issue_history
 from tightrein.pipeline.fix.render import plan as plan_render
 from tightrein.pipeline.fix.render import report as report_render
@@ -127,6 +127,7 @@ REVIEW_STATE = "review.json"
 PATCH_FILE = "changes.patch"
 CHECKLIST_PATH = "regressions/{issue}/check.yaml"
 SESSION_ROLE = "fix-session"
+SESSION_ROUTE = "fix.session"
 SESSION_COMMANDS = ("tightrein fix", "tightrein show", *READ_ONLY_COMMANDS)
 ACTOR = "fix"
 PLAN_APPROVED = "自动确认修复计划：满足"
@@ -416,7 +417,7 @@ class FixService:
             run_id=self._begin().id, stage=Stage.FIX, role=SESSION_ROLE, subject=Subject("issue", issue_id), attempt=1,
             instructions=Instructions(deps.tool.skill("fix").read_text(encoding="utf-8")),
             workdir=self.worktree(issue_id), output_schema=None, access=Access.READ_ONLY,
-            allowed_commands=SESSION_COMMANDS, interactive=True)
+            allowed_commands=SESSION_COMMANDS, interactive=True, route=SESSION_ROUTE)
         first = self._first_input(issue_id, point)
         result = None
         if resumed:
@@ -974,12 +975,15 @@ class _Apply:
             deps.config.get("fix.repro.testFilePatterns"), int(deps.config.get("fix.repro.siblingTests"))),
             int(deps.config.get("fix.repro.siblingLines")))
 
+        # 与写代码同一会话时条件须与写代码一轮相同，工具与模型才一致
+        conditions = risk_conditions(self.plan) if role == repro_prompt.EXECUTOR else ()
+
         def build(attempt: int, feedback: Sequence[str]) -> RunnerTask:
             return repro_prompt.task(self.calls.prompt, self.ctx, self.task_text, attempt, role=role,
                                      expects_pass=expects_pass, test_paths=self.settings.test_paths,
                                      prefixes=project_checks.repro_test_prefixes(commands),
                                      check_commands=execute.allowed_commands(commands), siblings=siblings,
-                                     feedback=feedback)
+                                     feedback=feedback, conditions=conditions)
 
         found = repro_test.write(self.calls, build, rules, expects_pass=expects_pass,
                                  defect=self.route.task_type in DEFECT_TYPES and not self.ctx.issue.is_manual,

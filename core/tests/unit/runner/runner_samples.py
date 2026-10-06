@@ -18,6 +18,7 @@ def task(workdir=Path("/ws/worktrees/readonly"), **changes):
         instructions=Instructions("判断以下主张是否成立"), workdir=workdir,
         output_schema="runner/roles/claim-verifier.schema.json", access=Access.READ_ONLY,
         allowed_commands=("git log", "git show"), limits=Limits(max_turns=40, max_duration_ms=600000),
+        route="triage.claim-verifier",
     )
     return replace(base, **changes)
 

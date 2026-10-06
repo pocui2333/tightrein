@@ -52,7 +52,7 @@
 | `tightrein project worktree init` | 申请创建只读 worktree |
 | `tightrein project worktree sync` | 把只读 worktree 切换到 commit(缺省为 staging 当前部署的 commit) |
 | `tightrein project worktree list` | 列出 worktree |
-| `tightrein project config` | 生效的配置值与来源层 |
+| `tightrein project config` | 生效的配置值与来源层；`--key <键>` 只看该键并列出各层的值，`--routes` 列出每个调用点用的模型别名、工具、模型与生效的路由行 |
 | `tightrein project schedule` | launchd 定时任务 |
 | `tightrein project schedule install` | 生成并加载定时任务 |
 | `tightrein project schedule uninstall` | 卸载并删除定时任务 |

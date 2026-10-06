@@ -70,7 +70,7 @@ def test_a_redo_that_passes_stops_the_loop(tmp_path):
                             complexity=Complexity.HIGH, knowledge="-", extra=["P-0002 说入口有校验"])
     assert found.passed and found.outputs["verdict"] == "confirmed" and len(runner.tasks) == 2
     task = runner.tasks[0]
-    assert (task.capability, task.limits) == ("strong", Limits(max_turns=100, max_duration_ms=2400000))
+    assert (task.route, task.limits) == ("triage.claim-verifier", Limits(max_turns=100, max_duration_ms=2400000))
     assert "- P-0002 说入口有校验" in task.instructions.prompt
     assert "## 验收标准\n\n交付的结果须满足下面的验收标准：" in task.instructions.prompt
     assert "\n- 做过反证检查" in task.instructions.prompt
@@ -103,13 +103,13 @@ def test_static_problems_use_the_collected_verification_first(tmp_path):
     assert found.passed and runner.roles() == ["claim-verifier"]
 
 
-def test_the_refuter_gets_the_same_claim_and_its_own_tool(tmp_path):
-    world = make_triage_world(tmp_path, stages={"triage": {"tool": "claude", "refuter": {"tool": "codex"}}})
+def test_the_refuter_gets_the_same_claim_and_its_own_route(tmp_path):
+    world = make_triage_world(tmp_path)
     runner = FakeRunner({"refuter": [verification()]})
     found = evidence.gather(calls(world, runner), "P-0001", CLAIM, role="refuter", complexity=Complexity.MEDIUM,
                             knowledge="-")
     task = runner.tasks[0]
-    assert found.passed and (task.role, task.tool, task.capability) == ("refuter", "codex", "strong")
+    assert found.passed and (task.role, task.route) == ("refuter", "triage.refuter")
     assert task.instructions.prompt.startswith("# refuter：独立的证伪复核")
     assert CLAIM.render() in task.instructions.prompt and '"verdict"' not in task.instructions.prompt
 

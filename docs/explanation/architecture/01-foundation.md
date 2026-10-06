@@ -308,7 +308,7 @@ contracts/
         judge.schema.json              模型评审的逐项结果
         lesson-writer.schema.json
         rule-writer.schema.json        缺陷变规则：Semgrep 规则或表达不了的原因
-        improvement-writer.schema.json 改进建议：prompt 类补丁或 model 类能力档
+        improvement-writer.schema.json 改进建议：prompt 类补丁或 model 类模型别名
       tasks/                           核心发起的非角色执行器任务的输出 schema
         triage-dedup.schema.json       查重
     data/                              信号、问题、复现检查等数据文件
@@ -507,28 +507,28 @@ config/
   defaults.yaml     核心默认值：全部可调键及其默认值，每个键带一行注释说明含义与取值范围
   layers.py         四层配置的读取、按键合并与来源记录
   project.py        读取与校验 project.yaml，含 stack 与 extensions 段；扩展点的解析由能力层的 extensions 完成(10 篇 1.4)
-  user.py           读取本机用户配置，只接受 5.3 所列的个人键与 agents、network 段
+  user.py           读取本机用户配置，只接受 5.3 所列的个人键与 models、routes、network 段
   network.py        本机用户配置的网络代理到子进程环境与 HTTP 代理表的翻译(5.3)
-  capabilities.py   模型档到具体工具、模型与推理强度的映射，模型价格；角色到模型档的解析
+  routes.py         模型别名与路由表：调用点清单(CALL_POINTS)与条件、按条件与 default 解析工具、模型与推理强度，模型价格，旧键的提示
   show.py           `tightrein project config` 的输出
   secrets.py        从 macOS 钥匙串按条目名读取测试账号密码
 ```
 
-**配置分层**：所有可调的值(阈值、权重、系数、超时、轮询间隔、轮数与预算上限、保留期、输出截断长度、风险判定规则、评审触发条件、各角色的模型档与推理强度)都写在配置文件中，由人直接编辑，代码中不写死。配置分四层，后一层按键覆盖前一层：
+**配置分层**：所有可调的值(阈值、权重、系数、超时、轮询间隔、轮数与预算上限、保留期、输出截断长度、风险判定规则、评审触发条件、各调用点的模型与推理强度)都写在配置文件中，由人直接编辑，代码中不写死。配置分四层，后一层按键覆盖前一层：
 
 | 层 | 文件 | 放什么 | 校验 |
 |---|---|---|---|
 | 1. 核心默认值 | `core/tightrein/config/defaults.yaml` | 全部键与默认值；每个键一行注释写明含义与取值范围；与项目、技术栈都无关的值(例如风险判定规则的路径与模式为空) | `config/project-config.schema.json`；启动时校验，出错即退出 |
 | 2. 技术栈默认值 | `extensions/stacks/<技术栈>/defaults.yaml` | 同一技术栈通用的取值，例如 `aspnetcore` 的风险判定规则、项目检查命令的缺省形式 | 同上，且只能出现第 1 层已有的键 |
 | 3. 项目配置 | 工作区 `project.yaml` | 项目特有的取值与必填项(5.2) | 同上 |
-| 4. 本机用户配置 | `~/.config/tightrein/config.yaml` | 只允许 5.3 所列的个人键，以及 agent 工具与模型的个人缺省(`agents` 段)、网络代理(`network` 段) | `config/user-config.schema.json`；出现其他键时报出键名并退出 |
+| 4. 本机用户配置 | `~/.config/tightrein/config.yaml` | 只允许 5.3 所列的个人键，以及选模型的个人缺省(`models`、`routes`)、网络代理(`network` 段) | `config/user-config.schema.json`；出现其他键时报出键名并退出 |
 
-- **用户 agent 层的位置**：`agents` 段(`defaultTool`、`stages` 的工具与模型部分(含角色与任务的 `tool`、`model`、`capability`)、`capabilities`、`roleCapabilities`)是个人缺省，写一次所有工作区生效，项目需要时可以覆盖，所以它排在第 2 层与第 3 层之间：core → stack → user(agents) → project → user(其余个人键)。两类用户键不重名，各键仍按「后一层覆盖前一层」取值；`notify.method` 等个人键仍覆盖项目。
+- **用户路由层的位置**：`models` 与 `routes`(选模型的两张表，5.2)是个人缺省，写一次所有工作区生效，项目需要时可以按项覆盖，所以它排在第 2 层与第 3 层之间：core → stack → user(models、routes) → project → user(其余个人键)。两类用户键不重名，各键仍按「后一层覆盖前一层」取值；`notify.method` 等个人键仍覆盖项目。
 
-- **合并规则**：映射按键递归合并；列表与标量整体替换，不拼接。`stages.<环节>`(及其中的 `refuter`、`session`、`review.*`、`screenshotReview`、`roles|tasks.<名称>`)中上层改写了 `tool` 而没有写 `model` 时，下层的 `model` 属于原工具，不再沿用；`capabilities` 按档、工具逐项合并，同一档同一工具的一项由上层整体替换。需要在上一层的列表上追加的键，在键名后加 `+`(例如 `paths+`)，表示追加到下层的列表后面：按完整键名读取列表时(`ProjectConfig.get`)，取到某层的值后依次拼上该层与更上层 `<键>+` 的列表；技术栈层的键检查按去掉 `+` 的键名，两个技术栈各自追加不算冲突。schema 目前只为 `stages.fix.roles.frontend-designer.paths+` 开放这一写法，`review.riskRules` 整段读取，暂不支持。`credentialFiles` 只允许追加：各层的值依次拼接，上层不能去掉核心的缺省模式。
+- **合并规则**：映射按键递归合并；列表与标量整体替换，不拼接。`models` 按别名、`routes` 按路由键逐项合并，上层的同一项整体替换下层的。需要在上一层的列表上追加的键，在键名后加 `+`(例如 `paths+`)，表示追加到下层的列表后面：按完整键名读取列表时(`ProjectConfig.get`)，取到某层的值后依次拼上该层与更上层 `<键>+` 的列表；技术栈层的键检查按去掉 `+` 的键名，两个技术栈各自追加不算冲突。schema 目前只为 `stages.fix.roles.frontend-designer.paths+` 开放这一写法，`review.riskRules` 整段读取，暂不支持。`credentialFiles` 只允许追加：各层的值依次拼接，上层不能去掉核心的缺省模式。
 - **技术栈层的顺序**：按 `project.yaml` 中 `stacks` 的顺序依次合并；两个技术栈给同一个标量键赋不同的值时报错，由项目配置显式给出。
 - **来源记录**：`layers.py` 为每个生效的键记录来源层(`core`、`stack:<名称>`、`project`、`user`)与文件路径，供 `project config` 与报错信息使用。
-- **命令**：`tightrein project config [--key <键>]` 列出每个键的生效值与来源层；`--key` 只显示该键及其下级键，并列出各层中该键的值，便于看清是哪一层覆盖了哪一层。`agents` 段以生效键名显示(例如 `stages.collect.tool`、`capabilities.light.claude.model`、`defaultTool`)，来源为 `user`，项目写了同一键时来源为 `project`；`network.proxy` 中的密码显示为 `[已脱敏]`；`tools.semgrep.path` 同时作为 `runtime.tools.semgrep` 的 `user` 层值显示。命令只读，不写任何文件。
+- **命令**：`tightrein project config [--key <键>]` 列出每个键的生效值与来源层；`--key` 只显示该键及其下级键，并列出各层中该键的值，便于看清是哪一层覆盖了哪一层。`models`、`routes` 以生效键名显示(例如 `models.opus.model`、`routes.fix.planner`)，来源为 `user`，项目写了同一键时来源为 `project`；`--routes` 列出每个调用点(及写了路由的条件变体)解析出的别名、工具、模型、推理强度与生效的路由行；`network.proxy` 中的密码显示为 `[已脱敏]`；`tools.semgrep.path` 同时作为 `runtime.tools.semgrep` 的 `user` 层值显示。命令只读，不写任何文件。
 - **不是可调项的值**：单位换算、协议与外部工具规定的值(退出码、HTTP 状态码、编号的长度、schema 版本号)与状态机的规则，留在代码中，不进入配置。
 
 ### 5.2 project.yaml 的结构
@@ -572,21 +572,16 @@ config/
 | `git` | `inference.sampleSize`、`inference.minSamples`、`inference.minRatio` | 从历史推断约定的样本数与统一比例(只给结果，接入时确认) |
 | `git` | `splitThreshold` | 拆分阈值 |
 | `git` | `worktreeLinks` | 建修复 worktree 后从项目主工作区建立符号链接的路径 |
-| `defaultTool` | — | 环节设置中没有 `tool` 时使用的工具；核心不给缺省工具，通常写在本机用户配置的 `agents.defaultTool`(5.3)，各层都没有时运行到该环节报出 `stages.<环节>.tool` 与写法示例 |
-| `stages.<环节>` | `tool`、`model`、`capability` | 该环节使用的工具、模型或模型档；工具与模型部分(含 `refuter`、`session`、`review.*`、`screenshotReview`)也可以写在本机用户配置的 `agents.stages`，这里写了时覆盖 |
-| `stages.<环节>` | `roles.<角色>.{tool, model, capability}`、`tasks.<任务>.{tool, model, capability}` | 该环节中某个角色或任务单独使用的工具、模型或模型档(也可写在本机用户配置的 `agents.stages`)，填进执行器任务后优先于环节设置与命令行的 `--runner`、`--model`；只写 `model` 时工具为环节的工具；没写档时取 `roleCapabilities`。写了 `tool` 时在读取配置时检查所用档在该工具上有模型。证伪复核、评审与截图评审仍用下面的专门设置，`stages.triage.refuter` 叠加在 `roles.refuter` 之上 |
+| `models`(也可写在本机用户配置) | `<别名>.tool`(必填)、`<别名>.model`、`<别名>.effort`、`<别名>.inputUsdPerMTok`、`<别名>.outputUsdPerMTok` | 模型别名：工具、模型(省略时用工具自己的缺省模型)、推理强度与每百万输入、输出 token 的价格(两项同时写或都不写)，工具不返回费用时据此估算；同一工具的同一模型在不同别名中价格不同时报错；工具不支持推理强度时忽略 `effort` |
+| `routes`(也可写在本机用户配置) | `default`、`<调用点>`、`<调用点>.<条件>` | 调用点 → 别名。调用点为 `config/routes.py` 的 `CALL_POINTS` 中的固定清单，条件为 `high-risk`、`frontend`、`large`(只用在声明了该条件的调用点上)；带条件的调用依次取 `<调用点>.<条件>`、`<调用点>`、`default`。键不在清单中、别名不存在时报出完整键名；`triage.refuter` 须与 `triage.claim-verifier`、`fix.review.deep` 须与 `fix.executor` 及其条件变体解析为不同的工具或模型。核心不给别名与路由，都没有时运行到该调用点报出调用点名。命令行的 `--runner` 改写工具(工具不同时不沿用别名的模型与推理强度)，`--model` 改写模型。旧的 `defaultTool`、`capabilities`、`roleCapabilities`、`agents`、`evaluation.judge` 与 `stages` 中的 `tool`、`model`、`capability`、`refuter`、`session` 已删去，出现时报出该键与新写法 |
 | `stages.<环节>` | `limits.maxTurns`、`limits.maxDurationMs`、`limits.maxCostUsd` | 执行器任务的缺省上限 |
 | `stages.<环节>` | `budgetPerDay` | 每天的费用上限 |
 | `stages.triage` | `roles.<角色>.limits.<复杂度>`、`tasks.<任务>.limits` | 各角色按复杂度的上限、查重等任务的上限 |
-| `stages.triage` | `refuter` | 证伪复核的工具、模型或模型档(没有工具时沿用环节的工具，没有模型与档时取 `roleCapabilities.refuter`)，须与取证角色 `claim-verifier` 所用的工具或模型不同 |
-| `stages.fix` | `session` | 修复会话所用的工具 |
 | `stages.fix` | `roles.<角色>.limits.<复杂度>` | 各修复角色按复杂度的上限 |
 | `stages.fix` | `roles.frontend-designer.paths` | 前端文件的路径模式(写法同 `protectedPaths`)；修复计划预估改动的文件中有匹配的文件时运行 `frontend-designer`(07 篇 4.6)。核心缺省为常见前端扩展名与目录，技术栈与项目写 `paths` 整体覆盖、写 `paths+` 追加 |
-| `stages.fix` | `review.light`、`review.deep`(各含 `tool`、`model`、`capability`、`limits`) | 轻量评审与深度评审的工具、模型或模型档与上限；深度评审须与 `fix-executor` 所用的工具或模型不同。两项独立性按合并后的生效值在读取配置时检查：只用一种工具时给生成者与评审者不同的模型档，用两种工具时评审可写另一种工具 |
-| `stages.verify` | `screenshotReview` | 截图评审的工具、模型或模型档 |
+| `stages.fix` | `review.light.limits`、`review.deep.limits` | 轻量评审与深度评审的上限(模型按调用点 `fix.review.light`、`fix.review.deep` 的路由) |
+| `stages.verify` | `screenshotReview.limits` | 截图评审的上限(模型按调用点 `verify.screenshot-review` 的路由) |
 | `stages.fix` | `budget.low`、`budget.high` | 低复杂度与中高复杂度修复的预算(13.3) |
-| `capabilities`(也可写在 `agents.capabilities`) | `<档>.<工具>.model`、`<档>.<工具>.effort`、`<档>.<工具>.inputUsdPerMTok`、`<档>.<工具>.outputUsdPerMTok` | 模型档(默认 `light`、`standard`、`strong`)到各工具具体模型与推理强度的映射，以及每百万输入、输出 token 的价格，工具不返回费用时据此估算；工具不支持推理强度时忽略 `effort` |
-| `roleCapabilities`(也可写在 `agents.roleCapabilities`) | `<角色或任务>` | 每个角色或任务默认使用的模型档，默认值见 design 9.6 |
 | `review` | `riskRules.<类别>.paths`、`riskRules.<类别>.patterns` | 风险判定规则，类别为 `schema`、`authz`、`contract`；核心默认为空，技术栈与项目逐层补充(design 5.8) |
 | `review` | `deepTriggers.categories`、`deepTriggers.impactKinds`、`deepTriggers.flags` | 参与判定的风险类别(默认三类)、触发深度评审的分诊影响类别(默认权限、数据归属)、触发深度评审的分诊与计划标记(默认数据结构、公共契约) |
 | `runtime` | `runner.*`、`extensions.*`、`vcs.*`、`network.*`(换路重试判断路线的主机与网络类错误的模式，02 篇 4.8)、`store.*`、`observability.*`、`keychain.*`、`guards.*`、`aggregate.*`、`probes.*`、`retrieval.*`、`evaluation.*` | 工程参数：各组件的超时、轮询间隔、宽限时间、输出截断长度、重试间隔、日志轮转大小与份数；每个键的含义见 `defaults.yaml` 的注释 |
@@ -605,7 +600,7 @@ config/
 | `schedule` | `onDeploy` | 检测到新部署后浅跑的探针与档位 |
 | `schedule` | `tasks[]`(`name`、`days`、`at`、`command`) | 定时任务；`days` 取 `workdays`、`daily`、`firstWorkdayOfWeek` |
 | `schedule` | `weekly`、`nonWorkingDays` | 周任务的时刻、非工作日 |
-| `evaluation` | `repeats`(3，不小于 3)、`judge.runner`(缺省为 `defaultTool`)、`judge.capability`(默认为空，即工具自己的缺省模型)、`parallelism`(1)、`budgetUsd`(10) | 评测的运行次数、模型评审的工具与模型档、并发数、单次评测的费用上限 |
+| `evaluation` | `repeats`(3，不小于 3)、`parallelism`(1)、`budgetUsd`(10) | 评测的运行次数、并发数、单次评测的费用上限；模型评审按调用点 `eval.judge` 的路由 |
 | `thresholds` | 见下表 | 各项阈值 |
 
 **thresholds**
@@ -648,14 +643,12 @@ config/
 | `notify.method` | 本机通知方式：`macos`、`none` |
 | `tools.<工具>.path` | 各 agent 工具的可执行文件路径；`tools.semgrep.path` 为 Semgrep 的命令，覆盖 `runtime.tools.semgrep`，含 `/` 的相对路径相对本工具仓库根目录解析，例如 `local/semgrep/bin/semgrep` |
 | `install.targets.<工具>.path`、`install.targets.<工具>.enabled` | skill 的安装位置与是否安装到该工具 |
-| `agents.defaultTool` | 缺省工具：只用一种产品时写它即可，用两种时另一种写在 `agents.stages` 的相应位置 |
-| `agents.stages.<环节>` 的 `tool`、`model`、`capability`，及 `refuter`、`session`、`review.light`、`review.deep`、`screenshotReview`、`roles.<角色>`、`tasks.<任务>` 中的同名键 | 各环节、证伪复核、修复会话、轻量与深度评审、截图评审、各角色与任务所用的工具与模型或模型档；上限、预算、路径模式属于项目，不在这里 |
-| `agents.capabilities.<档>.<工具>` | 各模型档在各工具上的 `model`、`effort` 与价格，结构同 5.2；同一模型在各档中的价格须一致 |
-| `agents.roleCapabilities.<角色或任务>` | 角色与任务的模型档(例如只用一种工具时把 `refuter` 设为与 `claim-verifier` 不同的档) |
+| `models.<别名>` | 模型别名，结构同 5.2；同一模型在各别名中的价格须一致 |
+| `routes.<调用点>` | 调用点 → 别名，键同 5.2(`default`、调用点与条件变体)；上限、预算、路径模式属于项目，不在这里 |
 | `network.proxy` | 代理地址，例如 `http://127.0.0.1:8118`；带用户名或密码时按凭证处理(登记到脱敏器，agent 子进程的环境不含它) |
 | `network.noProxy` | 直连的主机或域名后缀列表，例如 GitHub 的各域名 |
 
-`agents` 段的键在合并时位于技术栈层与 `project.yaml` 之间(5.1)；各工具都由核心的适配器(02 篇)以子进程调用。
+`models`、`routes` 在合并时位于技术栈层与 `project.yaml` 之间(5.1)，旧的 `agents` 段出现时报出新写法；各工具都由核心的适配器(02 篇)以子进程调用。
 
 **网络代理**：配置了 `network.proxy` 时，组装根生成一次子进程环境：`http_proxy`、`https_proxy`、`HTTP_PROXY`、`HTTPS_PROXY` 为代理地址，`no_proxy`、`NO_PROXY` 为 `network.noProxy` 加本机回环地址(`localhost`、`127.0.0.1`、`::1`，本机服务总是直连)；git、gh、agent 工具、扩展、Schemathesis、Playwright、Semgrep、本机服务都使用这份环境，核心自己的 HTTP 请求(登录、重放、健康检查、local-run 就绪检查、第三方 skill 下载)按同一份环境的代理表发送并遵守 `noProxy`。没有配置时沿用当前进程环境中的代理变量。
 

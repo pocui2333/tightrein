@@ -2,7 +2,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-from tightrein.config.capabilities import Capabilities
+from tightrein.config.routes import Routes
 from tightrein.domain.clock import FixedClock
 from tightrein.domain.enums import Stage
 from tightrein.runner import limits
@@ -14,7 +14,7 @@ from tightrein.store.migrations.runner import open_database
 from tightrein.store.repos import budget_usage
 
 TOKYO = timezone(timedelta(hours=9))
-CAPABILITIES = Capabilities({"deep": {"codex": {"model": "gpt-5", "inputUsdPerMTok": 1.25, "outputUsdPerMTok": 10}}})
+CAPABILITIES = Routes({"gpt": {"tool": "codex", "model": "gpt-5", "inputUsdPerMTok": 1.25, "outputUsdPerMTok": 10}})
 
 
 @pytest.fixture

@@ -129,18 +129,18 @@
 
 ## 9.6 各环节选用工具与模型
 
-模型按角色分为三档。每一档对应各工具的具体模型与推理强度，写在配置的 `capabilities.<档>.<工具>` 中(`model`、`effort`)；每个角色默认用哪一档写在 `roleCapabilities.<角色>` 中，某个环节需要不同档位时用 `stages.<环节>.roles.<角色>.capability` 覆盖。下表为核心默认值；档对应的模型与各环节用哪个工具是个人偏好，写在本机用户配置的 `agents` 段，项目需要时在 `project.yaml` 中覆盖(architecture/01 5.1、5.3)。
+选模型只有两张表(architecture/01 5.2、5.3)：`models` 定义模型别名(工具、模型、推理强度与价格)，`routes` 把每个调用点路由到一个别名，没写的调用点用 `default`。调用点是固定的清单，每个对应一处真实的模型调用(`core/tightrein/config/routes.py` 的 `CALL_POINTS`，例如 `triage.claim-verifier`、`fix.planner`、`fix.review.deep`)；条件只有 `high-risk`、`frontend`、`large` 三种，写成后缀(例如 `fix.planner.high-risk`)，按条件、调用点、`default` 的次序查找。两张表是个人偏好，写在本机用户配置的顶层，项目需要时在 `project.yaml` 中按项覆盖；核心不给任何别名与路由。
 
-| 档 | 模型与推理强度 | 角色与任务 |
+| 任务 | 建议的模型 | 调用点 |
 |---|---|---|
-| 轻量档 `light` | 小模型，低推理强度 | 修复勘察(`fix-scout`)；静态巡检的初筛(`static-review`)；分诊查重；知识写入去重判断(`knowledge-curator`) |
-| 标准档 `standard` | 中等模型，默认推理强度 | 修复的轻量评审与截图评审；`lesson-writer`；评测的模型评审 |
-| 强档 `strong` | 强模型，高推理强度 | 分诊取证(`claim-verifier`、`refuter`，含静态巡检中的取证)；修复计划、前端设计、复现测试与实施(`fix-planner`、`frontend-designer`、`fix-executor`、`repro-writer`)；静态巡检的基线审查(`baseline-review`，一次性、影响大)；修复的深度评审；缺陷变规则(`rule-writer`)与改进建议(`improvement-writer`) |
+| 输入范围明确、判断简单 | 小模型或低推理强度 | `fix.scout`、`triage.dedup`、`learn.knowledge-curator`、`collect.variant-scan` |
+| 一般 | 中等模型，默认推理强度 | `fix.review.light`、`verify.screenshot-review`、`learn.lesson-writer`、`eval.judge` |
+| 决定性 | 强模型，高推理强度 | 取证(`triage.claim-verifier`、`triage.refuter`、`collect.claim-verifier`)；修复计划、前端设计、复现测试与实施(`fix.planner`、`fix.frontend-designer`、`fix.executor`、`fix.repro-writer`)；静态巡检的审查(`collect.static-review`、`collect.baseline-review`)；`fix.review.deep`；`learn.rule-writer`、`learn.improvement-writer` |
 
-- 只有取证、修复计划与实施、基线审查、深度评审、写规则与改进建议需要强档；其余任务的输入范围明确、判断简单，用轻量档或标准档，token 与耗时更低。
-- 证伪复核与深度评审使用与生成者不同的工具或模型，减少模型评审偏好自己生成内容的偏差(12.5)；配置校验时按合并后的生效值检查这一点，相同时报出键名。只用一种工具时，用不同的模型档区分生成者与评审者(例如证伪复核用标准档)；用两种工具时，评审可用另一种工具。
-- 工具按环节指定(`stages.<环节>.tool`)，没有指定时用 `defaultTool`，任选已接入的工具；核心不给缺省工具。个别角色或任务可以单独指定工具与模型(`stages.<环节>.roles|tasks.<名称>.tool`、`model`)，优先于环节的工具，例如主力用 Claude Code，前端设计、勘察、查重交给 agy；证伪复核、评审与截图评审仍用各自的设置。各工具都由核心的适配器以子进程调用，一种产品的会话不直接调用另一种产品。
-- 评测运行器(architecture/03 第 2 章)可以在同一评测集上比较不同工具、模型与档位的得分、耗时与费用，据此调整各角色的档位。
+- 只有取证、修复计划与实施、静态审查、深度评审、写规则与改进建议需要强模型；其余任务的输入范围明确、判断简单，用小模型，token 与耗时更低。高风险或大任务的计划可以单独路由到更强的模型(`fix.planner.high-risk`、`fix.planner.large`)。
+- 证伪复核与深度评审使用与生成者不同的工具或模型，减少模型评审偏好自己生成内容的偏差(12.5)；配置校验时按解析后的工具与模型检查(`triage.refuter` 对 `triage.claim-verifier`，`fix.review.deep` 对 `fix.executor` 及其条件变体)，相同时报出要改的 `routes.` 行。只用一种工具时路由到不同的模型或推理强度不同的别名不够，须是不同的模型；用两种工具时评审可路由到另一种工具。
+- 各调用点可以路由到任一已接入的工具，例如主力用 Claude Code，前端设计、勘察、查重交给 agy。各工具都由核心的适配器以子进程调用，一种产品的会话不直接调用另一种产品。
+- 评测运行器(architecture/03 第 2 章)可以在同一评测集上比较不同工具与模型的得分、耗时与费用，据此调整路由。
 
 分诊与修复的各个角色都以本工具 skill 中的说明文件存在，经执行器调用，与所用工具无关。它们由项目原有的 `auto-probe` 与 `auto-dev` 拆分重组而来，见 9.10。
 

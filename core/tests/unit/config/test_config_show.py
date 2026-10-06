@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from tightrein.config import project, show
+from tightrein.config.routes import CALL_POINTS
 from tightrein.config.user import UserConfig
 
 
@@ -36,26 +37,38 @@ def test_user_paths_are_shown_as_text(make_config, tmp_path):
     assert shown == {"tools.claude.path": "/opt/claude"}
 
 
-def test_user_agent_keys_sit_below_the_project_and_network_is_shown(make_config, tmp_path):
-    agents = {"defaultTool": "claude", "stages": {"triage": {"tool": "codex"}, "collect": {"tool": "claude"}},
-              "capabilities": {"light": {"claude": {"model": "haiku", "inputUsdPerMTok": 1, "outputUsdPerMTok": 5}},
-                               "standard": {"claude": {"model": "sonnet", "inputUsdPerMTok": 3, "outputUsdPerMTok": 15}}}}
+def test_user_routing_keys_sit_below_the_project_and_network_is_shown(make_config, tmp_path):
+    routing = {"models": {"haiku": {"tool": "claude", "model": "haiku", "inputUsdPerMTok": 1, "outputUsdPerMTok": 5}},
+               "routes": {"triage.dedup": "haiku", "collect.static-review": "haiku"}}
     data = make_config().data
-    data = {**data, "stages": {**data["stages"], "triage": {"tool": "claude",
-                                                            "refuter": data["stages"]["triage"]["refuter"]}},
-            "capabilities": {tier: models for tier, models in data["capabilities"].items() if tier != "light"}}
-    config = project.parse(data, tmp_path / "project.yaml", agents=agents)
-    user = UserConfig(tmp_path / "config.yaml", agents=agents, network_proxy="http://me:s3cret@127.0.0.1:8118",
+    config = project.parse(data, tmp_path / "project.yaml", routing=routing)
+    user = UserConfig(tmp_path / "config.yaml", routing=routing, network_proxy="http://me:s3cret@127.0.0.1:8118",
                       no_proxy=("github.com",), tools={"semgrep": Path("/opt/semgrep")})
     shown = {item.key: item for item in show.show(config, user)}
-    assert (shown["defaultTool"].value, shown["defaultTool"].source) == ("claude", "user")
-    assert (shown["stages.collect.tool"].value, shown["stages.collect.tool"].source) == ("claude", "user")
-    assert (shown["stages.triage.tool"].value, shown["stages.triage.tool"].source) == ("claude", "project")
-    assert shown["capabilities.light.claude.model"].source == "user"
+    assert (shown["routes.collect.static-review"].value, shown["routes.collect.static-review"].source) == (
+        "haiku", "user")
+    assert (shown["routes.triage.dedup"].value, shown["routes.triage.dedup"].source) == ("claude-haiku", "project")
+    assert shown["models.haiku.model"].source == "user"
     assert shown["network.proxy"].value == "http://me:[已脱敏]@127.0.0.1:8118"
     assert (shown["network.noProxy"].value, shown["network.noProxy"].source) == (["github.com"], "user")
     semgrep = show.show(config, user, "runtime.tools.semgrep")[0]
     assert (semgrep.value, semgrep.source) == ("/opt/semgrep", "user")
     assert semgrep.layers == {"core": "semgrep", "user": "/opt/semgrep"}
-    triage = show.show(config, user, "stages.triage.tool")[0]
-    assert triage.layers == {"user": "codex", "project": "claude"}
+    dedup = show.show(config, user, "routes.triage.dedup")[0]
+    assert dedup.layers == {"user": "haiku", "project": "claude-haiku"}
+
+
+def test_routes_list_every_call_point_with_its_source(make_config, tmp_path):
+    routing = {"models": {"haiku": {"tool": "claude", "model": "haiku", "effort": "low"}},
+               "routes": {"default": "haiku", "fix.planner.high-risk": "haiku"}}
+    config = project.parse(make_config().data, tmp_path / "project.yaml", routing=routing)
+    rows = {row.name: row for row in show.routes(config)}
+    assert set(rows) == {*CALL_POINTS, "fix.planner.high-risk"}
+    assert (rows["fix.planner"].key, rows["fix.planner"].alias, rows["fix.planner"].source) == (
+        "fix.planner", "gpt-5", "project.yaml")
+    assert (rows["fix.planner.high-risk"].alias, rows["fix.planner.high-risk"].source) == ("haiku", "用户配置")
+    assert (rows["learn.rule-writer"].key, rows["learn.rule-writer"].effort) == ("default", "low")
+    assert rows["learn.rule-writer"].to_dict()["route"] == "routes.default"
+    bare = {row.name: row for row in show.routes(project.parse(
+        {"project": make_config().data["project"]}, tmp_path / "project.yaml"))}
+    assert bare["fix.executor"].key is None and bare["fix.executor"].alias is None

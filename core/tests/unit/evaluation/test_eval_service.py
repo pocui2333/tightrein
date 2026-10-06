@@ -5,7 +5,7 @@ import pytest
 from eval_world import BEHAVIOR_FILE, TRIAGE_OUTPUTS, handoff
 from replay_support import record, replay_runner
 
-from tightrein.config.capabilities import CapabilityError
+from tightrein.config.routes import RouteError
 from tightrein.contracts import validate
 from tightrein.domain.enums import EvalVerdict, ScoreMethod, Stage
 from tightrein.evaluation import rubric, service
@@ -90,15 +90,12 @@ def scores(world):
 def test_settings_take_the_judge_from_the_config_or_the_defaults(make_config):
     configured = EvaluationSettings.from_config(make_config())
     assert (configured.budget_usd, configured.judge_tool, configured.judge_model) == (20, "codex", "gpt-5")
-    tiers = {tier: {"claude": {"model": f"claude-{tier}", "inputUsdPerMTok": 3, "outputUsdPerMTok": 15}}
-             for tier in ("standard", "strong")}
-    single_tool = make_config(evaluation=None, defaultTool="claude", capabilities=tiers, stages=None,
-                              roleCapabilities={"refuter": "standard", "fix-executor": "standard"})
-    defaults = EvaluationSettings.from_config(single_tool)
+    routes = {"default": "claude", "triage.refuter": "gpt-5", "fix.review.deep": "gpt-5"}
+    defaults = EvaluationSettings.from_config(make_config(evaluation=None, routes=routes))
     assert (defaults.budget_usd, defaults.judge_tool, defaults.judge_model) == (10, "claude", None)
-    with pytest.raises(CapabilityError) as caught:
-        EvaluationSettings.from_config(make_config(evaluation=None))
-    assert caught.value.key == "evaluation.judge.tool"
+    with pytest.raises(RouteError) as caught:
+        EvaluationSettings.from_config(make_config(evaluation=None, routes={"triage.refuter": "gpt-5"}))
+    assert caught.value.key == "routes.eval.judge"
 
 
 def test_the_same_version_twice_has_no_difference(bench, world):

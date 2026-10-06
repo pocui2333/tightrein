@@ -230,13 +230,13 @@ def test_prompts_carry_the_rules_and_the_deep_review_hides_the_executor(tmp_path
     assert "[fix.acceptance]" not in planner and "评分表" not in planner
     assert "hypothesis 必填" in planner and "13. **根因假说**" in planner
     review = fix_reviewer.task(calls.prompt, ctx, fix_plan(ctx), "+x", [], ReviewMode.DEEP, 1)
-    assert (review.role, review.capability, review.access.value) == ("fix-reviewer-deep", "strong", "read-only")
+    assert (review.role, review.route, review.access.value) == ("fix-reviewer-deep", "fix.review.deep", "read-only")
     # 深度评审盲审：看不到计划(含根因假说)与 Issue 正文，只有验收标准与 diff
     deep = review.instructions.prompt
     assert "(盲审)" in deep and "## 已确认的修复计划" not in deep and "Get 只按编号查询" not in deep
     assert ctx.issue.title not in deep and "deviations" not in deep
     light = fix_reviewer.task(calls.prompt, ctx, fix_plan(ctx), "+x", [], ReviewMode.LIGHT, 1)
-    assert light.capability == "standard" and "## 已确认的修复计划" in light.instructions.prompt
+    assert light.route == "fix.review.light" and "## 已确认的修复计划" in light.instructions.prompt
 
 
 VIEW_PATH = "web/src/views/OrderList.vue"
@@ -257,13 +257,12 @@ def frontend_plan(ctx):
 def test_plans_with_frontend_files_get_a_frontend_design(tmp_path):
     from tightrein.pipeline.fix.prompts import fix_executor
 
-    world, ctx, calls = setup(tmp_path, stages={"fix": {"roles": {"frontend-designer": {"tool": "agy",
-                                                                                     "model": "flash-high"}}}})
+    world, ctx, calls = setup(tmp_path)
     world.runner.add("fix-scout", scouting()).add("fix-planner", frontend_plan(ctx)).add("frontend-designer", DESIGN)
     proposal = plan.propose(calls, ctx, settings(world))
     assert world.runner.roles() == ["fix-scout", "fix-planner", "frontend-designer"]
     designer = world.runner.tasks[2]
-    assert (designer.tool, designer.model, designer.readonly) == ("agy", "flash-high", True)
+    assert (designer.route, designer.conditions, designer.readonly) == ("fix.frontend-designer", (), True)
     assert f"- `{VIEW_PATH}`" in designer.instructions.prompt and SERVICE_PATH not in designer.instructions.prompt.split(
         "## 计划中的前端文件")[1].split("##")[0]
     assert proposal.plan["frontendDesign"] == DESIGN
@@ -291,3 +290,23 @@ def test_backend_only_plans_skip_the_designer_and_failures_do_not_block(tmp_path
     proposal = plan.propose(calls, ctx, settings(world))
     assert proposal.plan is not None and "frontendDesign" not in proposal.plan
     assert proposal.frontend["error"] == "frontend-designer：执行器返回 failed(fake-error)"
+
+
+def test_conditions_follow_the_risk_lane_and_frontend_root_causes(tmp_path):
+    from tightrein.pipeline.fix.prompts import fix_executor
+
+    world, ctx, calls = setup(tmp_path, stages={"fix": {"roles": {"frontend-designer": {"paths": ["src/Services/"]}}}})
+    world.runner.add("fix-scout", scouting()).add("fix-planner", fix_plan(ctx)).add("frontend-designer", DESIGN)
+    plan.propose(calls, ctx, settings(world, large=True))
+    scout, planner, _ = world.runner.tasks
+    assert (scout.route, scout.conditions) == ("fix.scout", ("frontend",))
+    assert (planner.route, planner.conditions) == ("fix.planner", ("large",))
+    risky = {**fix_plan(ctx), "risk": {"level": FixRiskLevel.HIGH.value, "categories": [], "hits": []}}
+    executor = fix_executor.task(calls.prompt, ctx, risky, 1, check_commands=(), approved_protected=(), budget=None)
+    assert (executor.route, executor.conditions) == ("fix.executor", ("high-risk",))
+    plain = fix_executor.task(calls.prompt, ctx, fix_plan(ctx), 1, check_commands=(), approved_protected=(),
+                              budget=None)
+    assert plain.conditions == ()
+    from tightrein.domain.fix import FixRisk
+    from tightrein.pipeline.fix.prompts.fix_planner import PlanInputs, conditions
+    assert conditions(PlanInputs(None, FixRisk(FixRiskLevel.HIGH), (), 1, 1, large=True)) == ("high-risk", "large")

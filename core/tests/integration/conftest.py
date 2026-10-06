@@ -12,7 +12,7 @@ PROJECT = {
                                                                            "password": "{password}"},
                            "tokenPath": "data.token"}},
     "stages": {},
-    "evaluation": {"judge": {"runner": "claude"}, "budgetUsd": 1},
+    "evaluation": {"budgetUsd": 1},
     "thresholds": {"suppressionDays": {"value": 30, "min": 7, "max": 90},
                    "triage": {"deferredReopenOccurrences": {"value": 3, "min": 1, "max": 10}}},
 }

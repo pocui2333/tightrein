@@ -70,7 +70,7 @@ def test_a_call_that_never_started_is_not_recorded(tmp_path):
 def _task(problem_id):
     return read_only_task(run_id=RUN, stage=Stage.TRIAGE, role="claim-verifier", subject=Subject("problem", problem_id),
                           attempt=1, prompt="取证", workdir=Path("/tmp"),
-                          output_schema="runner/roles/claim-verifier.schema.json", role_setting=RoleSetting())
+                          output_schema="runner/roles/claim-verifier.schema.json", role_setting=RoleSetting("triage.claim-verifier"))
 
 
 def triaged(world, problem_id, at, causes=(RootCause("src/Services/OrderService.src", 12, "OrderService.Get"),)):
@@ -113,7 +113,7 @@ def test_dedup_output_is_checked_and_an_issue_target_becomes_its_first_problem(t
     outcome = dedup.decide(calls(world, runner), world.conn, problem, claim, found)
     assert (outcome.target, outcome.statuses, outcome.note) == ("P-0001", [RunnerStatus.OK, RunnerStatus.OK], None)
     assert "target P-0009 不在候选中" in runner.tasks[1].instructions.prompt
-    assert runner.tasks[0].capability == "light" and "- 0007(issue，待审阅)" in runner.tasks[0].instructions.prompt
+    assert runner.tasks[0].route == "triage.dedup" and "- 0007(issue，待审阅)" in runner.tasks[0].instructions.prompt
     different = FakeRunner({"triage-dedup": [{"sameRootCause": False, "target": None, "evidence": [], "reason": "x"}]})
     assert dedup.decide(calls(world, different), world.conn, problem, claim, found).target is None
     failing = FakeRunner({"triage-dedup": [RunnerStatus.FAILED]})

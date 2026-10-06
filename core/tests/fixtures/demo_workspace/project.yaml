@@ -18,8 +18,6 @@ stages:
   collect:
     budgetPerDay: 2
 evaluation:
-  judge:
-    runner: claude
   budgetUsd: 5
 thresholds:
   suppressionDays: {value: 30, min: 7, max: 90}

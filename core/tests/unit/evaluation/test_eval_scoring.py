@@ -74,8 +74,8 @@ def test_judge_items_are_scored_by_the_recorded_judge(world, make_config, tmp_pa
 def test_the_judge_task_sees_outputs_but_not_the_generator_session(world):
     snapshot = world.snapshot()
     task = judge.judge_task(REQUEST, judge_items(), snapshot, "输入的交接文档", TRIAGE_OUTPUTS)
-    assert (task.role, task.output_schema, task.access.value, task.workdir, task.tool, task.stage) == (
-        "judge", "runner/roles/judge.schema.json", "read-only", snapshot, "replay", Stage.IMPROVE)
+    assert (task.role, task.output_schema, task.access.value, task.workdir, task.route, task.stage) == (
+        "judge", "runner/roles/judge.schema.json", "read-only", snapshot, "eval.judge", Stage.IMPROVE)
     prompt = task.instructions.prompt
     assert prompt.startswith("你是独立评审。") and "不因为输出更长、写得更多而加分" in prompt
     assert "- [fix.no-special-case] " in prompt
@@ -99,7 +99,7 @@ def test_a_judge_answer_can_be_unknown_or_missing(world, make_config, tmp_path):
     task = judge.judge_task(REQUEST, items, snapshot, None, {})
     record(tmp_path / "recordings", task, {"items": [
         {"itemId": "fix.no-special-case", "result": "unknown", "reason": "看不到复现输入", "evidence": []}]})
-    judged = judge.run_judge(world.runner(make_config(), tmp_path / "recordings"), world.clock, task, items)
+    judged = judge.run_judge(world.runner(make_config(), tmp_path / "recordings"), world.clock, task, items, "replay")
     assert [(item.item_id, item.result.value, item.reason) for item in judged] == [
         ("fix.no-special-case", "unknown", "看不到复现输入"), ("fix.acceptance", "unknown", "评审没有给出该项")]
 

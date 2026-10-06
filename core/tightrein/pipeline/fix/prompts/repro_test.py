@@ -39,7 +39,9 @@ def siblings_text(siblings: Sequence[SiblingTest]) -> str:
 
 def task(prompt: FixPrompt, context: FixContext, task_text: str, attempt: int, *, role: str, expects_pass: bool,
          test_paths: Sequence[str], prefixes: Sequence[str], check_commands: Sequence[str],
-         siblings: Sequence[SiblingTest] = (), feedback: Sequence[str] = ()) -> RunnerTask:
+         siblings: Sequence[SiblingTest] = (), feedback: Sequence[str] = (),
+         conditions: Sequence[str] = ()) -> RunnerTask:
+    """conditions 为调用点的条件：fix-executor 的这一轮与写代码同一会话，须与写代码一轮的条件相同。"""
     rules = join("## 这一轮只写测试", PASS_FIRST if expects_pass else FAIL_FIRST,
                  "新建一个独立的测试文件，不改动其他任何文件，也不改已有的测试文件；文件名与所在目录沿用项目已有测试的习惯，"
                  "名称中带上 Issue 编号以便识别。",
@@ -50,10 +52,10 @@ def task(prompt: FixPrompt, context: FixContext, task_text: str, attempt: int, *
                  SIGNATURE_NOTE)
     body = join(prompt.role(role), prompt.rules(), task_text, rules, siblings_text(siblings),
                 decisions_text(context.decisions), feedback_text(feedback))
-    setting = prompt.role_setting(role, context.complexity)
+    setting = prompt.role_setting(role, context.complexity, conditions)
     return RunnerTask(
         run_id=prompt.run_id, stage=STAGE, role=role, subject=prompt.subject(context.issue_id), attempt=attempt,
         instructions=Instructions(body), workdir=prompt.workdir, output_schema=SCHEMA, access=Access.WORKSPACE_WRITE,
         allowed_commands=(*dict.fromkeys(check_commands), *READ_ONLY_COMMANDS), limits=setting.limits,
-        tool=setting.tool, model=setting.model, capability=setting.capability, tests_only=True,
+        route=setting.route, conditions=setting.conditions, tests_only=True,
     )

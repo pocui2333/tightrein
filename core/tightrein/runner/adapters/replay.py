@@ -63,7 +63,7 @@ class ReplayAdapter:
     def missing(self, task: RunnerTask, error_type: str, message: str) -> ReplayCall:
         """录制不能回放：没有录制、任务已变或改动无法应用。"""
         parsed = ParsedRun(None, None, None, Usage(), None, ENDED_ERROR, message)
-        return ReplayCall(parsed, [], task.tool or NAME, task.model, (RunnerStatus.FAILED, error_type))
+        return ReplayCall(parsed, [], NAME, None, (RunnerStatus.FAILED, error_type))
 
     def call(self, task: RunnerTask, number: int) -> ReplayCall:
         recording = self.recordings.find(task.role, task.subject_id, task.attempt)
