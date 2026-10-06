@@ -50,7 +50,7 @@ def build_prompt(task: RunnerTask, tool: ToolLayout, schema: dict[str, Any] | No
     if language:
         sections += ["# 输出语言", LANGUAGE_NOTE.format(name=languages.name(language))]
     if task.output_schema is not None:
-        sections += ["# 输出", f"只输出一个符合 {task.output_schema} 的 JSON 对象，不要输出其他文字。"]
+        sections += ["# 输出", f"只输出一个符合 {task.output_schema} 的 JSON 对象，不要输出其他文字。这个格式已由调用方提供，不在项目里，不要去找这个文件。"]
         if schema is not None:
             text = json.dumps(schema, ensure_ascii=False, indent=2)
             sections.append(f"{CODE_FENCE}json\n{text}\n{CODE_FENCE}")

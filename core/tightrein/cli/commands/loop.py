@@ -11,10 +11,10 @@ from typing import Any
 from tightrein.cli import confirm as confirming
 from tightrein.cli import exit_codes, selectors
 from tightrein.cli.commands import issue
-from tightrein.cli.commands.common import leaf, orchestrator
+from tightrein.cli.commands.common import leaf, module_outcome, orchestrator
 from tightrein.cli.exit_codes import UsageError
 from tightrein.cli.output import Outcome, error
-from tightrein.domain.enums import OperationStatus, ProbeLevel, RunStage, RunStatus, Stage
+from tightrein.domain.enums import OperationKind, OperationStatus, ProbeLevel, RunStage, RunStatus, Stage
 from tightrein.domain.enums import Probe as ProbeKind
 from tightrein.domain.clock import SystemClock
 from tightrein.orchestrator import pause, resume
@@ -241,7 +241,13 @@ def _confirm(invocation: Any, operation_id: str) -> Outcome:
 
 
 def _reject(invocation: Any) -> Outcome:
-    operation = confirming.reject(invocation.app, invocation.args.operation, invocation.args.note)
+    """修复计划带说明拒绝时按说明重出计划(同 fix confirm --reject --note)；其余操作只记为拒绝。"""
+    app, args = invocation.app, invocation.args
+    pending = confirming.load(app, args.operation)
+    if pending.kind is OperationKind.FIX_PLAN and args.note:
+        result = app.fix().confirm(pending.subject_id, reject=True, note=args.note)
+        return module_outcome("reject", app, pending.subject_id, result)
+    operation = confirming.reject(app, args.operation, args.note)
     return Outcome("reject", exit_codes.OK, [f"{operation.id} 已拒绝"], {"type": "operation", "id": operation.id},
                    _state(operation))
 

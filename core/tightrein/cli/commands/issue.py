@@ -16,6 +16,8 @@ from tightrein.cli import exit_codes, selectors
 from tightrein.cli.commands.common import issue_id, leaf, module_outcome, number
 from tightrein.cli.exit_codes import UsageError
 from tightrein.cli.output import Outcome
+from tightrein.config import gates
+from tightrein.config.gates import Gate
 from tightrein.domain.enums import CloseReason, IssueStatus, Severity, TaskType
 from tightrein.pipeline.issue.steps.github import MirrorReport
 from tightrein.store.repos.issues import IssueRecord
@@ -55,7 +57,8 @@ def _new(invocation: Any) -> Outcome:
                                                   TaskType(args.type) if args.type else None)
     subject = record.issue.id
     lines = [f"已创建用户需求 Issue {number(subject)}(状态「{record.issue.status.label}」)：{record.path}",
-             f"下一步：tightrein approve {number(subject)}(申请建修复分支)"]
+             f"下一步：tightrein continue {number(subject)}(推进修复)" if gates.auto(invocation.app.config, Gate.FIX_SESSION)
+             else f"下一步：tightrein approve {number(subject)}(申请建修复分支)"]
     return Outcome("new", exit_codes.OK, lines, {"type": "issue", "id": subject}, _record(record))
 
 

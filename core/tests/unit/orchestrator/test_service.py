@@ -55,3 +55,17 @@ def test_continue_records_a_loop_run(tmp_path):
     result = orchestrator(world, FakeModules(world)).continue_(["7"])
     assert result.report.stops[0].gate == "issue-approval"
     assert result.run.stage is RunStage.LOOP and result.run.status is RunStatus.BLOCKED
+
+
+def test_continue_tracks_pull_requests_for_auto_merge(tmp_path):
+    """关卡 merge 为 auto：continue 遇到待合并的 Issue 先跟踪 PR(满足条件即自动合并)，不等定时运行。"""
+    world = make_world(tmp_path, gates={"merge": "auto"})
+    save_issue(world.conn, "0007", IssueStatus.PENDING_MERGE)
+    modules = FakeModules(world)
+    orchestrator(world, modules).continue_(["7"])
+    assert "release.track" in modules.names()
+    manual = make_world(tmp_path / "manual")
+    save_issue(manual.conn, "0007", IssueStatus.PENDING_MERGE)
+    modules = FakeModules(manual)
+    orchestrator(manual, modules).continue_(["7"])
+    assert "release.track" not in modules.names()

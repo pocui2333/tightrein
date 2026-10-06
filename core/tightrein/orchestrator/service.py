@@ -20,7 +20,7 @@ from typing import Any
 
 from tightrein.config.project import ProjectConfig
 from tightrein.domain.clock import Clock, local_date
-from tightrein.domain.enums import HandoffStatus, OperationKind, OperationStatus, RunStage, RunStatus, Stage
+from tightrein.domain.enums import HandoffStatus, IssueStatus, OperationKind, OperationStatus, RunStage, RunStatus, Stage
 from tightrein.domain.next_step import NextStep
 from tightrein.domain.run import Run
 from tightrein.observability.events import EventLog
@@ -187,7 +187,7 @@ class Orchestrator:
         loops = runs.find(self.conn, stage=RunStage.LOOP)
         last = loops[-1] if loops else None
         return {
-            "waiting": inbox.items(self.conn, self.layout),
+            "waiting": inbox.items(self.conn, self.layout, unattended=gates.auto(self.config, Gate.FIX_SESSION)),
             "paused": self.paused(),
             "onboarding": self.onboarding.status_line() if self.onboarding is not None else None,
             "lastRun": None if last is None else {
@@ -229,6 +229,9 @@ class Orchestrator:
                 restarted += resume.restart(self.conn, self.layout, self.clock, self.config, ref, from_,
                                             self._retriage, self.zone)
             refs = list(dict.fromkeys(restarted))
+        if any(ref.kind == resume.ISSUE and issues.get(self.conn, ref.id).issue.status is IssueStatus.PENDING_MERGE
+               for ref in refs):
+            self._track_merges()
         resumer = resume.Resumer(self.conn, self.clock, self.execute, lock_ttl=self._ttl(), until=until,
                                  interactive=interactive, confirm=confirm,
                                  unattended=gates.auto(self.config, Gate.FIX_SESSION))
@@ -302,8 +305,15 @@ class Orchestrator:
             return StepResult(result.status, result.message, gate=gate)
         if command == "release":
             result = self._call(RunStage.RELEASE.value, lambda: modules.release().release(target.id))
+            if issues.get(self.conn, target.id).issue.status is IssueStatus.PENDING_MERGE:
+                self._track_merges()  # 刚提了 PR：关卡 merge 为 auto 且条件满足时就地合并，不等定时运行的 release-track
             return StepResult(result.status, result.message, result.operation, self._gate(result.operation))
         raise ValueError(f"状态表中的命令 {command} 没有对应的模块调用")
+
+    def _track_merges(self) -> None:
+        """关卡 merge 为 auto 时跟踪待合并的 PR(满足条件即自动合并)；工作区暂停、没有定时运行时 continue 也能合并。"""
+        if gates.auto(self.config, Gate.MERGE):
+            self._call(RunStage.RELEASE.value, lambda: self.modules.release().track())
 
     def _fix(self, issue_id: str) -> StepResult:
         """终端中启动修复会话；会话结束且修复已完成时执行 fix done。gates.fix-session 为 auto 时改为无人值守修复。"""
