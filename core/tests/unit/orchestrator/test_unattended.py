@@ -18,6 +18,7 @@ from test_fix_service import (
 )
 
 from tightrein.domain.enums import IssuePhase, HandoffStatus, Stage
+from tightrein.pipeline.fix.service import ResumePoint
 from tightrein.orchestrator.rules import RunRequest
 from tightrein.orchestrator.service import Orchestrator
 from tightrein.store.repos import github_mirror
@@ -52,6 +53,24 @@ def test_continue_fixes_without_an_interactive_session(tmp_path):
     assert world.runner.sessions == [] and "verify.reproduce" not in modules.names()
     assert world.runner.roles() == ["fix-executor", "fix-executor"]
     assert result.report.stops[0].reason == "已到终点"
+
+
+def test_continue_reviews_again_when_the_worktree_changed_after_review(tmp_path):
+    world = fixing(tmp_path, gates=AUTONOMY)
+    fix = service(world)
+    world.runner.edits += [{TEST_FILE: TEST_CODE}, {SERVICE_PATH: FIXED}]
+    world.runner.add("fix-executor", WRITTEN, EXECUTED)
+    orchestrator(world, Modules(world, fix)).continue_([world.issue_id], until=Stage.FIX)
+    (world.worktree / SERVICE_PATH).write_text(FIXED + "merged from main\n", encoding="utf-8")
+    assert fix.resume_point(world.issue_id) is ResumePoint.REVIEW
+    local = lambda issue_id: SimpleNamespace(
+        status=HandoffStatus.BLOCKED if fix.resume_point(issue_id) is ResumePoint.REVIEW else HandoffStatus.OK,
+        message="验证")
+    modules = Modules(world, fix, verify_local=local)
+    stop = orchestrator(world, modules).continue_([world.issue_id], until=Stage.VERIFY).report.stops[0]
+    assert not stop.failed, stop.reason
+    assert modules.names().count("verify.local") == 2 and world.runner.roles().count("fix-executor") == 2
+    assert fix.resume_point(world.issue_id) is ResumePoint.DONE
 
 
 def test_failures_hold_the_issue_and_ask_the_user_on_github(tmp_path):

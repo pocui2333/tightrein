@@ -195,6 +195,10 @@ class GitReader:
             digest.update((repo / path).read_bytes())
         return digest.hexdigest()
 
+    def merge_base(self, repo: Path, left: str, right: str) -> str:
+        """两个版本的最近公共祖先。"""
+        return self._git(repo, "merge-base", left, right).strip()
+
     def is_ancestor(self, repo: Path, commit: str, of: str) -> bool:
         result = self.process.git(repo, "merge-base", "--is-ancestor", commit, of,
                                   ok_codes=(0, NOT_FOUND_EXIT_CODE, GIT_FATAL_EXIT_CODE))

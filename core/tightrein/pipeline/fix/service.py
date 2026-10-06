@@ -149,6 +149,7 @@ class ResumePoint(str, Enum):
     PLAN = "plan"
     CONFIRM = "confirm"
     APPLY = "apply"
+    REVIEW = "apply --review-only"  # 通过评审后工作区又有改动(例如合并 main 时改到同一文件)，只需重新评审
     DONE = "done"
 
 
@@ -264,6 +265,9 @@ class FixService:
         run.end(status)
         return FixResult(issue_id, status, reason or next_action, path, operation)
 
+    def _review_base(self, issue_id: str, base_commit: str) -> str:
+        return stage_runs.review_base(self.deps.conn, self.deps.layout, issue_id, base_commit)
+
     def _base_outputs(self, issue_id: str) -> dict[str, Any]:
         found = self._workspace(issue_id)
         return {"issueId": issue_id, "branch": found["branch"], "worktree": found["worktree"],
@@ -377,6 +381,9 @@ class FixService:
         previous = self._previous(issue_id)
         if previous is None or previous[0] != HandoffStatus.OK.value or not previous[1].get("diffHash"):
             return ResumePoint.APPLY
+        if self.deps.git.diff_hash(self.worktree(issue_id), self._review_base(
+                issue_id, previous[1]["baseCommit"])) != previous[1]["diffHash"]:
+            return ResumePoint.REVIEW
         return ResumePoint.DONE
 
     def start(self, issue_id: str, *, here: bool = False, force: bool = False) -> FixResult:
@@ -645,8 +652,10 @@ class FixService:
         return self._plan_ready(run, issue_id, ctx, planned, base, route, proposal.frontend)
 
     def _requires(self, issue_id: str, hint: str) -> FixResult | None:
-        """修复的各步要求 Issue 进行中且处于修复阶段，且修复 worktree 存在。"""
+        """修复的各步要求 Issue 进行中且处于修复阶段，且修复 worktree 存在。待决定的 Issue 提示带上 --force。"""
         if not self._fixing(issue_id):
+            if transitions.record_of(self._env(), issue_id).issue.hold is not None:
+                hint = f"{hint} --force"
             return FixResult(issue_id, HandoffStatus.BLOCKED, hint)
         if not self.worktree(issue_id).is_dir():
             return FixResult(issue_id, HandoffStatus.BLOCKED, f"修复 worktree 不存在，先执行 fix prepare {issue_id}")
@@ -766,7 +775,8 @@ class FixService:
         worktree = self.worktree(issue_id)
         previous = self._previous(issue_id)
         if (not review_only and previous is not None and previous[0] == HandoffStatus.OK.value
-                and previous[1].get("diffHash") == deps.git.diff_hash(worktree, previous[1]["baseCommit"])):
+                and previous[1].get("diffHash") == deps.git.diff_hash(worktree, self._review_base(issue_id,
+                                                                                         previous[1]["baseCommit"]))):
             return FixResult(issue_id, HandoffStatus.OK, "改动与上次通过评审时相同，直接返回上次结果")
         run = self._begin()
         ctx = context.load(deps.conn, deps.layout, issue_id, deps.context)
@@ -788,7 +798,7 @@ class FixService:
                 patch: str, round_number: int) -> FixResult:
         deps = self.deps
         worktree = self.worktree(issue_id)
-        outputs["diffHash"] = deps.git.diff_hash(worktree, outputs["baseCommit"])
+        outputs["diffHash"] = deps.git.diff_hash(worktree, self._review_base(issue_id, outputs["baseCommit"]))
         path = run.handoff(STAGE, issue_id, HandoffStatus.OK, outputs, f"执行 fix done {issue_id}，进入合并前验证")
         document = json.loads(path.read_text(encoding="utf-8"))
         report_render.write(self.fix_dir(issue_id) / "report.md", document)
@@ -819,7 +829,8 @@ class FixService:
         if previous is None or previous[0] != HandoffStatus.OK.value or not previous[1].get("diffHash"):
             return FixResult(issue_id, HandoffStatus.BLOCKED, f"最近一次 fix apply 没有通过，先执行 fix apply {issue_id}")
         outputs = previous[1]
-        if deps.git.diff_hash(self.worktree(issue_id), outputs["baseCommit"]) != outputs["diffHash"]:
+        if deps.git.diff_hash(self.worktree(issue_id), self._review_base(issue_id, outputs["baseCommit"])) \
+                != outputs["diffHash"]:
             return FixResult(issue_id, HandoffStatus.BLOCKED,
                              f"apply 之后工作区有新改动，先执行 fix apply {issue_id} --review-only")
         tests = sorted(manifest.placed(self.regression_dir(issue_id), self.worktree(issue_id)))
@@ -872,6 +883,7 @@ class _Apply:
         self.issue_id = ctx.issue_id
         self.worktree = service.worktree(self.issue_id)
         self.base = service._base_outputs(self.issue_id)
+        self.review_base = service._review_base(self.issue_id, self.base["baseCommit"])
         self.calls = service._calls(run, self.issue_id)
         self.settings = GuardSettings.from_config(self.deps.config)
         self.tracker = service.tracker(self.issue_id)
@@ -1012,7 +1024,7 @@ class _Apply:
         commands = project_checks.commands(deps.config)
         corrections: list[str] = []
         skip_execute = review_only
-        checkpoint = Checkpoint(deps.git, self.worktree, self.base["baseCommit"],
+        checkpoint = Checkpoint(deps.git, self.worktree, self.review_base,
                                 self.service.fix_dir(self.issue_id) / CHECKPOINT_DIR)
         rollback_at = deps.config.whole_threshold("fix.checkpointRollbackFindings")
         if not review_only:
@@ -1185,7 +1197,7 @@ class _Apply:
         """第 6 步的程序检查与第 7 步的结果：复现测试先按登记副本放回(被改动或删除时记局部问题)，项目检查全量运行；
         复现测试随修复提交，但不参与针对修复改动的规则。A 通道的计划文件是预估，不检查计划外文件。"""
         deps = self.deps
-        base = self.base["baseCommit"]
+        base = self.review_base
         directory = self.service.regression_dir(self.issue_id)
         restored = manifest.place_tests(directory, self.worktree)
         self.repro_tests = manifest.placed(directory, self.worktree)

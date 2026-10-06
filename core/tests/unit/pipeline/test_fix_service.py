@@ -1,3 +1,4 @@
+import hashlib
 import json
 import shutil
 from dataclasses import replace
@@ -492,6 +493,41 @@ def test_done_checks_the_diff_hash_and_abandon_holds(tmp_path):
     assert "--review-only" in fix.done(world.issue_id).message
     assert fix.abandon(world.issue_id, "改为找作者讨论").status is HandoffStatus.OK
     assert world.issue().hold.details == "改为找作者讨论"
+
+
+class MergedGit(FakeGit):
+    """合并 origin/main 后的 worktree：以某个 main 版本为基准时，main 到该版本为止改动的文件不算修复的改动。"""
+
+    def __init__(self, root, base, merged):
+        super().__init__(root, base)
+        self.merged = merged
+
+    def diff_hash(self, repo, base):
+        digest = hashlib.sha256()
+        current = self._current()
+        for path in self._changed():
+            if path not in self.merged.get(base, ()):
+                digest.update(f"{path}\0{current.get(path, '')}\0".encode())
+        return digest.hexdigest()
+
+
+def test_done_after_merging_main_compares_against_the_merged_main(tmp_path):
+    main = "d" * 40
+    world, _ = standard(tmp_path)
+    git = MergedGit(world.worktree, {SERVICE_PATH: SERVICE, CONTROLLER_PATH: CONTROLLER}, {main: (CONTROLLER_PATH,)})
+    fix = service(world, git=git)
+    world.runner.edits.append({SERVICE_PATH: FIXED})
+    world.runner.add("fix-executor", EXECUTED).add("fix-reviewer", PASS)
+    fix.apply(world.issue_id)
+    (world.worktree / CONTROLLER_PATH).write_text(CONTROLLER + "from main\n", encoding="utf-8")
+    assert "--review-only" in fix.done(world.issue_id).message
+    run = stage_runs.begin(RunStage.RELEASE, world.layout, world.conn, world.clock, world.events)
+    run.handoff(RunStage.RELEASE, world.issue_id, HandoffStatus.OK,
+                {"issueId": world.issue_id, "branch": "cty/fix-order-500", "commits": [], "push": None, "pr": None,
+                 "deployments": [], "masterAt": None, "pendingOperations": [], "acceptedFindings": [], "cleanup": None,
+                 "syncs": [{"mainCommit": main, "conflicts": [], "mergeCommit": "e" * 40}]}, "verify local")
+    assert stage_runs.review_base(world.conn, world.layout, world.issue_id, BASE) == main
+    assert fix.done(world.issue_id).status is HandoffStatus.OK
 
 
 def test_prepare_checks_the_base_and_the_start_session(tmp_path):

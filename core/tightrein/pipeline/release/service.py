@@ -279,7 +279,8 @@ class ReleaseService:
             return ReleaseResult(issue_id, HandoffStatus.BLOCKED, "工作区不干净，先提交或处理改动后再同步主干")
         fix = self._latest(RunStage.FIX, issue_id) or {}
         ours = {item["path"] for item in fix.get("changedFiles") or []}
-        theirs = set(deps.git.diff(worktree, "HEAD", f"origin/{main}").paths)
+        theirs = set(deps.git.diff(worktree, deps.git.merge_base(worktree, "HEAD", f"origin/{main}"),
+                                   f"origin/{main}").paths)
         listing = "\n".join(f"- {item.commit[:12]} {item.subject}" for item in incoming)
         overlap = "、".join(sorted(ours & theirs)) or "无"
         message = f"origin/{main} 上的新提交：\n{listing}\n与本修复改动文件的交集：{overlap}"

@@ -472,7 +472,7 @@ A 通道轻量评审，实际改动为微档且检查都通过、`fix.review.ski
 | `plan` | 计划文件路径、哈希、确认的操作编号与时间 |
 | `reproCheck` | 复现检查编号、类型、哈希；复现测试、静态类与测试类的修复后结果 |
 | `changedFiles` | 每个文件的新增与删除行数 |
-| `diffHash` | `apply` 结束时工作区改动的哈希 |
+| `diffHash` | `apply` 结束时工作区改动的哈希；基准为 `baseCommit`，合并过 `origin/main` 后为最近一次合并进来的 main 版本(`stage_runs.review_base`) |
 | `checks` | 每条项目检查的名称、命令、退出码、日志路径 |
 | `risk` | 两次风险判定的结果：等级、命中的类别与依据 |
 | `rounds` | 每轮的程序检查、评审方式与结果、不通过项的性质、被丢弃的问题 |
@@ -842,8 +842,8 @@ skills/release/
 
 1. `vcs.fetch()`，比较修复分支与 `origin/main`：`git rev-list --count HEAD..origin/main`。
 2. 没有新提交：进入推送。
-3. 有新提交：确认工作区干净，生成 `kind` 为 `merge-main` 的操作，命令为 `git fetch origin` 与 `git merge --no-ff --no-edit origin/main`；说明中列出 `origin/main` 上的新提交与它们改动的文件、与本修复改动文件的交集、影响为修复分支新增一个合并提交、撤销方式为合并前的 commit。只使用 merge。
-4. **无冲突**：合并提交完成后，Issue 回到合并前验证(`main-merged`：进行中，`phase` 为 `verify`；从 `pending-merge` 进入时同样如此)，交接文档 `nextAction` 为「重新执行合并前验证」；验证通过后回到提交阶段，再执行 `release` 时同步检查已无新提交，直接推送。
+3. 有新提交：确认工作区干净，生成 `kind` 为 `merge-main` 的操作，命令为 `git fetch origin` 与 `git merge --no-ff --no-edit origin/main`；说明中列出 `origin/main` 上的新提交与它们改动的文件(从分叉点算起)、与本修复改动文件的交集、影响为修复分支新增一个合并提交、撤销方式为合并前的 commit。只使用 merge。
+4. **无冲突**：合并提交完成后，Issue 回到合并前验证(`main-merged`：进行中，`phase` 为 `verify`；从 `pending-merge` 进入时同样如此)，交接文档 `nextAction` 为「重新执行合并前验证」；验证通过后回到提交阶段，再执行 `release` 时同步检查已无新提交，直接推送。改动哈希改以合并进来的 main 版本为基准：main 没有改到修复碰过的文件时修复的改动逐字节不变，哈希与评审时一致，不重新评审；改到同一文件时哈希不同，续接点为 `apply --review-only`，无人值守的 `continue` 在 `verify local` 前先重新评审(只评审修复自身相对新 main 的改动)。
 5. **有冲突**：`merge-main` 执行失败，`vcs` 以 `MergeConflict` 返回冲突文件清单，合并停在进行中的状态。`render/conflicts.py` 生成冲突报告：每个冲突文件列出修复分支一侧与 `origin/main` 一侧的相关提交(`git log` 限定到该文件)、冲突的片段；两侧对同一功能各有实现时明确标注「互斥实现，需要用户选择保留哪一侧」。交接文档 `blocked`。本工具不自行选择任何一侧，也不修改冲突文件。
 6. **冲突解决后**：用户在 worktree 中解决冲突后执行 `release sync <编号> --continue`：检查所有冲突文件已没有冲突标记、`git diff --check` 通过；对每个冲突文件比较解决结果与两侧版本，记录取舍(与修复侧一致、与主干侧一致、两侧合并)；生成 `kind` 为 `commit-merge` 的操作(`git add -- <冲突文件…>`、`git commit --no-edit`)。执行后按第 4 步处理。
 7. **放弃合并**：`release sync <编号> --abort` 生成 `kind` 为 `abort-merge` 的操作(`git merge --abort`)，说明它会丢弃合并中的全部改动并回到合并前的状态。

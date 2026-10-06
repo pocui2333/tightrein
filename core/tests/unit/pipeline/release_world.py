@@ -37,6 +37,7 @@ class ReleaseGit(FakeGit):
         self.conflicts = ()
         self.versions = {}
         self.fetched = 0
+        self.main_paths = (SERVICE_PATH, "README.md")  # origin/main 自分叉点以来改动的文件
 
     def fetch(self, repo, prune=False):
         self.fetched += 1
@@ -69,11 +70,16 @@ class ReleaseGit(FakeGit):
     def show(self, repo, rev, path):
         return self.versions.get((rev, path))
 
+    def merge_base(self, repo, left, right):
+        return BASE
+
     def diff(self, repo, base, head=None, paths=None):
         if head is not None:
             from tightrein.vcs.git_read import Diff, FileDiff
 
-            return Diff((FileDiff(SERVICE_PATH, 1, 0), FileDiff("README.md", 1, 0)))
+            # 从 HEAD 直接比到 origin/main 会把修复自己提交的文件也算进来；从分叉点比只有 main 的改动
+            paths = sorted({*self.main_paths, SERVICE_PATH}) if base == "HEAD" else self.main_paths
+            return Diff(tuple(FileDiff(path, 1, 0) for path in paths))
         return super().diff(repo, base, head, paths)
 
 
