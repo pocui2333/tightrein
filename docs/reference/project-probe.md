@@ -2,7 +2,7 @@
 
 <!-- 本文件由 core/dev/contract_reference.py 生成，不要手改；改 schema 或类型注册后重新生成。 -->
 
-写法见[如何编写项目探针](../how-to/write-project-probe.md)。探针经标准输入收到输入 JSON，经标准输出返回输出 JSON；输出不合格时本次作废、状态不保存。试跑：`tightrein probe test <名称>`。
+写法见[如何编写项目探针](../how-to/write-project-probe.md)。探针经标准输入收到输入 JSON，经标准输出返回输出 JSON；输出不合格时本次作废、状态不保存。试跑：`tightrein project probe test <名称>`。
 
 ## 输入
 

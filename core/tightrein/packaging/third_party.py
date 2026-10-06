@@ -368,7 +368,7 @@ def extract(archive: bytes, name: str, path: str | None, dest: Path) -> str:
 def ensure_cached(skill: LockedSkill, fetch: Fetch, cache: CachePath) -> Path:
     """已锁定 skill 的缓存目录：缺失时下载并解出；与清单不符时抛出 HashMismatch(刚下载的目录随之删除)。"""
     if skill.ref is None:
-        raise LockError(f"{skill.name} 尚未锁定，先执行 tightrein third-party lock")
+        raise LockError(f"{skill.name} 尚未锁定，先执行 tightrein admin third-party lock")
     directory = cache(skill.name, skill.ref)
     downloaded = not directory.is_dir()
     if downloaded:

@@ -49,7 +49,7 @@ tightrein 持续运行一条闭环流水线：感知应用缺陷，基于证据�
 | 功能 | macOS | Linux / Docker |
 |---|---|---|
 | 平台令牌安全存储 (Sentry、Loki 等) | 系统钥匙串 (Keychain) | 环境变量配置 |
-| 定时巡检 (`tightrein schedule install`) | launchd | cron / systemd |
+| 定时巡检 (`tightrein project schedule install`) | launchd | cron / systemd |
 | 桌面通知 | 原生 osascript 通知 | 关闭通知 (`notify: {method: none}`) |
 
 暂不支持原生 Windows，建议在 WSL2 环境下运行。
@@ -61,10 +61,10 @@ git clone https://github.com/pocui2333/tightrein.git
 cd tightrein
 python3 -m venv core/.venv
 core/.venv/bin/pip install -e core
-core/.venv/bin/tightrein install    # 将 skills 注册到本机已安装的 agent 工具
+core/.venv/bin/tightrein admin install    # 注册 skills，并在 ~/.local/bin 建立 tightrein 命令
 ```
 
-可将 `core/.venv/bin` 加入系统 `PATH`，或直接调用 `core/.venv/bin/tightrein`。
+`~/.local/bin` 在 `PATH` 中时，之后在任何目录直接敲 `tightrein` 即可；否则把 `core/.venv/bin` 加入 `PATH`。`tightrein --help` 列出全部命令，见[命令参考](docs/reference/cli.md)。
 
 ## 快速上手
 
@@ -88,8 +88,8 @@ agents:
 **2. 接入项目。** 工作区位于 `workspaces/`（不纳入版本库）。接入完成前，tightrein 只执行只读检查。
 
 ```sh
-tightrein workspace init --workspace workspaces/my-app --repo ~/code/my-app
-tightrein worktree init --workspace workspaces/my-app     # 申请建只读 worktree，按提示 tightrein confirm 确认
+tightrein project init --workspace workspaces/my-app --repo ~/code/my-app
+tightrein project worktree init --workspace workspaces/my-app     # 申请建只读 worktree，按提示 tightrein approve 确认
 tightrein status --workspace workspaces/my-app           # 查看接入项与推荐命令
 ```
 
@@ -99,7 +99,7 @@ tightrein status --workspace workspaces/my-app           # 查看接入项与推
 tightrein run --workspace workspaces/my-app --select collect+ --probe static --dry-run   # 试运行：列出将要执行的步骤
 tightrein run --workspace workspaces/my-app --select collect+ --probe static             # 正式执行采集与巡检
 tightrein watch                                                                         # 在另一个终端实时监控
-tightrein schedule install                                                              # 可选：macOS 工作日定时运行
+tightrein project schedule install                                                              # 可选：macOS 工作日定时运行
 ```
 
 完整接入演练见[教程：第一次运行](docs/tutorials/first-run.md)。

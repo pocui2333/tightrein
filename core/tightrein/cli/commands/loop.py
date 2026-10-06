@@ -10,6 +10,7 @@ from typing import Any
 
 from tightrein.cli import confirm as confirming
 from tightrein.cli import exit_codes, selectors
+from tightrein.cli.commands import issue
 from tightrein.cli.commands.common import leaf, orchestrator
 from tightrein.cli.exit_codes import UsageError
 from tightrein.cli.output import Outcome, error
@@ -107,6 +108,8 @@ def _resume(invocation: Any) -> Outcome:
 
 
 def _status(invocation: Any) -> Outcome:
+    if invocation.args.pending:
+        return _pending(invocation)
     values = orchestrator(invocation.app).status()
     lines = [line for line in (values["paused"], values["onboarding"]) if line]
     lines.append(f"待处理 {len(values['waiting'])} 项")
@@ -118,7 +121,7 @@ def _status(invocation: Any) -> Outcome:
     return Outcome("status", exit_codes.OK, lines, result=values)
 
 
-def _next(invocation: Any) -> Outcome:
+def _show(invocation: Any) -> Outcome:
     views = orchestrator(invocation.app).next(invocation.args.subjects)
     lines = []
     for view in views:
@@ -126,7 +129,7 @@ def _next(invocation: Any) -> Outcome:
         can = "能自动继续" if view.step.can_continue else f"不能自动继续({gate or view.step.reason or '无后续步骤'})"
         lines.append(f"{view.ref.id} 当前「{view.status_label}」，下一步：{view.command or '无'}，{can}")
     single = views[0] if len(views) == 1 else None
-    return Outcome("next", exit_codes.OK, lines, single.ref.to_dict() if single else None,
+    return Outcome("show", exit_codes.OK, lines, single.ref.to_dict() if single else None,
                    [view.to_dict() for view in views], next=single.command if single else None)
 
 
@@ -198,7 +201,7 @@ def _pending(invocation: Any) -> Outcome:
              if stage is None or record.stage is stage]
     items = [confirming.pending_dict(operation) for operation in found]
     lines = [f"待确认操作 {len(items)} 项"]
-    return Outcome("pending", exit_codes.OK, lines, result=items, pending=items)
+    return Outcome("status", exit_codes.OK, lines, result=items, pending=items)
 
 
 def _state(operation: PendingOperation) -> dict[str, Any]:
@@ -207,9 +210,16 @@ def _state(operation: PendingOperation) -> dict[str, Any]:
             "result": None if operation.result is None else dict(operation.result)}
 
 
-def _confirm(invocation: Any) -> Outcome:
+def _approve(invocation: Any) -> Outcome:
+    """操作编号(OP-)确认这项操作；Issue 编号放行 Issue 并申请建修复分支。"""
+    target = invocation.args.target
+    if not target.upper().startswith("OP-"):
+        return issue.approve(invocation, target, invocation.args.note)
+    return _confirm(invocation, target.upper())
+
+
+def _confirm(invocation: Any, operation_id: str) -> Outcome:
     app = invocation.app
-    operation_id = invocation.args.operation
     result = confirming.confirm(app, operation_id)
     if isinstance(result, PendingOperation):
         message = f"{operation_id} 已确认 {result.confirmations_given} 次，还需再确认一次"
@@ -246,22 +256,23 @@ def register(commands: Any, common: argparse.ArgumentParser) -> None:
     paused = leaf(commands, common, "pause", _pause, "暂停：不发起新的运行(不带 --workspace 为全局)")
     paused.add_argument("--note", help="暂停的说明")
     leaf(commands, common, "resume", _resume, "恢复(不带 --workspace 为全局)")
-    leaf(commands, common, "status", _status, "全局状态、暂停与接入状态、待用户处理的事项与推荐做法")
-    nxt = leaf(commands, common, "next", _next, "对象的当前状态与下一步，不执行")
-    nxt.add_argument("subjects", nargs="+", help="问题或 Issue 编号")
-    cont = leaf(commands, common, "continue", _continue, "按状态表继续，直到终点或下一个关口")
+    status = leaf(commands, common, "status", _status, "全局状态与等你处理的事(不带命令时默认执行)")
+    status.add_argument("--pending", action="store_true", help="只列待确认的操作")
+    status.add_argument("--stage", choices=[stage.value for stage in Stage], help="与 --pending 同用：只列这个模块的")
+    show = leaf(commands, common, "show", _show, "一个 Issue、问题或操作的状态与下一步")
+    show.add_argument("subjects", nargs="+", help="Issue 编号(17)、问题编号(P-0001)")
+    cont = leaf(commands, common, "continue", _continue, "推进到下一个需要你的关口")
     cont.add_argument("subjects", nargs="*", help="问题或 Issue 编号")
     cont.add_argument("--until", choices=UNTIL_CHOICES, help="做到哪个模块为止")
     cont.add_argument("--from", dest="from_stage", choices=FROM_CHOICES, help="从哪一步重来")
-    find = leaf(commands, common, "find", _find, "按描述查找问题与 Issue 的候选")
+    find = leaf(commands, common, "find", _find, "按描述查找问题与 Issue")
     find.add_argument("text", help="标题、接口路由、页面或文件名的一部分")
     find.add_argument("--since", help="起始日期 YYYY-MM-DD")
     find.add_argument("--until", help="结束日期 YYYY-MM-DD")
     find.add_argument("--type", choices=[resume.PROBLEM, resume.ISSUE], help="只找问题或只找 Issue")
-    pending = leaf(commands, common, "pending", _pending, "列出待确认操作")
-    pending.add_argument("--stage", choices=[stage.value for stage in Stage], help="只列这个模块的")
-    confirm = leaf(commands, common, "confirm", _confirm, "确认并执行一个待确认操作")
-    confirm.add_argument("operation", help="操作编号 OP-0001")
-    reject = leaf(commands, common, "reject", _reject, "拒绝一个待确认操作")
+    approve = leaf(commands, common, "approve", _approve, "放行 Issue，或确认一项待确认的操作")
+    approve.add_argument("target", help="Issue 编号(17)或操作编号(OP-0001)")
+    approve.add_argument("-m", "--note", help="放行 Issue 时的说明")
+    reject = leaf(commands, common, "reject", _reject, "拒绝一项待确认的操作")
     reject.add_argument("operation", help="操作编号 OP-0001")
-    reject.add_argument("--note", help="拒绝的说明")
+    reject.add_argument("-m", "--note", help="拒绝的理由")

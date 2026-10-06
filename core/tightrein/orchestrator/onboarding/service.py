@@ -242,7 +242,7 @@ class Onboarding:
             return Item("spec", title, Outcome(BLOCKED, "没有配置接口描述(extensions.spec-export)", answer))
         drafted = (self.deps.layout.root / SPEC_DRAFT).is_file()
         detail = (f"AI 起草的 {SPEC_DRAFT} 待确认：审阅修改后改名为 {SPEC_CONFIRMED}" if drafted else
-                  f"框架没有自动导出接口描述：执行 tightrein spec draft 由 AI 起草 {SPEC_DRAFT}，审阅后改名为 {SPEC_CONFIRMED}")
+                  f"框架没有自动导出接口描述：执行 tightrein project spec draft 由 AI 起草 {SPEC_DRAFT}，审阅后改名为 {SPEC_CONFIRMED}")
         answer = Answer(f"登记确认后的工作区 {SPEC_CONFIRMED}", "extensions.spec-export",
                         {"use": "core/openapi-file", "options": {"path": SPEC_CONFIRMED, "base": "workspace"}})
         return Item("spec", title, Outcome(BLOCKED, detail, answer))
@@ -343,8 +343,8 @@ class Onboarding:
             {"checklist": [{"item": f"[{item.item}] {item.title}", "state": item.state, "owner": item.owner}
                            for item in saved]},
             decisions=tuple(Decision(item.title, item.recommendation or "按说明补充配置",
-                                     "回车采用推荐(tightrein workspace init)，或执行下一步中的命令") for item in blocked),
-            next_steps=tuple(NextStep(f"tightrein workspace answer {item.item} --recommended", "user")
+                                     "回车采用推荐(tightrein project init)，或执行下一步中的命令") for item in blocked),
+            next_steps=tuple(NextStep(f"tightrein project answer {item.item} --recommended", "user")
                              for item in blocked),
             history=tuple(Event(parse_iso(entry["at"]), entry["text"]) for entry in history))
         path = deps.layout.onboarding_document()

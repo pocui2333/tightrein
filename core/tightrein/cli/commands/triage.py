@@ -73,11 +73,14 @@ def _retriage(invocation: Any) -> Outcome:
 
 
 def register(commands: Any, common: argparse.ArgumentParser) -> None:
-    triage = commands.add_parser("triage", parents=[common], help="分诊新发现与回归的问题")
+    triage = commands.add_parser("triage", parents=[common.dry_run], help="分诊新发现与回归的问题")
     triage.set_defaults(handler=_triage, command_name="triage")
     triage.add_argument("--limit", type=int, help="本次最多分诊几个问题")
     sub = triage.add_subparsers(dest="triage_command", parser_class=type(triage))
-    leaf(sub, common, "queue", _queue, "人工队列中的问题", "triage queue")
+    leaf(sub, common, "queue", _queue, "人工队列中的问题")
+
+
+def register_problem(commands: Any, common: argparse.ArgumentParser) -> None:
     retriage = leaf(commands, common, "retriage", _retriage, "重新分诊或改判一个问题")
     retriage.add_argument("problem")
     retriage.add_argument("--note", help="补充信息")

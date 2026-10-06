@@ -51,10 +51,10 @@ agent 查找信息分三级展开：先看索引或检索结果中的摘要，�
 
 | 操作 | 命令行 | 返回 |
 |---|---|---|
-| 检索 | `tightrein kb search <关键词> [--type] [--tags] [--status active] [--limit]` | 编号、摘要、路径、得分，不返回正文 |
-| 取条目 | `tightrein kb get <编号>` | 条目全文与 frontmatter |
-| 相关条目 | `tightrein kb related <编号>` | 通过 `related` 与 `supersededBy` 关联的条目 |
-| 待复核 | `tightrein kb stale` | 过了复核日期、长期未被命中、相互矛盾的条目 |
+| 检索 | `tightrein admin kb search <关键词> [--type] [--tags] [--status active] [--limit]` | 编号、摘要、路径、得分，不返回正文 |
+| 取条目 | `tightrein admin kb get <编号>` | 条目全文与 frontmatter |
+| 相关条目 | `tightrein admin kb related <编号>` | 通过 `related` 与 `supersededBy` 关联的条目 |
+| 待复核 | `tightrein admin kb stale` | 过了复核日期、长期未被命中、相互矛盾的条目 |
 
 检索默认只返回 `active` 的条目。每次 `get` 记录一次命中，命中次数用于 16.7 的淘汰判断。
 
@@ -68,15 +68,15 @@ agent 查找信息分三级展开：先看索引或检索结果中的摘要，�
 | 分诊 | 与问题所在接口、页面、文件相关的缺陷模式、已接受的取舍、分诊经验；同一路由或同一文件的历史问题与 Issue |
 | 修复 | 与根因文件相关的修复经验、字段契约等项目知识；同一文件的历史修复报告 |
 
-- 预取之外，agent 可以随时用 `kb search` 自行查找。
+- 预取之外，agent 可以随时用 `admin kb search` 自行查找。
 - 某一类条目在过滤后总量很小时(例如全部已接受的取舍不到几千 token)，直接把全文放进任务说明，不再分级展开。
 - 上下文不是越多越好：输入越长，模型表现越差，而且下降是非线性的。因此默认只给摘要，按需展开。
 
 ## 16.7 写入、去重与淘汰
 
-**写入时去重**：新增一条知识前，先用 `kb search` 找出相似条目，由 agent 判断是新增、更新已有条目、合并，还是不必写入，判断结果按 schema 返回，由核心执行。被新条目推翻的旧条目标为 `superseded` 并填写 `supersededBy`，不删除，历史仍可查询。
+**写入时去重**：新增一条知识前，先用 `admin kb search` 找出相似条目，由 agent 判断是新增、更新已有条目、合并，还是不必写入，判断结果按 schema 返回，由核心执行。被新条目推翻的旧条目标为 `superseded` 并填写 `supersededBy`，不删除，历史仍可查询。
 
-**定期复核**：`learn` 每周运行一次 `kb stale`，把以下条目列进周报：
+**定期复核**：`learn` 每周运行一次 `admin kb stale`，把以下条目列进周报：
 
 - 过了 `reviewBy` 日期的条目
 - 最近 90 天没有被命中的条目
@@ -86,7 +86,7 @@ agent 查找信息分三级展开：先看索引或检索结果中的摘要，�
 
 ## 16.8 检索评测
 
-- 维护 50 到 100 条检索评测用例，放在工作区 `evals/retrieval/`。每条包括一个真实的查询(取自 agent 运行记录中的 `kb search`)与期望命中的条目编号。
+- 维护 50 到 100 条检索评测用例，放在工作区 `evals/retrieval/`。每条包括一个真实的查询(取自 agent 运行记录中的 `admin kb search`)与期望命中的条目编号。
 - 指标：recall@5、recall@10、MRR。
 - 每次修改索引、权重、标签或检索逻辑后运行一遍，指标下降的改动不采纳。
 - 运行中发现的漏检(agent 没有查到、事后发现存在相关条目)补充为新的评测用例。
@@ -100,7 +100,7 @@ agent 查找信息分三级展开：先看索引或检索结果中的摘要，�
 
 引入方式：在同一个 SQLite 文件中使用 `sqlite-vec` 存向量，与 FTS5 的结果用 RRF(倒数排名融合)合并；每个条目在生成向量前加上一段说明其来源与上下文的前缀。不单独部署向量数据库。
 
-跨全部知识做主题归纳的需求(GraphRAG 擅长的场景)目前没有；条目之间的关系用 `related` 编号引用表达，通过 `kb related` 查询。
+跨全部知识做主题归纳的需求(GraphRAG 擅长的场景)目前没有；条目之间的关系用 `related` 编号引用表达，通过 `admin kb related` 查询。
 
 ## 16.10 参考
 

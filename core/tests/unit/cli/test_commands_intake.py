@@ -67,11 +67,11 @@ def test_collect_aggregate_and_problem_commands(tmp_path):
     run_id = values["result"]["runId"]
     code, values = call_json(world, "aggregate", "--select", f"run:{run_id}", "--reproduce", "skip")
     assert code == 0 and values["result"]["status"] == "ok"
-    code, values = call_json(world, "ignore", "P-0001", "--reason", "已知问题", "--occurrences", "3")
+    code, values = call_json(world, "problem", "ignore", "P-0001", "--reason", "已知问题", "--occurrences", "3")
     assert code == 0 and values["result"]["status"] == "ignored"
-    code, values = call_json(world, "reopen", "P-0001", "--reason", "需要处理")
+    code, values = call_json(world, "problem", "reopen", "P-0001", "--reason", "需要处理")
     assert code == 0
-    code, values = call_json(world, "ignore", "P-0099", "--reason", "不存在")
+    code, values = call_json(world, "problem", "ignore", "P-0099", "--reason", "不存在")
     assert code == exit_codes.USAGE
 
 
@@ -101,7 +101,7 @@ def test_issue_create_and_approve_asks_for_the_fix_branch(tmp_path):
     assert code == 0 and values["result"]["items"][0]["issueId"] == "0001"
     code, values = call_json(world, "issue", "list", "--status", "needs-decision")
     assert [item["issueId"] for item in values["result"]] == ["0001"]
-    code, values = call_json(world, "issue", "approve", "1")
+    code, values = call_json(world, "approve", "1")
     assert code == exit_codes.GATE, values
     assert values["pendingOperations"][0]["kind"] == "create-fix-worktree"
     assert values["next"] == "tightrein fix start 1" and values["result"]["issueStatus"] == "todo"
@@ -126,30 +126,28 @@ def test_manual_issue_is_created_as_todo_and_approve_asks_for_the_fix_branch(tmp
     world.vcs.add(("rev-parse",), "1" * 40 + "\n")
     body = tmp_path / "need.md"
     body.write_text("导出按钮支持 CSV。\n\n## 验收标准\n\n- 点击导出得到 CSV 文件\n", encoding="utf-8")
-    code, values = call_json(world, "issue", "create", "--manual", "--title", "Export as CSV", "--body-file",
-                             str(body))
+    code, values = call_json(world, "new", "Export as CSV", "-f", str(body))
     assert code == 0, values
     result = values["result"]
     assert (result["issueId"], result["status"], result["origin"], result["problems"]) == (
         "0001", "todo", "manual", [])
     assert result["path"] == "issues/0001-export-as-csv.md"
-    code, values = call_json(world, "issue", "approve", "1")
+    code, values = call_json(world, "approve", "1")
     assert code == exit_codes.GATE, values
     assert values["pendingOperations"][0]["kind"] == "create-fix-worktree"
     assert values["result"]["issueStatus"] == "todo"
 
 
-def test_manual_issue_options_are_checked(tmp_path):
+def test_new_options_are_checked(tmp_path):
     world = make_cli_world(tmp_path)
-    code, values = call_json(world, "issue", "create", "--manual", "--title", "t")
-    assert code == exit_codes.USAGE and "--body" in values["errors"][0]["message"]
-    code, values = call_json(world, "issue", "create", "--manual", "--title", "t", "--body", "x", "--body-file", "f")
-    assert code == exit_codes.USAGE
-    code, values = call_json(world, "issue", "create", "--manual", "--title", "t", "--body", "x", "--select",
-                             "P-0001")
+    code, values = call_json(world, "new", "t", "-m", "x", "-f", "f")
+    assert code == exit_codes.USAGE and "-m 与 -f" in values["errors"][0]["message"]
+    code, values = call_json(world, "new", "t", "--select", "P-0001")
     assert code == exit_codes.USAGE and "--select" in values["errors"][0]["message"]
-    code, values = call_json(world, "issue", "create", "--title", "t")
-    assert code == exit_codes.USAGE and "--manual" in values["errors"][0]["message"]
+    code, values = call_json(world, "new", "只有标题")
+    assert code == 0 and values["result"]["title"] == "只有标题"
+    code, values = call_json(world, "issue", "create", "--manual", "--title", "t")
+    assert code == exit_codes.USAGE and "已改为 `new`" in values["errors"][0]["message"]
 
 
 def test_issue_sync_lists_the_github_mirror_result():
@@ -158,4 +156,4 @@ def test_issue_sync_lists_the_github_mirror_result():
         "GitHub 镜像未同步：owner/name 是公开仓库", "- 0001：未建 GitHub Issue"]
     lines = _mirror_lines(MirrorReport("owner/name", written=["0001"], operations=["OP-0003"], closed=["0002"]))
     assert lines == ["GitHub 镜像 owner/name：写入 1 个 Issue", "- 在 GitHub 上关闭，本地已按用户关闭处理：0002",
-                     "- 待确认：tightrein confirm OP-0003"]
+                     "- 待确认：tightrein approve OP-0003"]

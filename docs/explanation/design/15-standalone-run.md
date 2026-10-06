@@ -63,11 +63,11 @@ tightrein <模块> [--select <选择器>] [--input <交接文档>] [--output <�
 
 | 模块 | 前置条件 | 不满足时的提示 |
 |---|---|---|
-| `collect` | staging 健康检查通过(api-fuzz、e2e)；只读 worktree 已切换到目标 commit(static) | 「staging 不可用」或「先执行 `tightrein worktree sync`」 |
+| `collect` | staging 健康检查通过(api-fuzz、e2e)；只读 worktree 已切换到目标 commit(static) | 「staging 不可用」或「先执行 `tightrein project worktree sync`」 |
 | `aggregate` | 有尚未聚合的信号 | 「没有新信号」 |
-| `triage` | 对象状态为「新发现」或「回归」，或用户以 `retriage` 指定 | 「P-0042 已分诊，重新分诊请用 `retriage`」 |
+| `triage` | 对象状态为「新发现」或「回归」，或用户以 `problem retriage` 指定 | 「P-0042 已分诊，重新分诊请用 `problem retriage`」 |
 | `issue` | 分诊结论的去向为「提 Issue」 | 「P-0042 的去向是等待部署，不创建 Issue」 |
-| `fix` | Issue 状态为「待修」，修复 worktree 已创建 | 「先执行 `issue approve 7`」 |
+| `fix` | Issue 状态为「待修」，修复 worktree 已创建 | 「先执行 `approve 7`」 |
 | `verify local` | Issue 为「进行中」且处于合并前验证 | 「先执行 `fix done 7`」 |
 | `release` | Issue 为「进行中」且处于提交阶段 | 「先执行 `verify local 7`」 |
 | `learn` | 无 | — |
@@ -143,7 +143,7 @@ tightrein <模块> [--select <选择器>] [--input <交接文档>] [--output <�
 | 问题：新发现、回归 | 分诊(`triage`) | 能 |
 | 问题：已分诊，去向为提 Issue，但还没有 Issue | 创建 Issue(`issue create`) | 能 |
 | 问题：人工队列 | 向用户展示发现报告与缺少的信息，等用户补充或改判 | 否 |
-| Issue：待决定 | 向用户展示 Issue，等用户放行(`issue approve`)；带 `hold` 的先说明原因，用户确认后 `fix start --force` | 否 |
+| Issue：待决定 | 向用户展示 Issue，等用户放行(`approve`)；带 `hold` 的先说明原因，用户确认后 `fix start --force` | 否 |
 | Issue：待修 | 开始修复(`fix start`) | 能，进入交互会话 |
 | Issue：进行中(修复) | 续接修复会话；执行器支持时续接原会话，否则新开会话并提供已有的修复计划与当前 diff | 能，进入交互会话 |
 | Issue：进行中(合并前验证) | 合并前验证(`verify local`) | 能 |
@@ -156,13 +156,13 @@ tightrein <模块> [--select <选择器>] [--input <交接文档>] [--output <�
 
 **中断后恢复**：因为每一步都可以重跑(15.7)，运行中途被打断(电脑休眠、进程退出)后，再说一次「继续」即可。`loop` 发现某个对象有开始记录而没有结束记录，就从这一步重新执行。
 
-**从某一步重来**：用户说「7 号从分诊重新来」时，对关联问题执行 `retriage`，下游的 Issue、修复与验证结果标记为过期，然后按上表继续。过期的结果保留，不删除。
+**从某一步重来**：用户说「7 号从分诊重新来」时，对关联问题执行 `problem retriage`，下游的 Issue、修复与验证结果标记为过期，然后按上表继续。过期的结果保留，不删除。
 
 **对应的命令**
 
 | 命令 | 作用 |
 |---|---|
-| `tightrein next <对象>` | 只显示当前状态与下一步，不执行 |
+| `tightrein show <对象>` | 只显示当前状态与下一步，不执行 |
 | `tightrein continue <对象> [--until <模块>]` | 从当前状态继续，做到指定模块或下一个关口 |
 | `tightrein continue <对象> --from <模块>` | 从指定模块重来 |
 

@@ -114,41 +114,37 @@ def register(commands: Any, common: argparse.ArgumentParser) -> None:
     fix.set_defaults(handler=_bare_fix, command_name="fix")
     sub = fix.add_subparsers(dest="fix_command", parser_class=type(fix))
     prepare = leaf(sub, common, "prepare", _fix_action("prepare", lambda i, f, s: f.prepare(s)),
-                   "申请建修复分支与 worktree", "fix prepare")
-    start = leaf(sub, common, "start", _start, "进入修复会话", "fix start")
+                   "申请建修复分支与 worktree")
+    start = leaf(sub, common, "start", _start, "进入修复会话")
     start.add_argument("--here", action="store_true", help="在当前会话中按 fix skill 工作，只做状态转换")
     start.add_argument("--force", action="store_true", help="带转人工标记时确认继续")
     plan = leaf(sub, common, "plan", _fix_action(
-        "plan", lambda i, f, s: f.plan(s, i.args.note, accept_design=i.args.accept_design)), "出修复计划", "fix plan")
+        "plan", lambda i, f, s: f.plan(s, i.args.note, accept_design=i.args.accept_design)), "出修复计划")
     plan.add_argument("--note")
     plan.add_argument("--accept-design", action="store_true",
                       help="用户已同意按设计层面的根因修复，设计问题不再中止出计划")
     confirm = leaf(sub, common, "confirm", _fix_action(
-        "confirm", lambda i, f, s: f.confirm(s, reject=i.args.reject, note=i.args.note)), "确认或退回修复计划",
-        "fix confirm")
+        "confirm", lambda i, f, s: f.confirm(s, reject=i.args.reject, note=i.args.note)), "确认或退回修复计划")
     confirm.add_argument("--reject", action="store_true")
     confirm.add_argument("--note")
     apply = leaf(sub, common, "apply", _fix_action("apply", lambda i, f, s: f.apply(s, review_only=i.args.review_only)),
-                 "实施修复与检查", "fix apply")
+                 "实施修复与检查")
     apply.add_argument("--review-only", action="store_true")
-    done = leaf(sub, common, "done", _fix_action("done", lambda i, f, s: f.done(s)), "修复完成，交给验证", "fix done")
+    done = leaf(sub, common, "done", _fix_action("done", lambda i, f, s: f.done(s)), "修复完成，交给验证")
     abandon = leaf(sub, common, "abandon", _fix_action("abandon", lambda i, f, s: f.abandon(s, i.args.reason)),
-                   "放弃修复", "fix abandon")
+                   "放弃修复")
     abandon.add_argument("--reason", required=True)
     cleanup = leaf(sub, common, "cleanup", _fix_action("cleanup", lambda i, f, s: i.app.release().cleanup(s)),
-                   "清理修复分支与 worktree", "fix cleanup")
+                   "清理修复分支与 worktree")
     for parser in (prepare, start, plan, confirm, apply, done, abandon, cleanup):
         parser.add_argument("issue", help="Issue 编号")
 
     verify = group(commands, "verify", "验证")
     parsers = [
         leaf(verify, common, "local", _verify_action(
-            "local", lambda i, v, s: v.local(s, confirm_migration=i.args.confirm_migration)), "PR 阶段的本机检查",
-            "verify local"),
-        leaf(verify, common, "staging", _verify_action("staging", lambda i, v, s: v.staging(s)), "部署后确认",
-             "verify staging"),
-        leaf(verify, common, "screenshots", _verify_action("screenshots", _screenshots), "截图查看的结论",
-             "verify screenshots"),
+            "local", lambda i, v, s: v.local(s, confirm_migration=i.args.confirm_migration)), "PR 阶段的本机检查"),
+        leaf(verify, common, "staging", _verify_action("staging", lambda i, v, s: v.staging(s)), "部署后确认"),
+        leaf(verify, common, "screenshots", _verify_action("screenshots", _screenshots), "截图查看的结论"),
     ]
     for parser in parsers:
         parser.add_argument("issue", help="Issue 编号")

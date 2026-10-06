@@ -9,6 +9,7 @@ cd core
 
 | 参考 | 内容 |
 |---|---|
+| [cli.md](cli.md) | 全部命令：日常、分组与单步执行 |
 | [handoff-documents.md](handoff-documents.md) | 交接文档：头信息字段、各类型的「内容」小节与数据块字段(生成) |
 | [project-probe.md](project-probe.md) | 项目探针的输入与输出 JSON(生成) |
 | [configuration.md](configuration.md) | 配置与运行说明：各功能的启用条件、配置写法与运行行为 |

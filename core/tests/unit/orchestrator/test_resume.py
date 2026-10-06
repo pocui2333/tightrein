@@ -74,7 +74,7 @@ def test_next_views_follow_the_state_table(tmp_path):
     view = resume.next_view(world.conn, SubjectRef(PROBLEM, "P-0002"))
     assert view.target == SubjectRef(ISSUE, issue_id) and view.status == "needs-decision"
     assert (view.command, view.to_dict()["gate"], view.step.can_continue) == (
-        f"tightrein issue approve {issue_id.lstrip('0')}", "issue-approval", False)
+        f"tightrein approve {issue_id.lstrip('0')}", "issue-approval", False)
 
 
 def test_continue_runs_until_the_next_gate(tmp_path):
@@ -86,7 +86,7 @@ def test_continue_runs_until_the_next_gate(tmp_path):
     assert [item.message for item in report.progress] == ["已分诊：提 Issue", "已创建 Issue 0001"]
     stop = report.stops[0]
     assert (stop.gate, stop.status, stop.command, stop.failed) == ("issue-approval", "needs-decision",
-                                                                   "tightrein issue approve 1", False)
+                                                                   "tightrein approve 1", False)
 
 
 def test_until_stops_before_later_modules(tmp_path):

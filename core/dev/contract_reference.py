@@ -102,7 +102,7 @@ def handoff() -> str:
     parts = [
         "# 交接文档", "", GENERATED, "",
         "格式与规则见 [交接文档](../explanation/redesign/00-handoff-documents.md)；新增类型见"
-        "[如何新增一种交接文档类型](../how-to/add-handoff-document-type.md)。校验：`tightrein doc check <文件>`。", "",
+        "[如何新增一种交接文档类型](../how-to/add-handoff-document-type.md)。校验：`tightrein admin doc check <文件>`。", "",
         "## 头信息", "", header["description"], "", table(fields(header, "handoff/document.schema.json")), "",
         "## 基础小节", "", "正文按以下顺序使用二级标题；标题按 `project.language` 写入，读取时三种语言都识别。", "",
         "| 键 | " + " | ".join(LANGUAGES) + " |", "|---|---|---|---|",
@@ -131,7 +131,7 @@ def handoff() -> str:
 def probe() -> str:
     parts = ["# 项目探针契约", "", GENERATED, "",
              "写法见[如何编写项目探针](../how-to/write-project-probe.md)。探针经标准输入收到输入 JSON，经标准输出返回"
-             "输出 JSON；输出不合格时本次作废、状态不保存。试跑：`tightrein probe test <名称>`。", ""]
+             "输出 JSON；输出不合格时本次作废、状态不保存。试跑：`tightrein project probe test <名称>`。", ""]
     for title, name in (("输入", PROBE_INPUT), ("输出", PROBE_OUTPUT)):
         schema = validate.schema(name)
         parts += [f"## {title}", "", schema["description"], "", f"schema：`{name}`", "", table(fields(schema, name)), ""]

@@ -1,6 +1,6 @@
 # 配置与运行说明
 
-各项功能的启用条件、配置写法与运行行为。每个键的生效值与来源层用 `tightrein config show --key <键>` 查看。文中的命令在本仓库根目录执行。
+各项功能的启用条件、配置写法与运行行为。每个键的生效值与来源层用 `tightrein project config --key <键>` 查看。文中的命令在本仓库根目录执行。
 
 ## 本机工具
 
@@ -17,7 +17,7 @@ tools:
   semgrep: {path: local/semgrep/bin/semgrep}
 ```
 
-不配置时按 `runtime.tools.semgrep`(缺省 `semgrep`，按 PATH 查找)；`tightrein config show --key runtime.tools.semgrep` 可查看生效值与各层的值。
+不配置时按 `runtime.tools.semgrep`(缺省 `semgrep`，按 PATH 查找)；`tightrein project config --key runtime.tools.semgrep` 可查看生效值与各层的值。
 
 ## 采集方法
 
@@ -28,8 +28,8 @@ tools:
 | 内部错误 `platform-errors` | `extensions.error-tracking`(`core/sentry`)，或 `extensions.log-platform`(`core/loki`)加 `sources.platform-errors.logQuery` 与 `extensions.log-parse` | `tightrein collect --probe platform-errors` |
 | 访问日志 `access-log`(可选) | `sources.access-log.query` 与 `extensions.log-platform` | `tightrein collect --probe access-log` |
 | 业务告警 `alerts` | `extensions.alert-source`(`core/alertmanager`) | `tightrein collect --probe alerts` |
-| 项目探针 `project-probe` | `sources.project-probes` 中有登记 | `tightrein probe new <名称>`、`tightrein probe test <名称>`、`tightrein collect --probe project-probe [--select name:<名称>]` |
-| `api-fuzz` | `target.baseUrl` 与接口描述(`extensions.spec-export`；框架不能导出时 `tightrein spec draft` 起草) | `tightrein collect --probe api-fuzz` |
+| 项目探针 `project-probe` | `sources.project-probes` 中有登记 | `tightrein project probe new <名称>`、`tightrein project probe test <名称>`、`tightrein collect --probe project-probe [--select name:<名称>]` |
+| `api-fuzz` | `target.baseUrl` 与接口描述(`extensions.spec-export`；框架不能导出时 `tightrein project spec draft` 起草) | `tightrein collect --probe api-fuzz` |
 | `static`、`incidental` | 总是可用 | `tightrein collect --probe static` |
 
 平台的只读令牌存在本机钥匙串(`security add-generic-password -s <条目名> -a <账号> -w`)，方法的 `keychainItem` 写条目名。项目探针的写法见[如何编写项目探针](../how-to/write-project-probe.md)。api-fuzz 的检查项按 `sources.api-fuzz.checks` 分级(服务器报错、越权、状态码不符开启；响应结构不符在接口描述由框架导出时开启；响应过慢、不支持的方法关闭)；`target.environment: production` 时只测 GET 与 `sources.api-fuzz.production.allow` 列出的路由。
@@ -43,7 +43,7 @@ tightrein collect --probe static --level baseline --dry-run
 tightrein collect --probe static --level baseline
 ```
 
-之后的日常巡检仍是增量(`incremental`)。每批的文件数与总行数上限、不审查的路径(缺省为测试夹具、生成文件、锁文件、二进制与文档)、取证的主张上限在 `sources.static.baseline` 下，项目可在 `project.yaml` 中覆盖，排除路径可用 `exclude+` 追加，例如测试代码 `exclude+: [tests/]`。运行摘要列出批数与每批的耗时、费用；当天预算(`stages.collect.budgetPerDay`)用尽时其余批次不再运行。`tightrein config show --key sources.static.baseline` 查看生效值。
+之后的日常巡检仍是增量(`incremental`)。每批的文件数与总行数上限、不审查的路径(缺省为测试夹具、生成文件、锁文件、二进制与文档)、取证的主张上限在 `sources.static.baseline` 下，项目可在 `project.yaml` 中覆盖，排除路径可用 `exclude+` 追加，例如测试代码 `exclude+: [tests/]`。运行摘要列出批数与每批的耗时、费用；当天预算(`stages.collect.budgetPerDay`)用尽时其余批次不再运行。`tightrein project config --key sources.static.baseline` 查看生效值。
 
 ## Issue 的去向：本地或 GitHub 镜像
 
@@ -70,11 +70,11 @@ triage:
     个人项目……
 ```
 
-`project.language` 决定分诊结论、Issue 标题与正文、修复计划与 PR 描述中的叙述、GitHub 评论的语言(代码、路径、标识符保持原样)；Issue 的小节标题与固定文字有 zh、en、ja 三套。Issue 标题为「[模块] 现象与后果」(上限 `thresholds.issue.titleMaxLength`)。Issue 文件是交接文档的 issue 类型：头信息有状态、严重度、任务类型、规模档、处理标签、来源、上游等；正文为结论、内容、需要决定、下一步、引用、历史，「内容」下依次为问题、影响、复现、原因、范围、注意事项、验收标准(复选框，固定三条在前：复现测试修复前失败修复后通过、现有测试全部通过、必须保持不变的行为)、修复方向；GitHub 镜像中代码位置是取证 commit 的永久链接，完整证据折叠。严重度由取证按 `skills/triage/references/severity.md` 与 `severityGuide` 判定并写理由。Issue 状态为待决定、待修、进行中、待合并、完成、取消六种。旧版式的 Issue 文件照常可读，用 `tightrein issue rerender [<编号>...]` 转为当前版式(不调用模型，缺的字段为「—」；完整格式先 `tightrein retriage <问题编号>`)。
+`project.language` 决定分诊结论、Issue 标题与正文、修复计划与 PR 描述中的叙述、GitHub 评论的语言(代码、路径、标识符保持原样)；Issue 的小节标题与固定文字有 zh、en、ja 三套。Issue 标题为「[模块] 现象与后果」(上限 `thresholds.issue.titleMaxLength`)。Issue 文件是交接文档的 issue 类型：头信息有状态、严重度、任务类型、规模档、处理标签、来源、上游等；正文为结论、内容、需要决定、下一步、引用、历史，「内容」下依次为问题、影响、复现、原因、范围、注意事项、验收标准(复选框，固定三条在前：复现测试修复前失败修复后通过、现有测试全部通过、必须保持不变的行为)、修复方向；GitHub 镜像中代码位置是取证 commit 的永久链接，完整证据折叠。严重度由取证按 `skills/triage/references/severity.md` 与 `severityGuide` 判定并写理由。Issue 状态为待决定、待修、进行中、待合并、完成、取消六种。旧版式的 Issue 文件照常可读，用 `tightrein issue rerender [<编号>...]` 转为当前版式(不调用模型，缺的字段为「—」；完整格式先 `tightrein problem retriage <问题编号>`)。
 
 ## 审批关卡、预算与无人值守
 
-哪些事项交用户决定集中在 `project.yaml` 的关卡表 `gates`(`tightrein config show --key gates`)，缺省全部为 `user`(逐次确认、用户放行与合并)。个人项目可以开启：
+哪些事项交用户决定集中在 `project.yaml` 的关卡表 `gates`(`tightrein project config --key gates`)，缺省全部为 `user`(逐次确认、用户放行与合并)。个人项目可以开启：
 
 ```yaml
 gates:
@@ -103,16 +103,16 @@ loop:
 - 预算到达时运行在当前步骤后停下(不再执行调用模型的步骤)，执行器也不再启动新任务；熔断：无人值守推进中同一对象连续失败 `thresholds.loop.breakerFailures` 次或同一步反复没有进展 `breakerRepeats` 次(缺省都为 3)时转为待决定。
 - 实时查看：在另一个终端运行 `tightrein watch`，固定 26 行原地刷新(间隔 `loop.watchIntervalSeconds`，缺省 2 秒，`--interval` 覆盖)：运行状态与进程号、当前模型、今日 token 用量、最新一份交接文档(路径、时间与结论)、流程脉络(跳过与等待的步骤折叠)、上一步/当前步/下一步的明细(状态、耗时、token 用量、模型、备注)与最近 3 条事件(带表头)，底栏给出建议的命令。只读数据库与工作区文件，不调用模型。按 q 退出、r 立即刷新；`--once` 只输出一帧。
 - 待用户决定的事项集中在收件箱：`tightrein status` 列出每件与推荐做法；每天一份汇总 `data/reports/daily-<日期>.md`(运行摘要与收件箱合为一份)，每次运行后发一条 macOS 通知；GitHub 镜像中对应 `needs-decision` 标签。
-- 触发：`tightrein schedule install` 装的 launchd 任务每 15 分钟(`schedule.tick`)唤醒 `tightrein tick`：工作日 `schedule.runAt`(缺省 09:00)做完整运行，其余时刻只检查事件(主分支有新提交时增量巡检，有新部署时部署后确认)。无人值守推进先修立即修、再修排期修。
+- 触发：`tightrein project schedule install` 装的 launchd 任务每 15 分钟(`schedule.tick`)唤醒 `tightrein tick`：工作日 `schedule.runAt`(缺省 09:00)做完整运行，其余时刻只检查事件(主分支有新提交时增量巡检，有新部署时部署后确认)。无人值守推进先修立即修、再修排期修。
 - 暂停：`tightrein pause`(全局)或 `tightrein pause --workspace <工作区>`，不再发起新的运行，进行中的步骤完成后停下；`tightrein resume` 恢复。
 
 ## 接入新项目
 
 ```
-tightrein workspace init --workspace workspaces/<项目> --repo <仓库路径>
+tightrein project init --workspace workspaces/<项目> --repo <仓库路径>
 ```
 
-新工作区先处于接入中：只做只读的事(识别技术栈、试连接已配置的平台与扩展、在主分支上自检检查命令)，不修代码、不提 PR、不建 Issue。清单写在工作区的 `onboarding.md`，每项注明自动完成、需要回答(附推荐答案)或失败待处理；`init` 在终端逐项提问，回车采用推荐。也可以 `tightrein workspace answer <项> --recommended|--skip|--value <值>`、通过 loop skill 用自然语言回答，或直接改 `project.yaml`(在 `onboarding.md` 的数据块中把某项改为 done 也算回答)，下次检查采纳。`tightrein status` 显示「接入中，还差 N 项需要回答」，每日汇总有「接入中的项目」。清单全部完成、试连接都成功、检查命令通过后转为运行中。已有工作区视为运行中，可用 `tightrein workspace check` 生成一次清单检查。
+新工作区先处于接入中：只做只读的事(识别技术栈、试连接已配置的平台与扩展、在主分支上自检检查命令)，不修代码、不提 PR、不建 Issue。清单写在工作区的 `onboarding.md`，每项注明自动完成、需要回答(附推荐答案)或失败待处理；`init` 在终端逐项提问，回车采用推荐。也可以 `tightrein project answer <项> --recommended|--skip|--value <值>`、通过 loop skill 用自然语言回答，或直接改 `project.yaml`(在 `onboarding.md` 的数据块中把某项改为 done 也算回答)，下次检查采纳。`tightrein status` 显示「接入中，还差 N 项需要回答」，每日汇总有「接入中的项目」。清单全部完成、试连接都成功、检查命令通过后转为运行中。已有工作区视为运行中，可用 `tightrein project check` 生成一次清单检查。
 
 ## 分支、提交、PR 的格式与部署跟踪
 
@@ -165,7 +165,7 @@ checks:
 
 ## GitHub 网络失败的换路重试
 
-访问 GitHub 的 git 远程命令(push、fetch、pull、ls-remote)、gh 与第三方 skill 下载遇到网络类错误(超时、连接重置、TLS 握手失败、无法解析主机等，模式在 `runtime.network.errorPatterns`)时，自动换另一条路重试一次：按 `network.noProxy` 直连的改为经代理，经代理的改为直连(需要本机配置了 `network.proxy` 或环境中有代理变量)。认证失败、推送被拒等不重试。每次换路写事件，运行摘要「网络换路」列出；`install`、`third-party` 等命令把换路写到错误输出。
+访问 GitHub 的 git 远程命令(push、fetch、pull、ls-remote)、gh 与第三方 skill 下载遇到网络类错误(超时、连接重置、TLS 握手失败、无法解析主机等，模式在 `runtime.network.errorPatterns`)时，自动换另一条路重试一次：按 `network.noProxy` 直连的改为经代理，经代理的改为直连(需要本机配置了 `network.proxy` 或环境中有代理变量)。认证失败、推送被拒等不重试。每次换路写事件，运行摘要「网络换路」列出；`admin install`、`third-party` 等命令把换路写到错误输出。
 
 ## 本机用户配置：agent 工具、模型与网络代理
 
@@ -213,7 +213,7 @@ agents:
       agy: {model: gemini-3.1-pro-high, inputUsdPerMTok: 2, outputUsdPerMTok: 12}
 ```
 
-agy 在无人值守模式下按它自己的命令白名单放行命令，`tightrein install` 为它补上 `git grep` 等只读命令；只读任务在沙箱中不能写文件，白名单以外的命令被拒绝，检查由核心之后执行；它也不支持交互会话，`defaultTool: agy` 时把 `stages.fix.session.tool` 设为 claude 或 codex。详见 architecture/02 2.5。
+agy 在无人值守模式下按它自己的命令白名单放行命令，`tightrein admin install` 为它补上 `git grep` 等只读命令；只读任务在沙箱中不能写文件，白名单以外的命令被拒绝，检查由核心之后执行；它也不支持交互会话，`defaultTool: agy` 时把 `stages.fix.session.tool` 设为 claude 或 codex。详见 architecture/02 2.5。
 
 个别角色或任务可以单独指定工具、模型或档：在 `stages.<环节>.roles.<角色>` 或 `tasks.<任务>` 下写 `tool`、`model`、`capability`(用户配置与 `project.yaml` 都可写)，优先于环节的工具；证伪复核、评审与截图评审仍用 `refuter`、`review.*`、`screenshotReview`。核心只给能力档，不写死工具与模型。例如出计划(方向错了后续全部白做)用 Fable、写复现测试与写代码用 Opus：
 
@@ -260,18 +260,18 @@ agents:
       agy: {model: gemini-3.8-flash-high, inputUsdPerMTok: 0.5, outputUsdPerMTok: 3}
 ```
 
-agy 做勘察时用白名单中的 `git grep`、`git log` 等只读命令搜索代码与提交历史；没有执行 `tightrein install` 时只能逐个打开文件，又慢又费 token。
+agy 做勘察时用白名单中的 `git grep`、`git log` 等只读命令搜索代码与提交历史；没有执行 `tightrein admin install` 时只能逐个打开文件，又慢又费 token。
 
-价格以各产品当时的价目为准。配置了 `network.proxy` 后，tightrein 启动的子进程(agent 工具、git、gh、Schemathesis、Playwright、Semgrep、扩展、本机服务)与核心自己的 HTTP 请求都走代理，`noProxy` 与本机回环地址直连；没有配置时沿用当前进程环境中的代理变量。`tightrein config show --key network`、`--key stages.fix` 可查看生效值与来源层。
+价格以各产品当时的价目为准。配置了 `network.proxy` 后，tightrein 启动的子进程(agent 工具、git、gh、Schemathesis、Playwright、Semgrep、扩展、本机服务)与核心自己的 HTTP 请求都走代理，`noProxy` 与本机回环地址直连；没有配置时沿用当前进程环境中的代理变量。`tightrein project config --key network`、`--key stages.fix` 可查看生效值与来源层。
 
 第三方 skill 也可以只放在本工具仓库内(下载缓存在 `local/third_party-cache/`，链接在 `skills/<名称>`，都已被 `.gitignore` 忽略)，不写任何 agent 工具的目录；`lock` 与下载需要访问 GitHub(gh 已登录)：
 
 ```
 (cd core && .venv/bin/pip install -e .)
-core/.venv/bin/tightrein third-party lock
-core/.venv/bin/tightrein install --repo-only --dry-run
-core/.venv/bin/tightrein install --repo-only
-core/.venv/bin/tightrein install --repo-only --check
+core/.venv/bin/tightrein admin third-party lock
+core/.venv/bin/tightrein admin install --repo-only --dry-run
+core/.venv/bin/tightrein admin install --repo-only
+core/.venv/bin/tightrein admin install --repo-only --check
 ```
 
-撤销用 `tightrein uninstall --repo-only`。
+撤销用 `tightrein admin uninstall --repo-only`。

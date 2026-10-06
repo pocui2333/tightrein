@@ -8,7 +8,7 @@
   数据库不可用、工作区路径无效抛出内部错误码的 MCPError，整个调用失败；工具函数不以返回字符串的方式报告错误；
 - stdout 是协议通道：进程内不使用 print，日志一律经 logging 写到 stderr。
 启动：`python -m tightrein.cli.kb_mcp --workspace <工作区绝对路径>`，没有 --workspace 时取 TIGHTREIN_WORKSPACE；
-`tightrein kb mcp` 调用同一个 main。
+`tightrein admin kb mcp` 调用同一个 main。
 """
 
 from __future__ import annotations
@@ -88,7 +88,7 @@ def build_server(open_service: ServiceFactory) -> MCPServer:
 
 
 def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(prog="tightrein kb mcp", description="以 stdio 方式运行知识检索的 MCP 服务")
+    parser = argparse.ArgumentParser(prog="tightrein admin kb mcp", description="以 stdio 方式运行知识检索的 MCP 服务")
     parser.add_argument("--workspace", type=Path, default=None, help="工作区绝对路径")
     return parser.parse_args(argv)
 

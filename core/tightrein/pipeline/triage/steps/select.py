@@ -22,7 +22,7 @@ TRIAGEABLE = frozenset({ProblemStatus.NEW, ProblemStatus.ONGOING, ProblemStatus.
 FOR_TRIAGE = frozenset({ProblemStatus.NEW, ProblemStatus.REGRESSED})
 SERVER_ERROR_CHECK = "not_a_server_error"
 SLOW_CHECK = "max_response_time"
-ALREADY_TRIAGED = "已分诊，重新分诊请用 tightrein retriage"
+ALREADY_TRIAGED = "已分诊，重新分诊请用 tightrein problem retriage"
 NOT_TRIAGEABLE = "状态为 {status}，只能分诊新发现、持续或回归的问题；已忽略的问题先执行 tightrein problem reopen"
 
 

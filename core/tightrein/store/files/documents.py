@@ -2,7 +2,7 @@
 
 文件为 YAML 头信息(按类型的 header_schema，通常为 handoff/document.schema.json)加正文；正文由 domain/handoff/document.render_body 按类型模板渲染，
 数据块写成 YAML。历史只追加：append_history 在「历史」末尾加一行并更新头信息的 updated，状态只改头信息。
-check 返回全部问题(空列表表示通过)，不抛异常，供 `tightrein doc check` 与交接前的校验使用。
+check 返回全部问题(空列表表示通过)，不抛异常，供 `tightrein admin doc check` 与交接前的校验使用。
 """
 
 from __future__ import annotations

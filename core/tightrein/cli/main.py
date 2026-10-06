@@ -24,7 +24,8 @@ from typing import NoReturn, TextIO
 from tightrein import __version__
 from tightrein.cli import exit_codes
 from tightrein.cli.assemble import App, Externals, Options
-from tightrein.cli.commands import COMMAND_GROUPS
+from tightrein.cli.commands import register_all
+from tightrein.cli.commands.common import DRY_RUN_COMMANDS, PROG, CommonParsers, root_help
 from tightrein.cli.exit_codes import UsageError
 from tightrein.cli.output import Outcome, emit, error
 from tightrein.domain.enums import RunStatus
@@ -32,12 +33,18 @@ from tightrein.orchestrator import recovery
 from tightrein.runner.roles import Overrides
 from tightrein.store import locks
 
-PROG = "tightrein"
-
-
-# 读取 --dry-run 的命令(command_name)
-DRY_RUN_COMMANDS = frozenset({"run", "collect", "aggregate", "triage", "issue", "issue create", "install", "uninstall",
-                              "schedule install", "schedule uninstall", "third-party lock"})
+# 已改名的命令：老写法(按开头的一到两个词匹配) → 新写法；敲老写法时报用法错误并给出新写法，不执行
+RENAMED = {
+    ("next",): "show", ("pending",): "status --pending", ("confirm",): "approve",
+    ("issue", "approve"): "approve", ("ignore",): "problem ignore", ("false-positive",): "problem false-positive",
+    ("merge",): "problem merge", ("reopen",): "problem reopen", ("retriage",): "problem retriage",
+    ("workspace",): "project init / check / answer", ("probe",): "project probe", ("spec",): "project spec",
+    ("worktree",): "project worktree", ("config",): "project config", ("schedule",): "project schedule",
+    ("install",): "admin install", ("uninstall",): "admin uninstall", ("third-party",): "admin third-party",
+    ("skills",): "admin skills", ("doc",): "admin doc", ("eval",): "admin eval", ("kb",): "admin kb",
+    ("ext",): "admin ext",
+}
+MANUAL_RENAMED = "new"  # issue create --manual
 
 
 class Parser(argparse.ArgumentParser):
@@ -45,36 +52,54 @@ class Parser(argparse.ArgumentParser):
         raise UsageError(message)
 
 
-def common_parser() -> argparse.ArgumentParser:
-    common = Parser(add_help=False)
-    common.add_argument("--workspace", type=Path, help="工作区；省略时取本机用户配置的 defaultWorkspace")
+class RootParser(Parser):
+    def format_help(self) -> str:
+        return root_help(self.description or "", self._subparsers._group_actions[0])  # type: ignore[union-attr]
+
+
+def common_parser(*, dry_run: bool = False) -> argparse.ArgumentParser:
+    """帮助只显示人会用到的参数；其余(评测、回放、编排用的)照常接受，帮助中不列出。"""
+    hidden = argparse.SUPPRESS
+    common = CommonParsers(add_help=False)
+    common.add_argument("-w", "--workspace", type=Path, help="工作区的路径或项目名；省略时取本机用户配置的 defaultWorkspace")
     common.add_argument("--json", action="store_true", help="以 JSON 输出")
-    common.add_argument("--now", help="替换当前时间(带时区的 ISO 时间或日期)")
-    common.add_argument("--dry-run", action="store_true", help="只列出将要做什么")
-    common.add_argument("--select", action="append", default=[], help="选择器，可重复")
-    common.add_argument("--input", type=Path, help="作为输入的交接文档")
-    common.add_argument("--output", type=Path, help="结果只写到这个目录")
-    common.add_argument("--ignore-state", action="store_true", help="跳过状态检查，只在 --output 下有效")
-    common.add_argument("--runner", help="本次使用的 agent 工具；replay 为回放")
-    common.add_argument("--model", help="本次使用的模型")
-    common.add_argument("--replay-from", help="回放的录制集目录或运行编号")
-    common.add_argument("--target", help="目标环境地址")
-    common.add_argument("--commit", help="在指定 commit 上运行")
+    common.add_argument("--dry-run", action="store_true", help="只列出将要做什么" if dry_run else hidden)
     common.add_argument("--verbose", action="store_true", help="人读输出附带步骤明细")
-    common.add_argument("--gate-decisions", type=Path, help="评测用例中各关口的预设决定，只在 --output 下有效")
+    common.add_argument("--now", help=hidden)
+    common.add_argument("--select", action="append", default=[], help=hidden)
+    common.add_argument("--input", type=Path, help=hidden)
+    common.add_argument("--output", type=Path, help=hidden)
+    common.add_argument("--ignore-state", action="store_true", help=hidden)
+    common.add_argument("--runner", help=hidden)
+    common.add_argument("--model", help=hidden)
+    common.add_argument("--replay-from", help=hidden)
+    common.add_argument("--target", help=hidden)
+    common.add_argument("--commit", help=hidden)
+    common.add_argument("--gate-decisions", type=Path, help=hidden)
+    if not dry_run:
+        common.dry_run = common_parser(dry_run=True)
     return common
 
 
 @lru_cache(maxsize=1)
 def build_parser() -> argparse.ArgumentParser:
     """解析器只在第一次调用时构造；parse_args 不改变它，dispatch 与 main 共用。"""
-    parser = Parser(prog=PROG, description="tightrein：缺陷闭环的命令入口")
+    parser = RootParser(prog=PROG, description="tightrein：自动发现并受控修复代码缺陷")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    commands = parser.add_subparsers(dest="command", required=True, parser_class=Parser)
-    common = common_parser()
-    for group in COMMAND_GROUPS:
-        group.register(commands, common)
+    commands = parser.add_subparsers(dest="command", required=True, parser_class=Parser, metavar="<命令>")
+    register_all(commands, common_parser())
     return parser
+
+
+def renamed(arguments: Sequence[str]) -> str | None:
+    """老写法的提示；不是老写法时为空。"""
+    words = [item for item in arguments if not item.startswith("-")][:2]
+    if words[:2] == ["issue", "create"] and "--manual" in arguments:
+        return f"`issue create --manual` 已改为 `{MANUAL_RENAMED}`"
+    for key in (tuple(words[:2]), tuple(words[:1])):
+        if key in RENAMED:
+            return f"`{' '.join(key)}` 已改为 `{RENAMED[key]}`"
+    return None
 
 
 @dataclass
@@ -152,7 +177,10 @@ def execute(invocation: Invocation) -> Outcome:
     name = getattr(args, "command_name", args.command)
     try:
         _checked(args)
-        return args.handler(invocation)
+        outcome = args.handler(invocation)
+        if not outcome.command.startswith(name):
+            outcome.command = name  # 处理函数里写的是改名前的叫法时，输出用当前的命令名
+        return outcome
     except Exception as failure:  # noqa: BLE001 命令的最外层：映射为退出码并输出，不向终端抛出堆栈
         invocation.failure = failure
         code = exit_codes.for_error(failure)
@@ -165,9 +193,12 @@ def execute(invocation: Invocation) -> Outcome:
 
 def main(argv: Sequence[str] | None = None, externals: Externals | None = None, *, stdin: TextIO | None = None,
          stdout: TextIO | None = None, stderr: TextIO | None = None) -> int:
-    arguments = list(sys.argv[1:] if argv is None else argv)
+    arguments = list(sys.argv[1:] if argv is None else argv) or ["status"]
     out, err = stdout or sys.stdout, stderr or sys.stderr
     try:
+        hint = renamed(arguments)
+        if hint is not None:
+            raise UsageError(hint)
         args = build_parser().parse_args(arguments)
     except UsageError as failure:
         outcome = Outcome(" ".join(arguments[:1]) or PROG, exit_codes.USAGE, [f"用法错误：{failure}"],

@@ -18,7 +18,7 @@ optionsSchema:
 tools: []
 doc:
   prerequisites:
-    - 仓库中有随代码更新的接口描述文件，或工作区中有一份确认过的接口描述(可由 tightrein spec draft 起草)
+    - 仓库中有随代码更新的接口描述文件，或工作区中有一份确认过的接口描述(可由 tightrein project spec draft 起草)
   output: 本 commit 的接口描述(写到 data/specs/<commit>/openapi.json)
   limitations:
     - 手写的接口描述视为不由框架导出，api-fuzz 的响应结构检查缺省关闭

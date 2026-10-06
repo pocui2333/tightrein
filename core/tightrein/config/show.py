@@ -1,4 +1,4 @@
-"""`tightrein config show [--key <键>]`(architecture/01 5.1、architecture/09 4.1)：合成后每个键的生效值与来源层。
+"""`tightrein project config [--key <键>]`(architecture/01 5.1、architecture/09 4.1)：合成后每个键的生效值与来源层。
 
 层按 core、stack:<名称>(按 stacks 的顺序)、user(agents 段)、project、user(其余个人键)合成，后一层覆盖前一层：
 - core：config/defaults.yaml；

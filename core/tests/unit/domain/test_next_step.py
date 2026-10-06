@@ -57,7 +57,7 @@ def test_problem_with_issue_follows_issue():
 
 
 @pytest.mark.parametrize("status,phase,module,command,continuation", [
-    (IssueStatus.NEEDS_DECISION, None, Stage.ISSUE, "issue approve", Continuation.USER),
+    (IssueStatus.NEEDS_DECISION, None, Stage.ISSUE, "approve", Continuation.USER),
     (IssueStatus.TODO, None, Stage.FIX, "fix start", Continuation.INTERACTIVE),
     (IssueStatus.IN_PROGRESS, IssuePhase.FIX, Stage.FIX, "fix start", Continuation.INTERACTIVE),
     (IssueStatus.IN_PROGRESS, IssuePhase.VERIFY, Stage.VERIFY, "verify local", Continuation.AUTO),
@@ -97,8 +97,8 @@ def test_can_continue():
 def test_a_manual_todo_issue_without_a_branch_is_approved_first():
     manual = replace(ISSUE, origin=IssueOrigin.MANUAL)
     step = next_step(manual)
-    assert (step.command, step.continuation) == ("issue approve", Continuation.USER)
+    assert (step.command, step.continuation) == ("approve", Continuation.USER)
     assert next_step(replace(manual, branch="cty/fix-x")).command == "fix start"
     assert next_step(ISSUE).command == "fix start"
     queued = next_step(replace(manual, depends_on="0006"))
-    assert (queued.command, queued.reason) == ("issue approve", "拆分出的后续子任务：排在 Issue 0006 之后，它合并后再放行")
+    assert (queued.command, queued.reason) == ("approve", "拆分出的后续子任务：排在 Issue 0006 之后，它合并后再放行")

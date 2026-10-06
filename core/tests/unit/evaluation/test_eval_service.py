@@ -162,7 +162,7 @@ def test_an_exhausted_budget_leaves_the_evaluation_incomplete(bench):
     result = service.evaluate(plan(), bench.deps(budget=0.5, judged=False), seed=7)
     assert (result.verdict, bench.calls) == (EvalVerdict.INCOMPLETE, 1)
     assert result.notes[0].startswith("累计费用 0.50 USD 已达到 evaluation.budgetUsd(0.5)")
-    assert result.notes[0].endswith(f"tightrein eval resume {EVALUATION}")
+    assert result.notes[0].endswith(f"tightrein admin eval resume {EVALUATION}")
 
 
 def test_an_unavailable_tool_and_repeated_crashes_stop_the_evaluation(bench, world):

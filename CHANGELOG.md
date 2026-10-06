@@ -6,6 +6,11 @@
 
 ## [未发布]
 
+### 变更(不兼容)
+
+- 命令行重新规整：日常命令在顶层(`status` `watch` `show` `find` `new` `continue` `approve` `reject` `run` `pause` `resume`)，其余收进 `issue`、`problem`、`project`、`admin` 四组，流水线单步命令不变。不带命令时等同 `status`；`-w` 可写项目名；帮助只列人会用到的参数。老写法(`next`、`pending`、`confirm`、`issue approve`、`issue create --manual`、`retriage`、`workspace`、`install` 等)已删除，敲老写法时提示新写法。全部命令见 `docs/reference/cli.md`。
+- `tightrein admin install` 在 `~/.local/bin` 建立 `tightrein` 命令链接。
+
 ### 变更
 
 - agy 无人值守时可以搜索代码：`tightrein install` 在 agy 的命令白名单中补上 `git grep` 等只读命令，提示末尾列出已放行的命令与工具调用上限，要求先搜索再读文件。此前提示让 agy 不要调用 shell，它只能逐个打开文件，勘察又慢又费 token。

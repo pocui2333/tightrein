@@ -114,18 +114,18 @@ def _seal(invocation: Any) -> Outcome:
 
 def register(commands: Any, common: argparse.ArgumentParser) -> None:
     group_ = group(commands, "eval", "模块评测")
-    run = leaf(group_, common, "run", _run, "按参数组成计划并运行评测(--runner、--model 可用逗号给出多个)", "eval run")
+    run = leaf(group_, common, "run", _run, "按参数组成计划并运行评测(--runner、--model 可用逗号给出多个)")
     run.add_argument("--module", required=True, choices=MODULES)
     run.add_argument("--cases", help="用例编号，逗号分隔")
     run.add_argument("--version", help="候选版本的 commit，缺省为 HEAD")
     run.add_argument("--worktree", action="store_true", help="候选版本为当前工作区(含未提交改动)")
     run.add_argument("--repeats", type=int)
     for name, handler, text in (("resume", _resume, "续跑"), ("report", _show, "显示报告")):
-        parser = leaf(group_, common, name, handler, text, f"eval {name}")
+        parser = leaf(group_, common, name, handler, text)
         parser.add_argument("evaluation", help="评测编号")
-    verify = leaf(group_, common, "verify", _verify, "校验用例", "eval verify")
+    verify = leaf(group_, common, "verify", _verify, "校验用例")
     verify.add_argument("--module", choices=MODULES)
-    add = leaf(group_, common, "add", _add, "由用户在终端中新增用例(--commit 为用例的 commit)", "eval add")
+    add = leaf(group_, common, "add", _add, "由用户在终端中新增用例(--commit 为用例的 commit)")
     add.add_argument("--module", required=True, choices=MODULES)
     add.add_argument("--from", dest="source", required=True, type=Path, help="交接文档")
-    leaf(group_, common, "seal", _seal, "用户确认后重算 manifest", "eval seal")
+    leaf(group_, common, "seal", _seal, "用户确认后重算 manifest")

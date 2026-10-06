@@ -644,7 +644,7 @@ stages:
         limits: {maxTurns: 60, maxDurationMs: 1200000}
       claim-verifier:           # 候选主张的取证
         limits: {maxTurns: 60, maxDurationMs: 1200000}
-      spec-drafter:             # 起草接口描述(tightrein spec draft)
+      spec-drafter:             # 起草接口描述(tightrein project spec draft)
         limits: {maxTurns: 80, maxDurationMs: 1800000}
   aggregate:
     limits:

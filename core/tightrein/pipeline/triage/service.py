@@ -80,14 +80,14 @@ ENVELOPE = "handoff/envelope.schema.json"
 DEDUP_ROLE = "triage-dedup"
 LOCKED = "正被其他运行处理"
 BUDGET = "当天 triage 的费用已达到 stages.triage.budgetPerDay，留到下一次"
-SYNC_HINT = "先执行 tightrein worktree sync"
+SYNC_HINT = "先执行 tightrein project worktree sync"
 NEXT_ACTIONS = {
     Disposition.CREATE_ISSUE: "交给 issue 创建",
     Disposition.AWAITING_DEPLOY: "等待部署后由 aggregate 判定已解决",
     Disposition.FALSE_POSITIVE: "已判为误报并生成抑制规则",
     Disposition.ACCEPTED_TRADEOFF: "命中已接受的取舍，已忽略",
     Disposition.DEFERRED: "暂不修，再出现或严重度升级时重新分诊",
-    Disposition.MANUAL_QUEUE: "进入人工队列：补充信息后执行 tightrein retriage <问题> --note，或直接改判",
+    Disposition.MANUAL_QUEUE: "进入人工队列：补充信息后执行 tightrein problem retriage <问题> --note，或直接改判",
 }
 ContextFor = Callable[[ContextRequest], ContextBundle]
 
@@ -511,7 +511,7 @@ class TriageService:
         where = "；".join(f"{frame.filename.rsplit('/', 1)[-1]}:{frame.lineno}" for frame in frames)
         reason = f"{detail}(位置 {where})" if where else detail
         document = self._envelope(run, problem.id, {}, HandoffStatus.FAILED,
-                                  "查看失败原因后执行 tightrein retriage 重新分诊", reason)
+                                  "查看失败原因后执行 tightrein problem retriage 重新分诊", reason)
         written = handoff_files.write(self.deps.layout, document, self.deps.clock,
                                       conn=None if self.output_mode else self.deps.conn)
         return TriageItem(problem.id, problem.title, HandoffStatus.FAILED, handoff=written.path, reason=reason)

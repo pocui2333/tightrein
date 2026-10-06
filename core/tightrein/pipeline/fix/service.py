@@ -127,7 +127,7 @@ REVIEW_STATE = "review.json"
 PATCH_FILE = "changes.patch"
 CHECKLIST_PATH = "regressions/{issue}/check.yaml"
 SESSION_ROLE = "fix-session"
-SESSION_COMMANDS = ("tightrein fix", "tightrein next", *READ_ONLY_COMMANDS)
+SESSION_COMMANDS = ("tightrein fix", "tightrein show", *READ_ONLY_COMMANDS)
 ACTOR = "fix"
 PLAN_APPROVED = "自动确认修复计划：满足"
 PLAN_WAITING = "修复计划需要用户确认"
@@ -279,7 +279,7 @@ class FixService:
         deps = self.deps
         issue = transitions.record_of(self._env(), issue_id).issue
         if issue.status is not IssueStatus.TODO:
-            hint = f"先执行 issue approve {issue_id}" if issue.status is IssueStatus.NEEDS_DECISION else \
+            hint = f"先执行 approve {issue_id.lstrip('0') or '0'}" if issue.status is IssueStatus.NEEDS_DECISION else \
                 "只为待修的 Issue 建修复分支"
             return FixResult(issue_id, HandoffStatus.BLOCKED, f"Issue {issue_id} 当前为「{issue.status.label}」，{hint}")
         waiting = self.waiting_on(issue)
@@ -390,7 +390,7 @@ class FixService:
         deps = self.deps
         issue = transitions.record_of(self._env(), issue_id).issue
         if issue.status is IssueStatus.NEEDS_DECISION and issue.hold is None:
-            return FixResult(issue_id, HandoffStatus.BLOCKED, f"先执行 issue approve {issue_id}")
+            return FixResult(issue_id, HandoffStatus.BLOCKED, f"先执行 approve {issue_id.lstrip('0') or '0'}")
         if issue.is_closed:
             return FixResult(issue_id, HandoffStatus.BLOCKED, f"Issue {issue_id} 当前为「{issue.status.label}」，不能修复")
         waiting = self.waiting_on(issue)

@@ -15,7 +15,7 @@
 | 待确认操作 | `OP-<四位序号>` | `OP-0015` | 生成待确认操作时递增 |
 | 学习建议 | `LS-<四位序号>` | `LS-0021` | `learn` 生成建议时递增(含 `learn improve` 的改进建议) |
 | 知识条目 | `<类型前缀>-<四位序号>` | `DP-0012` | 写入知识库时递增，前缀见 1.2；每种前缀一个序列，序列名为 `knowledge-<前缀>`，例如 `knowledge-DP` |
-| 评测用例 | `E-<四位序号>` | `E-0004` | 在 `evals/<模块>/` 与 `evals/retrieval/` 内各自独立递增；用户新增用例时由 `eval add` 取该目录下的下一个编号 |
+| 评测用例 | `E-<四位序号>` | `E-0004` | 在 `evals/<模块>/` 与 `evals/retrieval/` 内各自独立递增；用户新增用例时由 `admin eval add` 取该目录下的下一个编号 |
 | 评测 | `EV-<日期>-<时分秒>` | `EV-20260929-031500` | 评测开始时生成 |
 | 交接文档 | `<模块>-<对象编号>`；验证为 `verify-<阶段>-<Issue 编号>`；周报为 `learn-weekly-<日期>`；运行摘要为 `loop-<运行编号>` | `triage-P-0042` | 由模块与对象决定，重跑时覆盖 |
 | 报告类人读文档的 frontmatter `id` | 与对应交接文档的编号相同 | 发现报告 `triage-P-0042`、修复报告 `fix-0007`、验证报告 `verify-local-0007` | 渲染时写入；Issue 的 frontmatter `id` 为其自身编号 |
@@ -44,7 +44,7 @@
 | `TaskType` | `bug`(缺陷)、`security`(安全)、`data`(数据)、`frontend`(前端)、`feature`(功能)、`refactor`(重构)、`dependency`(依赖)、`docs-config`(文档配置)；取证给出，决定修复通道 |
 | `SizeTier` | `micro`(微)、`small`(小)、`medium`(中)、`large`(大)、`oversize`(超限)；门槛在 `thresholds.tiers` |
 | `Treatment` | `immediate`(立即修)、`scheduled`(排期修)、`observe`(观察)、`wont-fix`(不修)；由 `triage.treatment.rules` 的决策树给出 |
-| `Disposition` | `false-positive`(判为误报)、`accepted-tradeoff`(已接受的取舍)、`awaiting-deploy`(等待部署)、`create-issue`(提 Issue)、`deferred`(暂不修)、`manual-queue`(人工队列) |
+| `Disposition` | `problem false-positive`(判为误报)、`accepted-tradeoff`(已接受的取舍)、`awaiting-deploy`(等待部署)、`create-issue`(提 Issue)、`deferred`(暂不修)、`manual-queue`(人工队列) |
 | `TriageOutcome` | `correct`(判对)、`false-confirm`(误判为成立)、`false-refute`(误判为不成立)、`overridden`(用户改判) |
 
 **Issue、修复、验证与发布**
@@ -183,19 +183,19 @@ transition(current_state, event, context) -> (new_state, side_effects)
 | `regression-check-failed` | 复现检查失败产生的回归信号 | `aggregate` |
 | `triaged` | 分诊得出结论，按去向转换状态 | `triage` |
 | `user-ignored`、`user-false-positive`、`user-reopened` | 用户的人工操作 | `aggregate` 的人工操作命令 |
-| `ignore-expired` | 忽略的恢复条件满足 | `aggregate` |
+| `problem ignore-expired` | 忽略的恢复条件满足 | `aggregate` |
 | `merged` | 被并入另一个问题 | `aggregate` 的 `merge` 命令、`triage` 的查重 |
 | `rebuilt` | 整体重放时一个旧问题拆出的新问题 | `aggregate --rebuild` |
-| `overridden` | 用户改判分诊结论 | `triage` 的 `retriage --verdict` |
-| `retriage-requested` | 需要重新分诊：聚合发现新类型的证据，或缺陷类的复现测试在基准版本上就通过 | `aggregate`、`fix`、`verify` |
+| `overridden` | 用户改判分诊结论 | `triage` 的 `problem retriage --verdict` |
+| `problem retriage-requested` | 需要重新分诊：聚合发现新类型的证据，或缺陷类的复现测试在基准版本上就通过 | `aggregate`、`fix`、`verify` |
 | `issue-closed` | 关联 Issue 关闭，按关闭原因同步问题状态(4.7) | `issue`、`verify`、`release` |
 
 **Issue 的转换表**(`domain/issue.TRANSITIONS`；规则按当前 `phase` 匹配，副作用 `set-phase` 写入新的 `phase`)
 
 | 事件 | 从 | 到 | 触发 |
 |---|---|---|---|
-| `approve` | `needs-decision` | `todo`(清除 `hold`) | `issue approve` |
-| `fix-started` | `todo`、`needs-decision`、`in-progress`、`pending-merge` | `in-progress`/`fix`(清除 `hold`) | `fix start`；待决定的须带 `hold` 并加 `--force`(未放行的先 `issue approve`)；从合并前验证、提交或待合并进入表示用户重新进入修复 |
+| `approve` | `needs-decision` | `todo`(清除 `hold`) | `approve` |
+| `fix-started` | `todo`、`needs-decision`、`in-progress`、`pending-merge` | `in-progress`/`fix`(清除 `hold`) | `fix start`；待决定的须带 `hold` 并加 `--force`(未放行的先 `approve`)；从合并前验证、提交或待合并进入表示用户重新进入修复 |
 | `not-reproduced` | `in-progress` | `needs-decision` | 缺陷类的复现测试在基准版本上就通过(修复第 5 步)；关联问题重新分诊 |
 | `fix-held` | `todo`、`in-progress` | `needs-decision`(设置 `hold`) | 设计问题、超限、写不出复现测试、修改轮数或计划重出用尽、无人值守修复停下、`fix abandon` |
 | `fix-done` | `in-progress`/`fix` | `in-progress`/`verify` | `fix done` |
@@ -212,7 +212,7 @@ transition(current_state, event, context) -> (new_state, side_effects)
 | `user-reopened` | `done`、`cancelled` | `todo` | `issue reopen`；在 GitHub 上重新打开镜像 |
 | `restart` | `todo`、`in-progress`、`pending-merge`、带 `hold` 的 `needs-decision` | `todo` 或 `in-progress`/`verify` | 只能由 `continue --from fix` 或 `continue --from verify` 触发 |
 
-Issue 的初始状态：分诊生成的为 `needs-decision`(等待放行；满足自动放行时立即放行为 `todo`)；用户需求(`origin: manual`)为 `todo`，`issue approve` 对它不转换状态(没有 `approve` 事件)，只申请建修复分支。用户需求的类型不是缺陷类，不会收到 `not-reproduced`。修复计划拆分出的后续子任务以用户需求的 Issue 建立，`parent` 为父 Issue、`dependsOn` 指向前一个子任务，它完成(`done`)之前不能建分支与开始修复(07 篇 4.6)。
+Issue 的初始状态：分诊生成的为 `needs-decision`(等待放行；满足自动放行时立即放行为 `todo`)；用户需求(`origin: manual`)为 `todo`，`approve` 对它不转换状态(没有 `approve` 事件)，只申请建修复分支。用户需求的类型不是缺陷类，不会收到 `not-reproduced`。修复计划拆分出的后续子任务以用户需求的 Issue 建立，`parent` 为父 Issue、`dependsOn` 指向前一个子任务，它完成(`done`)之前不能建分支与开始修复(07 篇 4.6)。
 
 `hold` 不是状态，只出现在待决定的 Issue 上，说明为什么待决定：`next_step.py` 对带 `hold` 的 Issue 返回「不能自动继续」；用户以 `fix start --force` 确认继续后清除。旧 Issue 文件中的八种状态读取时按 `domain/issue.legacy_status` 换算(与迁移 009 相同：带 `hold` 的未关闭 Issue 为待决定，已合并为完成并等待部署后确认)。
 
@@ -360,7 +360,7 @@ store/
 ```
 
 - `repos/problems.py` 提供 `merge(target, source)`，聚合的 `merge` 命令与分诊的查重共用，合并逻辑只有一份。
-- `files/suppressions.py` 的写入函数由聚合的 `false-positive`、分诊判为误报、`issue close --reason not-a-bug` 共用。
+- `files/suppressions.py` 的写入函数由聚合的 `problem false-positive`、分诊判为误报、`issue close --reason not-a-bug` 共用。
 
 ### 4.2 数据库表
 
@@ -375,7 +375,7 @@ store/
 | `problems` | 问题 | `id`、`fingerprint`、`fingerprint_version`、`probe`、`title`、`status`、`first_seen_at`、`last_seen_at`、`first_seen_release`、`last_seen_release`、`resolved_release`、`occurrences`、`issue_id`、`ignore_until`(JSON)、`intermittent`、`clean_covered_runs`、`merged_into` | `id`；`fingerprint` 唯一；按 `status` |
 | `problem_signals` | 问题与信号的对应 | `problem_id`、`signal_id` | (`problem_id`、`signal_id`) |
 | `problem_aliases` | 合并产生的别名指纹 | `fingerprint`、`problem_id`、`created_at` | `fingerprint` 唯一 |
-| `problem_events` | 问题的状态变化与人工操作 | `id`、`problem_id`、`at`、`event`(2.3 的问题事件)、`from_status`、`to_status`、`run_id`、`operation`(`auto` 或 `user_action`)、`reason`、`detail`(JSON)、`handled_at`(`retriage-requested` 被分诊处理的时间) | `id`；按 `problem_id`、`at`；按 `event`、`handled_at` |
+| `problem_events` | 问题的状态变化与人工操作 | `id`、`problem_id`、`at`、`event`(2.3 的问题事件)、`from_status`、`to_status`、`run_id`、`operation`(`auto` 或 `user_action`)、`reason`、`detail`(JSON)、`handled_at`(`problem retriage-requested` 被分诊处理的时间) | `id`；按 `problem_id`、`at`；按 `event`、`handled_at` |
 | `triage_results` | 分诊结论 | `problem_id`、`attempt`、`run_id`、`verdict`、`severity`、`complexity`、`root_causes`(JSON)、`introduced_by`(JSON)、`disposition`、`reason`、`triage_commit`、`refuter_verdict`、`flags`(JSON)、`labels`(JSON)、`outcome`、`outcome_at`、`created_at`、`treatment`、`task_type`、`size_tier`(处理标签、任务类型与规模档，迁移 008) | (`problem_id`、`attempt`)；按 `disposition`、`outcome_at` |
 | `issues` | Issue 索引，可从文件重建 | `id`、`slug`、`path`、`title`、`status`、`close_reason`、`severity`、`origin`(`triage` 或 `manual`，迁移 005)、`treatment`、`task_type`、`size_tier`(迁移 008)、`problems`(JSON)、`root_cause`(JSON)、`branch`、`pr`、`hold`(JSON)、`github_number`、`github_url`(GitHub 镜像，迁移 006)、`depends_on`(拆分出的后续子任务排在其后的 Issue，与头信息的 `dependsOn` 一致，迁移 007)、`phase`、`parent`、`source`(迁移 009，同时按旧状态与 `hold` 改写 `status`、`phase`、`close_reason` 与 `issue_events` 的状态)、`file_sha256`、`created_at`、`updated_at` | `id`；按 `status` |
 | `github_mirror` | GitHub 镜像的簿记(06 篇 10.8)，不随 reindex 重建 | `issue_id`、`remote_state`(GitHub 上已知的 `open`、`closed`)、`labelled_status`(已打的标签：`<状态>|<类型>`)、`relations`(已建立的子 Issue 与阻塞关系，迁移 009)、`error`、`failed_at`(最近一次失败)、`synced_at` | `issue_id` |
@@ -409,7 +409,7 @@ store/
 
 - `executor` 为 `vcs` 的操作确认后由核心执行：`commands` 经 `vcs` 逐条执行；`commands` 为空的确认类操作(`fix-plan`、`local-migration`)确认后不执行命令，只调用发起模块登记的后续处理。
 - 状态流转：`pending` → `confirmed` → `executed` 或 `failed`；`pending` → `rejected`；执行前复核 `preconditions` 不一致，或超过 7 天未确认，改为 `expired`。`confirmations_required` 为 2 的操作(`cleanup`)第一次确认后仍为 `pending`，`confirmations_given` 记为 1。执行中由幂等键标记进行中；幂等键已完成时操作直接改为 `executed`，`result` 取上次的结果。
-- 确认与拒绝的命令为 `tightrein confirm <编号>` 与 `tightrein reject <编号> [--note <说明>]`；确认只对这一个操作有效。
+- 确认与拒绝的命令为 `tightrein approve <编号>` 与 `tightrein reject <编号> [--note <说明>]`；确认只对这一个操作有效。
 
 ### 4.3 文件布局
 
@@ -510,7 +510,7 @@ config/
   user.py           读取本机用户配置，只接受 5.3 所列的个人键与 agents、network 段
   network.py        本机用户配置的网络代理到子进程环境与 HTTP 代理表的翻译(5.3)
   capabilities.py   模型档到具体工具、模型与推理强度的映射，模型价格；角色到模型档的解析
-  show.py           `tightrein config show` 的输出
+  show.py           `tightrein project config` 的输出
   secrets.py        从 macOS 钥匙串按条目名读取测试账号密码
 ```
 
@@ -527,8 +527,8 @@ config/
 
 - **合并规则**：映射按键递归合并；列表与标量整体替换，不拼接。`stages.<环节>`(及其中的 `refuter`、`session`、`review.*`、`screenshotReview`、`roles|tasks.<名称>`)中上层改写了 `tool` 而没有写 `model` 时，下层的 `model` 属于原工具，不再沿用；`capabilities` 按档、工具逐项合并，同一档同一工具的一项由上层整体替换。需要在上一层的列表上追加的键，在键名后加 `+`(例如 `paths+`)，表示追加到下层的列表后面：按完整键名读取列表时(`ProjectConfig.get`)，取到某层的值后依次拼上该层与更上层 `<键>+` 的列表；技术栈层的键检查按去掉 `+` 的键名，两个技术栈各自追加不算冲突。schema 目前只为 `stages.fix.roles.frontend-designer.paths+` 开放这一写法，`review.riskRules` 整段读取，暂不支持。`credentialFiles` 只允许追加：各层的值依次拼接，上层不能去掉核心的缺省模式。
 - **技术栈层的顺序**：按 `project.yaml` 中 `stacks` 的顺序依次合并；两个技术栈给同一个标量键赋不同的值时报错，由项目配置显式给出。
-- **来源记录**：`layers.py` 为每个生效的键记录来源层(`core`、`stack:<名称>`、`project`、`user`)与文件路径，供 `config show` 与报错信息使用。
-- **命令**：`tightrein config show [--key <键>]` 列出每个键的生效值与来源层；`--key` 只显示该键及其下级键，并列出各层中该键的值，便于看清是哪一层覆盖了哪一层。`agents` 段以生效键名显示(例如 `stages.collect.tool`、`capabilities.light.claude.model`、`defaultTool`)，来源为 `user`，项目写了同一键时来源为 `project`；`network.proxy` 中的密码显示为 `[已脱敏]`；`tools.semgrep.path` 同时作为 `runtime.tools.semgrep` 的 `user` 层值显示。命令只读，不写任何文件。
+- **来源记录**：`layers.py` 为每个生效的键记录来源层(`core`、`stack:<名称>`、`project`、`user`)与文件路径，供 `project config` 与报错信息使用。
+- **命令**：`tightrein project config [--key <键>]` 列出每个键的生效值与来源层；`--key` 只显示该键及其下级键，并列出各层中该键的值，便于看清是哪一层覆盖了哪一层。`agents` 段以生效键名显示(例如 `stages.collect.tool`、`capabilities.light.claude.model`、`defaultTool`)，来源为 `user`，项目写了同一键时来源为 `project`；`network.proxy` 中的密码显示为 `[已脱敏]`；`tools.semgrep.path` 同时作为 `runtime.tools.semgrep` 的 `user` 层值显示。命令只读，不写任何文件。
 - **不是可调项的值**：单位换算、协议与外部工具规定的值(退出码、HTTP 状态码、编号的长度、schema 版本号)与状态机的规则，留在代码中，不进入配置。
 
 ### 5.2 project.yaml 的结构
@@ -618,7 +618,7 @@ config/
 | `slowResponseSeconds` | api-fuzz 的响应过慢阈值 |
 | `reproduceAttempts`(2) | api-fuzz 复现确认的重放次数 |
 | `resolveCoveredRuns`(3) | 判为已解决所需的覆盖运行次数 |
-| `suppressionDays`(30) | 抑制规则的缺省有效天数，聚合的 `false-positive` 与分诊判为误报共用 |
+| `suppressionDays`(30) | 抑制规则的缺省有效天数，聚合的 `problem false-positive` 与分诊判为误报共用 |
 | `retention.signalsDays`(90)、`retention.rawDays`(30)、`retention.logsDays`(90)、`retention.fixesDays`(90) | 保留期 |
 | `triage.perRun`(5)、`triage.deferredReopenOccurrences`(3)、`triage.evidenceRetries`(2)、`triage.complexityFiles`(1) | 每次分诊的问题数上限、暂不修的问题再出现多少次后重新分诊、证据检查不通过时的重做次数、任务复杂度判为中的预估文件数门槛(13.3) |
 | `issue.reviewReminderWorkdays`(3) | 待决定(等待放行)提醒 |
@@ -672,7 +672,7 @@ config/
 | 变量 | 含义 |
 |---|---|
 | `TIGHTREIN_WORKSPACE` | 工作区绝对路径，供 `kb` 命令与 MCP 服务定位工作区 |
-| `TIGHTREIN_RUN_ID`、`TIGHTREIN_TRACE_ID`、`TIGHTREIN_PARENT_SPAN_ID` | 使 agent 调用 `kb` 时产生的事件挂到当前运行的 trace 下；`eval seal` 与 `eval add` 检测到 `TIGHTREIN_RUN_ID` 时拒绝执行 |
+| `TIGHTREIN_RUN_ID`、`TIGHTREIN_TRACE_ID`、`TIGHTREIN_PARENT_SPAN_ID` | 使 agent 调用 `kb` 时产生的事件挂到当前运行的 trace 下；`admin eval seal` 与 `admin eval add` 检测到 `TIGHTREIN_RUN_ID` 时拒绝执行 |
 | `TIGHTREIN_SANDBOX` | `--output` 模式下为 `1` |
 | `GIT_TERMINAL_PROMPT` | 固定为 `0` |
 | `GIT_OPTIONAL_LOCKS` | 只读任务为 `0`，使只读 git 命令不刷新索引 |
@@ -728,7 +728,7 @@ observability/
 | 依赖 | 版本与安装 | 使用者 |
 |---|---|---|
 | Python | 3.10 及以上；需要加载 `sqlite-vec` 时使用支持 `enable_load_extension` 的 Python(例如 Homebrew 安装的版本) | 核心 |
-| `mcp`(PyPI) | 2.x | `kb mcp` 服务 |
+| `mcp`(PyPI) | 2.x | `admin kb mcp` 服务 |
 | `schemathesis`(PyPI) | 锁定版本，作为核心 Python 环境的依赖安装 | api-fuzz 探针 |
 | `sqlite-vec` | 只在满足 16.9 的条件后引入 | 向量检索 |
 | `@playwright/test` | 锁定版本，安装在 `pipeline/checks/pages/runtime/` | 验证环节的页面巡检、截图与页面类复现检查 |
@@ -744,7 +744,7 @@ observability/
 | `domain` | 单元测试覆盖全部纯函数与两个状态机的转换表：每个合法转换一条用例，每类非法转换一条用例 |
 | `contracts` | 每个 schema 至少一个合法样例与一个非法样例；每个升级函数一条用例 |
 | `store` | 使用临时目录与临时数据库；测试迁移可以从空库完整执行、仓储的读写与查询、锁的获取与超时接管、幂等键的跳过 |
-| `config` | 合法与缺字段的 `project.yaml` 样例；`thresholds` 中的值越出 `min`、`max` 时报错；四层合并：每层覆盖上一层、列表整体替换与 `+` 追加、两个技术栈给同一标量不同值时报错、技术栈层出现核心没有的键时报错、用户配置出现非个人键时报错；`config show` 显示的来源层与实际覆盖一致；`defaults.yaml` 中每个键都有注释，且核心代码中不存在与这些键对应的写死默认值(以键名检索) |
+| `config` | 合法与缺字段的 `project.yaml` 样例；`thresholds` 中的值越出 `min`、`max` 时报错；四层合并：每层覆盖上一层、列表整体替换与 `+` 追加、两个技术栈给同一标量不同值时报错、技术栈层出现核心没有的键时报错、用户配置出现非个人键时报错；`project config` 显示的来源层与实际覆盖一致；`defaults.yaml` 中每个键都有注释，且核心代码中不存在与这些键对应的写死默认值(以键名检索) |
 | `observability` | 脱敏规则的正反样例；span 嵌套时 `parent_span_id` 正确；通知的幂等去重，`notify.method=none` 时不调用外部命令 |
 
 测试目录分为 `core/tests/unit/`(纯函数与单个组件)、`core/tests/replay/`(回放夹具)与 `core/tests/integration/`(需要真实外部工具的测试，工具缺失时跳过)。

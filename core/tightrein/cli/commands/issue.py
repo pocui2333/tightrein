@@ -1,7 +1,7 @@
 """Issue：create、sync、list、show、edit、approve(组合 fix prepare)、close、reopen、reindex、rerender。
 
 不带子命令且给出 --input 时等同 issue create(评测的沙箱以这种形式启动模块)。
-issue create --manual 直接新建用户需求的 Issue(不关联问题，状态为待修)，之后照常 issue approve 申请建修复分支。
+new 直接新建用户需求的 Issue(不关联问题，状态为待修)，之后照常 approve 申请建修复分支。
 issues.tracker 为 github 时 issue sync 另输出 GitHub 镜像的对齐结果与未同步项。
 """
 
@@ -29,43 +29,39 @@ def _record(record: IssueRecord) -> dict[str, Any]:
 
 
 MANUAL_SEVERITY = Severity.P2
-MANUAL_CONFLICTS = (("select", "--select"), ("input", "--input"), ("dry_run", "--dry-run"), ("output", "--output"))
+MANUAL_CONFLICTS = (("select", "--select"), ("input", "--input"), ("output", "--output"))
 
 
 def _manual_text(args: argparse.Namespace) -> str:
-    if (args.body is None) == (args.body_file is None):
-        raise UsageError("issue create --manual 需要 --body 或 --body-file 之一")
-    if args.body is not None:
-        return args.body
+    """-m 给正文，-f 从文件读正文；两者都没有时正文与标题相同。"""
+    if args.body is not None and args.body_file is not None:
+        raise UsageError("-m 与 -f 只能给一个")
+    if args.body_file is None:
+        return args.body if args.body is not None else args.title
     path = Path(args.body_file)
     if not path.is_file():
-        raise UsageError(f"--body-file 指向的文件不存在：{path}")
+        raise UsageError(f"-f 指向的文件不存在：{path}")
     return path.read_text(encoding="utf-8")
 
 
-def _create_manual(invocation: Any) -> Outcome:
+def _new(invocation: Any) -> Outcome:
     args = invocation.args
     used = [flag for name, flag in MANUAL_CONFLICTS if getattr(args, name, None)]
     if used:
-        raise UsageError(f"--manual 不能与 {'、'.join(used)} 同时使用")
-    if not args.title:
-        raise UsageError("issue create --manual 需要 --title")
+        raise UsageError(f"new 不能与 {'、'.join(used)} 同时使用")
+    if args.dry_run:
+        return Outcome("new", exit_codes.OK, [f"将新建用户需求 Issue：{args.title}"])
     record = invocation.app.issue().create_manual(args.title, _manual_text(args), Severity(args.severity),
                                                   TaskType(args.type) if args.type else None)
     subject = record.issue.id
     lines = [f"已创建用户需求 Issue {number(subject)}(状态「{record.issue.status.label}」)：{record.path}",
-             f"下一步：tightrein issue approve {number(subject)}(申请建修复分支)"]
-    return Outcome("issue create", exit_codes.OK, lines, {"type": "issue", "id": subject}, _record(record))
+             f"下一步：tightrein approve {number(subject)}(申请建修复分支)"]
+    return Outcome("new", exit_codes.OK, lines, {"type": "issue", "id": subject}, _record(record))
 
 
 def _create(invocation: Any) -> Outcome:
     args = invocation.args
     app = invocation.app
-    if getattr(args, "manual", False):
-        return _create_manual(invocation)
-    for name, flag in (("title", "--title"), ("body", "--body"), ("body_file", "--body-file")):
-        if getattr(args, name, None) is not None:
-            raise UsageError(f"{flag} 只用于 issue create --manual")
     chosen = selectors.problem_ids(app.conn, args.select) if args.select else ()
     run = app.issue().create(chosen, args.input, args.dry_run)
     if run.plan is not None:
@@ -99,7 +95,7 @@ def _mirror_lines(report: MirrorReport | None) -> list[str]:
     lines = [f"GitHub 镜像 {report.repo}：写入 {len(report.written)} 个 Issue"]
     lines += [f"- 在 GitHub 上关闭，本地已按用户关闭处理：{'、'.join(report.closed)}"] if report.closed else []
     lines += [f"- 在 GitHub 上重新打开，本地已重新打开：{'、'.join(report.reopened)}"] if report.reopened else []
-    lines += [f"- 待确认：tightrein confirm {operation}" for operation in report.operations]
+    lines += [f"- 待确认：tightrein approve {operation}" for operation in report.operations]
     lines += [f"- 未同步：{line}" for line in report.unsynced]
     return lines
 
@@ -144,13 +140,13 @@ def _edit(invocation: Any) -> Outcome:
                    {"saved": result.saved, "sections": list(result.sections)})
 
 
-def _approve(invocation: Any) -> Outcome:
-    """放行后调用 fix prepare 申请建分支与 worktree(architecture/06 9.2)。"""
+def approve(invocation: Any, target: str, note: str | None) -> Outcome:
+    """放行后调用 fix prepare 申请建分支与 worktree(architecture/06 9.2)；顶层 approve 给出 Issue 编号时调用。"""
     app = invocation.app
-    subject = issue_id(invocation.args.issue)
-    record = app.issue().approve(subject, invocation.args.note)
+    subject = issue_id(target)
+    record = app.issue().approve(subject, note)
     prepared = app.fix().prepare(subject)
-    outcome = module_outcome("issue approve", app, subject, prepared,
+    outcome = module_outcome("approve", app, subject, prepared,
                              f"tightrein fix start {number(subject)}", {"issueStatus": record.issue.status.value})
     outcome.lines.insert(0, f"Issue {number(subject)} 已放行，状态为「{record.issue.status.label}」")
     return outcome
@@ -189,45 +185,44 @@ def _rerender(invocation: Any) -> Outcome:
         else:
             lines.append(f"- {number(item.issue_id)}：已重写")
     if any(item.missing for item in result.items):
-        lines.append("要得到完整格式需重新分诊：tightrein retriage <问题编号>，再 tightrein issue rerender <编号>")
+        lines.append("要得到完整格式需重新分诊：tightrein problem retriage <问题编号>，再 tightrein issue rerender <编号>")
     return Outcome("issue rerender", exit_codes.OK, [f"{len(result.items)} 个 Issue", *lines,
                                                      *_mirror_lines(result.mirror)], result=asdict(result))
 
 
+def register_new(commands: Any, common: argparse.ArgumentParser) -> None:
+    new = leaf(commands, common, "new", _new, "提一个需求，直接成为待修的 Issue")
+    new.add_argument("title", help="标题")
+    new.add_argument("-m", "--body", help="正文；省略时与标题相同")
+    new.add_argument("-f", "--body-file", help="从文件读取正文(UTF-8)")
+    new.add_argument("--severity", choices=[item.value for item in Severity], default=MANUAL_SEVERITY.value,
+                     help="严重度，缺省 P2")
+    new.add_argument("--type", choices=[item.value for item in TaskType],
+                     help="任务类型，决定修复通道；缺省取 fix.manualTaskType")
+
+
 def register(commands: Any, common: argparse.ArgumentParser) -> None:
-    issue = commands.add_parser("issue", parents=[common], help="本地 Issue")
+    issue = commands.add_parser("issue", parents=[common.dry_run], help="Issue 的查看与维护")
     issue.set_defaults(handler=_bare, command_name="issue")
     sub = issue.add_subparsers(dest="issue_command", parser_class=type(issue))
-    create = leaf(sub, common, "create", _create, "为去向是提 Issue 的问题创建 Issue；--manual 直接新建用户需求",
-                  "issue create")
-    create.add_argument("--manual", action="store_true", help="新建用户需求的 Issue：不关联问题，免审阅")
-    create.add_argument("--title", help="用户需求的标题(与 --manual 一起使用)")
-    create.add_argument("--body", help="用户需求的正文")
-    create.add_argument("--body-file", help="从文件读取用户需求的正文(UTF-8)")
-    create.add_argument("--severity", choices=[item.value for item in Severity], default=MANUAL_SEVERITY.value,
-                        help="用户需求的严重度，缺省 P2")
-    create.add_argument("--type", choices=[item.value for item in TaskType],
-                        help="用户需求的任务类型，决定修复通道；缺省取 fix.manualTaskType")
-    leaf(sub, common, "sync", _sync, "同步 Issue 文件与数据库", "issue sync")
-    listing = leaf(sub, common, "list", _list, "列出 Issue", "issue list")
+    leaf(sub, common, "create", _create, "为去向是提 Issue 的问题创建 Issue(单步；提需求用 new)")
+    leaf(sub, common, "sync", _sync, "同步 Issue 文件与数据库")
+    listing = leaf(sub, common, "list", _list, "列出 Issue")
     listing.add_argument("--status", choices=[item.value for item in IssueStatus])
     listing.add_argument("--severity", choices=[item.value for item in Severity])
     for name, handler, text in (("show", _show, "查看 Issue"), ("edit", _edit, "在编辑器中修改 Issue"),
                                 ("reindex", _reindex, "重建 Issue 索引")):
-        parser = leaf(sub, common, name, handler, text, f"issue {name}")
+        parser = leaf(sub, common, name, handler, text)
         if name != "reindex":
             parser.add_argument("issue", help="Issue 编号")
-    approve = leaf(sub, common, "approve", _approve, "放行 Issue 并申请建修复分支", "issue approve")
-    approve.add_argument("issue")
-    approve.add_argument("--note")
-    close = leaf(sub, common, "close", _close, "关闭 Issue", "issue close")
+    close = leaf(sub, common, "close", _close, "关闭 Issue")
     close.add_argument("issue")
     close.add_argument("--reason", required=True, choices=[item.value for item in CloseReason])
     close.add_argument("--note")
     close.add_argument("--duplicate-of")
     rerender = leaf(sub, common, "rerender", _rerender,
-                    "按当前模板重写 Issue 正文与标题并更新 GitHub 镜像(覆盖除关联、历史外的本地编辑)", "issue rerender")
+                    "按当前模板重写 Issue 正文与标题并更新 GitHub 镜像(覆盖除关联、历史外的本地编辑)")
     rerender.add_argument("issues", nargs="*", help="Issue 编号；省略时为全部未关闭的 Issue")
-    reopen = leaf(sub, common, "reopen", _reopen, "重新打开 Issue", "issue reopen")
+    reopen = leaf(sub, common, "reopen", _reopen, "重新打开 Issue")
     reopen.add_argument("issue")
     reopen.add_argument("--note")

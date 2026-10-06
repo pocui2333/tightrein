@@ -79,7 +79,7 @@ def _new(invocation: Any) -> Outcome:
         lines = [f"已生成 {relative}；{error}", f"请手动在 {REGISTRATION} 中加入：{entry}"]
         return Outcome("probe new", exit_codes.GATE, lines,
                        result={"script": relative, "registration": entry, "registered": False})
-    lines = [f"已生成 {relative} 并登记到 {REGISTRATION}", f"试跑：tightrein probe test {name}"]
+    lines = [f"已生成 {relative} 并登记到 {REGISTRATION}", f"试跑：tightrein project probe test {name}"]
     return Outcome("probe new", exit_codes.OK, lines,
                    result={"script": relative, "registration": entry, "registered": True})
 
@@ -143,7 +143,7 @@ def _draft(invocation: Any) -> Outcome:
     app = invocation.app
     worktree = app.layout.readonly_worktree()
     if not worktree.is_dir():
-        raise UsageError("没有只读 worktree：先执行 tightrein worktree init")
+        raise UsageError("没有只读 worktree：先执行 tightrein project worktree init")
     task = tasks.spec_draft_task(TaskContext(app.tool, app.config, app.session_id, worktree), app.base_url())
     result = run_role(app.runner(), task, app.clock, app.overrides)
     if result.status is not RunnerStatus.OK or result.output is None:
@@ -154,7 +154,7 @@ def _draft(invocation: Any) -> Outcome:
     uncertain = list(result.output["uncertain"])
     lines = [f"已起草 {app.layout.relative(path)}({len(result.output['openapi'].get('paths', {}))} 个路由)",
              *(f"待确认：{item}" for item in uncertain),
-             "审阅修改后改名为 openapi.yaml，执行 tightrein workspace answer spec --recommended 登记"]
+             "审阅修改后改名为 openapi.yaml，执行 tightrein project answer spec --recommended 登记"]
     return Outcome("spec draft", exit_codes.OK, lines,
                    result={"draft": app.layout.relative(path), "uncertain": uncertain,
                            "sources": list(result.output["sources"])})
@@ -162,16 +162,16 @@ def _draft(invocation: Any) -> Outcome:
 
 def register(commands: Any, common: argparse.ArgumentParser) -> None:
     probes = group(commands, "probe", "项目探针")
-    new = leaf(probes, common, "new", _new, "生成项目探针模板并登记", "probe new")
+    new = leaf(probes, common, "new", _new, "生成项目探针模板并登记")
     new.add_argument("name")
     new.add_argument("--every", default=DEFAULT_EVERY, help="运行间隔，如 15m、1h、1d")
-    test = leaf(probes, common, "test", _test, "单独试跑一个项目探针并校验输出", "probe test")
+    test = leaf(probes, common, "test", _test, "单独试跑一个项目探针并校验输出")
     test.add_argument("name")
-    logs = leaf(probes, common, "logs", _logs, "经日志平台取一段时间内的日志", "probe logs")
+    logs = leaf(probes, common, "logs", _logs, "经日志平台取一段时间内的日志")
     logs.add_argument("--query", required=True)
     logs.add_argument("--since", required=True)
     logs.add_argument("--until", required=True)
     logs.add_argument("--limit", type=int, default=1000)
     logs.add_argument("--raw", action="store_true", help="返回原文行，不经 log-parse")
     spec = group(commands, "spec", "接口描述")
-    leaf(spec, common, "draft", _draft, "由 AI 读代码起草接口描述，交用户确认", "spec draft")
+    leaf(spec, common, "draft", _draft, "由 AI 读代码起草接口描述，交用户确认")

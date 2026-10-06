@@ -9,7 +9,7 @@
   无人值守模式按 ~/.gemini/antigravity-cli/settings.json 的 permissions.allow 放行命令(`command(git grep)` 放行以它开头的
   命令，1.2.17 实测)，其余需要确认的写入与命令被自动拒绝(不挂起)，拒绝后本轮随即结束，result.denied_actions 记为一条
   error 事件。首次调用的提示末尾列出白名单中已放行的只读命令(READ_COMMANDS 与白名单的交集)，要求先用 git grep 定位、
-  再打开命中的文件；`tightrein install` 为 agy 补齐这些命令。白名单里一条都没有时说明 shell 命令不可用。
+  再打开命中的文件；`tightrein admin install` 为 agy 补齐这些命令。白名单里一条都没有时说明 shell 命令不可用。
 - 联网：只读模式下 search_web 放行，读取网页(read_url_content)被拒绝并结束本轮(实测)；task.web 为真时提示末尾
   另说明只依据搜索摘要作答。
 - 没有原生的轮数与费用上限，由核心按工具步骤计数、按价格表估算费用；提示末尾写明工具调用的上限，让 agy 自己留出

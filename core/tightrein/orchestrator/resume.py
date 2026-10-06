@@ -62,7 +62,7 @@ REACHED = "已到终点"
 UNCHANGED = "这一步没有改变对象的状态"
 PROBLEM_ID = re.compile(r"^P-\d{4,}$")
 ISSUE_NUMBER = re.compile(r"^\d+$")
-USER_GATES = {"issue approve": ISSUE_APPROVAL, "triage queue": MANUAL_QUEUE}
+USER_GATES = {"approve": ISSUE_APPROVAL, "triage queue": MANUAL_QUEUE}
 
 
 @dataclass(frozen=True)

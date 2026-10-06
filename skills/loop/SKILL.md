@@ -12,15 +12,15 @@ description: 推进 tightrein 的缺陷闭环：查看全局状态与待用户�
 | 用户想要 | 命令 |
 |---|---|
 | 整体情况、有什么要处理 | `tightrein status --json`(收件箱 `waiting`，每件带 `recommendation`；`paused`、`onboarding`) |
-| 某个对象的进度，不推进 | `tightrein next <对象> --json` |
+| 某个对象的进度，不推进 | `tightrein show <对象> --json` |
 | 推进一个或几个对象 | `tightrein continue <对象>... --json`，说了做到哪一步时加 `--until <模块>` |
 | 从某一步重来 | `tightrein continue <对象> --from triage|fix|verify --json` |
 | 按描述找对象 | `tightrein find <文本> [--since <日期>] [--until <日期>] --json` |
-| 看或处理待确认操作 | `tightrein pending --json`；用户同意后 `tightrein confirm <操作编号> --json`，拒绝时 `tightrein reject <操作编号> --note <说明> --json` |
+| 看或处理待确认操作 | `tightrein status --pending --json`；用户同意后 `tightrein approve <操作编号> --json`，拒绝时 `tightrein reject <操作编号> --note <说明> --json` |
 | 按时间表推进一轮 | `tightrein run --json`(定时由 launchd 调用 `tightrein tick`，不需要手动执行) |
 | 暂停、恢复 | `tightrein pause [--workspace <工作区>] --json`、`tightrein resume [--workspace <工作区>] --json`；不带 `--workspace` 为全局 |
-| 新项目接入还差什么 | `tightrein workspace check --json` |
-| 回答接入问题 | 用户采用推荐时 `tightrein workspace answer <项> --recommended --json`；不接入时 `--skip`；给出值时 `--value <值>` |
+| 新项目接入还差什么 | `tightrein project check --json` |
+| 回答接入问题 | 用户采用推荐时 `tightrein project answer <项> --recommended --json`；不接入时 `--skip`；给出值时 `--value <值>` |
 
 - 对象：Issue 用数字编号(`7`)，问题用 `P-0042`。用户没给编号时先 `find`，把「昨天」「上周」换算成绝对日期；有多个候选时列出编号、标题、状态请用户选，不猜。
 - 批量：`continue --select status:new` 等选择器，只在用户明确说了范围时使用。
@@ -47,21 +47,21 @@ description: 推进 tightrein 的缺陷闭环：查看全局状态与待用户�
 
 | 关口 | 向用户展示 | 用户同意后 |
 |---|---|---|
-| `pending-operation` | `pendingOperations` 中每个操作的说明原样展示：命令、分支与文件、影响、是否影响远程、能否撤销 | `tightrein confirm <操作编号> --json`，一次只确认一个 |
-| `issue-approval` | `tightrein issue show <编号> --json` 的摘要：复现、原因、范围、注意事项、修复方向、需用户定夺的项 | `tightrein issue approve <编号> --json`；不修时由用户决定 `issue close` 的原因 |
+| `pending-operation` | `pendingOperations` 中每个操作的说明原样展示：命令、分支与文件、影响、是否影响远程、能否撤销 | `tightrein approve <操作编号> --json`，一次只确认一个 |
+| `issue-approval` | `tightrein issue show <编号> --json` 的摘要：复现、原因、范围、注意事项、修复方向、需用户定夺的项 | `tightrein approve <编号> --json`；不修时由用户决定 `issue close` 的原因 |
 | `fix-plan` | 交给 fix skill 说明计划并请用户表态 | 由 fix skill 执行 `fix confirm` |
 | `interactive-fix` | 两种方式：在终端执行 `tightrein fix start <编号>`，或在当前会话用 `tightrein fix start <编号> --here` 按 fix skill 继续 | 按用户的选择执行 |
 | `pr-review` | 只给出 PR 链接(Issue 待合并)；关卡 `gates.merge` 为 auto 时说明满足条件后自动合并；收件箱有 `merge-decision`(改动涉及高风险路径，转述决策简报)或 `ci-failed`(CI 必需检查未通过)时一并说明 | 用户在代码托管平台审核，不做任何操作 |
-| `manual-queue` | 进入人工队列的原因(`tightrein triage queue --json`) | 用户补充信息后 `tightrein retriage <问题> --note <信息> --json` |
+| `manual-queue` | 进入人工队列的原因(`tightrein triage queue --json`) | 用户补充信息后 `tightrein problem retriage <问题> --note <信息> --json` |
 | `candidate-choice` | 候选的编号、标题、状态 | 用用户选的编号重新执行 |
 | `awaiting-deploy` | 等待部署与部署后确认，没有可做的事 | 部署后再 `continue` |
 | `breaker` | 熔断：同一对象连续失败或反复没有进展，已转待决定；转述原因 | 用户处理后 `tightrein fix start <编号> --force`，或由用户关闭 Issue |
-| `onboarding`(收件箱) | 接入问题与推荐答案 | `tightrein workspace answer <项> --recommended --json` 或用户给出的值 |
+| `onboarding`(收件箱) | 接入问题与推荐答案 | `tightrein project answer <项> --recommended --json` 或用户给出的值 |
 | `learn-suggestion`(收件箱) | 学习建议的类型、对象与推荐；控制措施与改进建议另转述决定文档(`data/improve/<编号>.md`)的结论、推荐与理由 | 交给 learn skill 展示全文后由用户决定 `learn accept` 或 `learn reject`；接受只记录决定，配置与补丁由用户自己修改 |
 
 ## 审批关卡表
 
-哪些事项交用户决定集中写在工作区配置的 `gates` 段(`tightrein config show --key gates --json` 查看)，模型不能在运行时改变：
+哪些事项交用户决定集中写在工作区配置的 `gates` 段(`tightrein project config --key gates --json` 查看)，模型不能在运行时改变：
 
 | 关卡 | auto 时 |
 |---|---|
@@ -76,21 +76,21 @@ description: 推进 tightrein 的缺陷闭环：查看全局状态与待用户�
 
 ## 新项目接入
 
-工作区接入中时只做只读的检查，不修代码、不提 PR、不建 Issue。用 `workspace check` 读出清单，把 `state` 为 `blocked` 的问题连同推荐答案(`recommendation`)一并列给用户，可以一次回答多个；用户答复后逐项执行 `workspace answer`。用户想在终端里逐项回答时，请用户自己执行 `tightrein workspace init --workspace <工作区>`(回车采用推荐)。清单全部完成、试连接都成功、检查命令在主分支上通过后自动转为运行中。
+工作区接入中时只做只读的检查，不修代码、不提 PR、不建 Issue。用 `project check` 读出清单，把 `state` 为 `blocked` 的问题连同推荐答案(`recommendation`)一并列给用户，可以一次回答多个；用户答复后逐项执行 `project answer`。用户想在终端里逐项回答时，请用户自己执行 `tightrein project init --workspace <工作区>`(回车采用推荐)。清单全部完成、试连接都成功、检查命令在主分支上通过后自动转为运行中。
 
 ## 禁止
 
-- 不执行任何 git 写操作；不直接编辑工作区中的文件、数据库与交接文档(接入问题的回答经 `workspace answer` 写回)。
+- 不执行任何 git 写操作；不直接编辑工作区中的文件、数据库与交接文档(接入问题的回答经 `project answer` 写回)。
 - 不替用户确认，不跳过关口，不使用 `--ignore-state`。
 - 不执行安装与定时相关的命令；用户问起时给出下面的命令，由用户在自己的终端执行。
 
 ## 安装与定时(用户自己执行)
 
 ```
-tightrein third-party lock
-tightrein install --dry-run
-tightrein install
-tightrein install --check
-tightrein schedule install --workspace <工作区>
-tightrein schedule show --workspace <工作区>
+tightrein admin third-party lock
+tightrein admin install --dry-run
+tightrein admin install
+tightrein admin install --check
+tightrein project schedule install --workspace <工作区>
+tightrein project schedule show --workspace <工作区>
 ```

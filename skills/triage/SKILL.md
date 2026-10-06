@@ -12,14 +12,14 @@ description: 对 tightrein 聚合出的新发现与回归问题做分诊取证�
 ```
 tightrein triage [--limit <n>] [--commit <commit>] [--select <问题编号>] [--dry-run]
                   [--input <aggregate 交接文档> --output <目录> [--ignore-state]] [--runner <工具>] [--model <模型>]
-tightrein retriage <问题编号> [--note <补充信息>]
-tightrein retriage <问题编号> --verdict <判定> --reason <原因> [--severity <P0-P3>] [--disposition <去向>]
+tightrein problem retriage <问题编号> [--note <补充信息>]
+tightrein problem retriage <问题编号> --verdict <判定> --reason <原因> [--severity <P0-P3>] [--disposition <去向>]
 tightrein triage queue
 ```
 
 - `triage`：分诊待分诊的问题，每次最多 `thresholds.triage.perRun` 个，按「越权 → 5xx → 回归 → 其他运行时问题 → 静态巡检与任务外发现」排序，其余留到下一次。取证在 `origin/<主分支>` 的最新 commit 上进行(`--commit` 覆盖)。
-- `retriage <问题>`：对已分诊的问题重新分诊；`--note` 把用户补充的事实加进主张。
-- `retriage <问题> --verdict`：用户改判，不调用任何角色；判定取 `confirmed`、`conditional`、`refuted`、`insufficient`。
+- `problem retriage <问题>`：对已分诊的问题重新分诊；`--note` 把用户补充的事实加进主张。
+- `problem retriage <问题> --verdict`：用户改判，不调用任何角色；判定取 `confirmed`、`conditional`、`refuted`、`insufficient`。
 - `triage queue`：列出人工队列中的问题、缺少的信息与发现报告路径。
 - 不确定会做什么时先加 `--dry-run`，它只列出选中的问题与将调用的角色。
 
@@ -45,7 +45,7 @@ tightrein triage queue
 |---|---|
 | `create-issue` | 由 `tightrein issue create` 自动建 Issue；P0 在运行摘要中置顶 |
 | `awaiting-deploy` | main 上已修复，等部署后由聚合判定已解决 |
-| `false-positive` | 判为误报并生成带到期日期的抑制规则 |
+| `problem false-positive` | 判为误报并生成带到期日期的抑制规则 |
 | `accepted-tradeoff` | 命中已接受的取舍，已忽略 |
 | `deferred` | 暂不修，再出现若干次或严重度升级时重新分诊 |
 | `manual-queue` | 需要用户：交接文档 `status` 为 `blocked`，`blockedReason` 写明原因 |
@@ -56,16 +56,16 @@ tightrein triage queue
 - `scores` 是分诊评分表五项的代码检查结果；`attempts` 是各角色的调用次数与状态。
 - `report` 是取证角色写给维护者的 Issue 报告(按 `project.language` 书写)，`severity` 优先取 `report.severity`；为 null(不成立、证据不足或本功能之前的结论)时严重度按影响类别映射。
 - 取证输出中只写文件名的代码位置由本工具按代码快照补全；补不全(不存在或有多个同名文件)时交回重做。
-- `status` 为 `failed` 是程序错误，`blockedReason` 有异常摘要，修正后用 `retriage` 重跑。
+- `status` 为 `failed` 是程序错误，`blockedReason` 有异常摘要，修正后用 `problem retriage` 重跑。
 
 ## 人工队列
 
 问题进入人工队列的原因有三种：证据不足(常见是只有用户知道的信息，如业务量级、现象细节)、证据检查重做后仍不合格、证伪复核与取证不一致。证伪复核只在高风险时运行(`triage.refute`：严重度 P0、P1，安全类，权限与数据归属类；预估为 P0 而判为不成立时也运行)。处理方式二选一：
 
-1. 补充信息后重新分诊：`tightrein retriage <问题> --note "<补充的事实>"`。
-2. 直接改判：`tightrein retriage <问题> --verdict <判定> --reason "<依据>"`。原来的结论保留；原结论为不成立而改判为成立时，会记为「误判为不成立」。
+1. 补充信息后重新分诊：`tightrein problem retriage <问题> --note "<补充的事实>"`。
+2. 直接改判：`tightrein problem retriage <问题> --verdict <判定> --reason "<依据>"`。原来的结论保留；原结论为不成立而改判为成立时，会记为「误判为不成立」。
 
-每周的运行摘要会汇总自动判为误报的问题，抽查发现判错时同样用 `retriage --verdict` 改判。
+每周的运行摘要会汇总自动判为误报的问题，抽查发现判错时同样用 `problem retriage --verdict` 改判。
 
 ## 约束
 

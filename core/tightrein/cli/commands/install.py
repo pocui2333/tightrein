@@ -42,7 +42,7 @@ def _install(invocation: Any) -> Outcome:
         items = install.check(ctx, chosen)
         bad = [item for item in items if item.status != install.OK]
         lines = [f"- {item.tool} {item.name}：{item.status} {item.detail}".rstrip() for item in bad]
-        head = "安装核对通过" if not bad else f"安装核对发现 {len(bad)} 项需要处理(重新执行 tightrein install)"
+        head = "安装核对通过" if not bad else f"安装核对发现 {len(bad)} 项需要处理(重新执行 tightrein admin install)"
         return Outcome("install --check", exit_codes.FAILED if bad else exit_codes.OK, [head, *lines],
                        result=[item.to_dict() for item in items])
     try:

@@ -44,7 +44,7 @@ def _review_waits(ctx: MetricContext) -> list[Attention]:
         if waited > limit:
             found.append(Attention("issue-review", record.issue.id,
                                    f"「{record.issue.title}」等待放行 {waited} 个工作日",
-                                   f"tightrein issue approve {record.issue.id}"))
+                                   f"tightrein approve {record.issue.id}"))
     return found
 
 
@@ -63,7 +63,7 @@ def _pull_items(ctx: MetricContext) -> list[Attention]:
 
 def _manual_queue(ctx: MetricContext) -> list[Attention]:
     return [Attention("manual-queue", row["problem_id"], f"人工队列中，{row['created_at']} 起等待处理",
-                      f"tightrein retriage {row['problem_id']} --note <补充信息>")
+                      f"tightrein problem retriage {row['problem_id']} --note <补充信息>")
             for row in manual_queue_items(ctx.conn)]
 
 
@@ -86,7 +86,7 @@ def _false_positives(ctx: MetricContext) -> list[Attention]:
         if ctx.window.contains(record.created_at):
             result = record.result
             found.append(Attention("false-positive", result.problem_id, f"自动判为误报：{result.reason}",
-                                   f"tightrein retriage {result.problem_id} --verdict confirmed --reason <原因>"))
+                                   f"tightrein problem retriage {result.problem_id} --verdict confirmed --reason <原因>"))
     return found
 
 

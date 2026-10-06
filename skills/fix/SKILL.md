@@ -15,7 +15,7 @@ tightrein fix confirm <编号> [--reject] [--note <说明>]
 tightrein fix apply <编号> [--review-only]
 tightrein fix done <编号>
 tightrein fix abandon <编号> --reason <原因>
-tightrein next <编号>
+tightrein show <编号>
 ```
 
 只读的 git 命令(`git status`、`git diff`、`git log`)可以用来向用户展示改动。每一步的进度写在 `data/fixes/<编号>/progress.md`，
@@ -57,7 +57,7 @@ tightrein next <编号>
 
 ## 续接
 
-会话中断后再次执行 `tightrein fix start <编号>`，本工具会从已完成的步骤之后继续，首条输入中写明当前停在哪一步；不确定时执行 `tightrein next <编号>` 或读 `progress.md`。
+会话中断后再次执行 `tightrein fix start <编号>`，本工具会从已完成的步骤之后继续，首条输入中写明当前停在哪一步；不确定时执行 `tightrein show <编号>` 或读 `progress.md`。
 
 ## 参考资料
 

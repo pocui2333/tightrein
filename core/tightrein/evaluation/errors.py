@@ -35,14 +35,14 @@ class EvalCaseTampered(_CaseError):
     """用例哈希与 manifest 不一致、用例多出或缺少、evals/ 有未提交的改动。"""
 
     headline = "评测用例与封存的 manifest 不一致或有未提交的改动"
-    next_step = "检查这些改动；确认无误并提交后，由用户在终端执行 tightrein eval seal 重新封存"
+    next_step = "检查这些改动；确认无误并提交后，由用户在终端执行 tightrein admin eval seal 重新封存"
 
 
 class EvalCaseInvalid(_CaseError):
     """case.json 不合 schema、引用了不存在的评分项或输入文件。"""
 
     headline = "评测用例不合格"
-    next_step = "按原因修改 case.json 或补上输入文件，提交后执行 tightrein eval seal"
+    next_step = "按原因修改 case.json 或补上输入文件，提交后执行 tightrein admin eval seal"
 
 
 class SealRefused(EvaluationError):

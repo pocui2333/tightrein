@@ -48,7 +48,7 @@ def ensure(client: ExtensionClient, repo: Path | None, release: str | None) -> S
         result = client.spec_export(repo, release)
     except WorktreeNotAtCommit:
         return SpecOutcome(RunStatus.FAILED, notes=(
-            f"只读 worktree 不在 {release} 且没有缓存的接口描述，先执行 tightrein worktree sync --commit {release}",))
+            f"只读 worktree 不在 {release} 且没有缓存的接口描述，先执行 tightrein project worktree sync --commit {release}",))
     entries = {result.point.value: result.stats_entry()}
     if result.failure is not None:
         return SpecOutcome(RunStatus.FAILED, notes=(f"spec-export 失败：{result.failure.describe()}", *result.notes),

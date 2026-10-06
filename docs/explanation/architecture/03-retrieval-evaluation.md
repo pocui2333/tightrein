@@ -15,7 +15,7 @@
 | `search`、`get`、`related`、`stale` 四个操作与命中计数 | 判断条目之间是否矛盾(由 `learn` 经执行器完成，本组件只给出候选组) |
 | 按任务类型预取条目，组装上下文(16.6) | 调用 LLM 做写入判断以外的任何事 |
 | 写入去重：检索相似条目、经执行器取得判断、校验后执行写入 | |
-| 命令行 `tightrein kb` 与本地 MCP 服务共用的实现 | |
+| 命令行 `tightrein admin kb` 与本地 MCP 服务共用的实现 | |
 | 检索评测(recall@5、recall@10、MRR) | |
 
 ### 1.2 索引范围
@@ -78,7 +78,7 @@ retrieval/
 
 ```
 cli/
-  kb.py             tightrein kb 的各子命令
+  kb.py             tightrein admin kb 的各子命令
   kb_mcp.py         MCP 服务：把四个操作注册为 MCP 工具，stdio 方式运行
 ```
 
@@ -257,7 +257,7 @@ def rrf_fuse(rankings: list[list[RankedId]], k: int = 60) -> list[RankedId]: ...
 | `knowledge/INDEX.md`、`knowledge/<类型>/INDEX.md` | — | `index_md` |
 | `evals/retrieval/cases.jsonl`、`evals/manifest.json` | `benchmark`(经 `evaluation.cases` 校验哈希) | — |
 | `data/evals/<评测编号>/` | 基线比较 | `benchmark` 写报告 |
-| `data/logs/events-<日期>.jsonl` | `kb queries` 汇总检索记录 | 每次 `search`、`get`、`sync`、写入一个事件 |
+| `data/logs/events-<日期>.jsonl` | `admin kb queries` 汇总检索记录 | 每次 `search`、`get`、`sync`、写入一个事件 |
 
 **knowledge_meta 的列**
 
@@ -327,8 +327,8 @@ FTS5 的 `unicode61` 分词器把 Unicode 类别为字母(L*)、数字(N*)与私
 **触发时机**
 
 - 每次 `KnowledgeService` 执行 `search`、`get`、`related`、`stale`、`context_for` 前先执行一次增量同步。文件未变化时只做目录遍历与 `stat` 比较，不读文件内容。
-- 读取操作前的同步失败时，读取照常基于上一次的索引进行，结果的 `index_warnings` 写明「知识文件有格式错误，本次检索未包含最新改动」及出错文件列表；命令行在输出末尾提示运行 `tightrein kb sync` 查看详情。
-- `tightrein kb sync [--full]` 显式同步，出错时列出全部错误并以非零状态退出。
+- 读取操作前的同步失败时，读取照常基于上一次的索引进行，结果的 `index_warnings` 写明「知识文件有格式错误，本次检索未包含最新改动」及出错文件列表；命令行在输出末尾提示运行 `tightrein admin kb sync` 查看详情。
+- `tightrein admin kb sync [--full]` 显式同步，出错时列出全部错误并以非零状态退出。
 - `writer` 写入文件后只同步被写的文件。
 
 #### 1.6.4 INDEX.md 的生成
@@ -338,10 +338,10 @@ FTS5 的 `unicode61` 分词器把 Unicode 类别为字母(L*)、数字(N*)与私
 | `knowledge/<类型>/INDEX.md` | 该类型下 `active` 的条目，每行一条：`- <编号> <摘要> (<文件名>)`，按编号排序 |
 | `knowledge/INDEX.md` | 总索引：每个类型一节，列出条目数与该类型 `INDEX.md` 的相对链接；类型条目总数不超过 60 时直接列出各条目，否则只给链接 |
 
-- 内容只取自 `knowledge_meta`，不读文件；文件第一行写明「本文件由 tightrein kb sync 生成，不要手工编辑」。
+- 内容只取自 `knowledge_meta`，不读文件；文件第一行写明「本文件由 tightrein admin kb sync 生成，不要手工编辑」。
 - 每个文件不超过 200 行。某一类型超出时，该类型的 `INDEX.md` 只列出分页文件，条目按编号每 180 条一页写入 `INDEX-<起始编号>-<结束编号>.md`。
 - 生成结果与磁盘上的内容相同时不写文件，避免在 git 中产生无意义的改动。
-- `superseded` 与 `archived` 的条目不进入 `INDEX.md`，仍可通过 `kb search --status` 与 `kb get` 查到。
+- `superseded` 与 `archived` 的条目不进入 `INDEX.md`，仍可通过 `admin kb search --status` 与 `admin kb get` 查到。
 
 #### 1.6.5 四个操作
 
@@ -355,7 +355,7 @@ FTS5 的 `unicode61` 分词器把 Unicode 类别为字母(L*)、数字(N*)与私
 
 **get**
 
-1. 按编号查 `knowledge_meta`，不存在时抛出 `EntryNotFound`，错误信息附上 `kb search` 的用法提示。
+1. 按编号查 `knowledge_meta`，不存在时抛出 `EntryNotFound`，错误信息附上 `admin kb search` 的用法提示。
 2. 从文件读取 frontmatter 与正文。文件的哈希与索引不一致时，先同步该文件再返回。
 3. `record_hit=True` 且非沙箱模式时，以一条 `UPDATE knowledge_meta SET hits = hits + 1, last_hit_at = ? WHERE id = ?` 记录命中；时间取自 `Clock`。
 4. 写一个事件，`attributes` 中记录编号。
@@ -402,7 +402,7 @@ FTS5 的 `unicode61` 分词器把 Unicode 类别为字母(L*)、数字(N*)与私
 3. **去除**：排除 `exclude_ids` 与非 `active` 的条目。
 4. **直接放全文**：表中最后一列的类别，若过滤后全部 `active` 条目的估算 token 数不超过 `inlineFullTokens`，把全文放进 `inline_documents`，这些条目不再出现在 `items` 中；超过时按普通条目处理，只给摘要。
 5. **估算 token**：汉字、假名、韩文每字计 1，其余字符每 4 个计 1。只用于上限判断与报告，不要求精确。
-6. `render()` 输出一段固定格式的文本：先说明「以下是与本任务相关的知识条目摘要，需要正文时用 `kb get <编号>` 读取」，再逐行列出编号、类型、摘要、命中依据，最后附上直接放入的全文。
+6. `render()` 输出一段固定格式的文本：先说明「以下是与本任务相关的知识条目摘要，需要正文时用 `admin kb get <编号>` 读取」，再逐行列出编号、类型、摘要、命中依据，最后附上直接放入的全文。
 
 每类任务的条目上限在 `thresholds.retrieval.contextLimits` 中配置(01 篇 5.2)。任务对象的路由、页面与文件由调用方从数据库取出后填入 `ContextRequest`；`context_for` 只在 `routes` 为空而给出了问题编号的情况下，才从 `problems` 与 `signals` 中补取位置。
 
@@ -470,23 +470,23 @@ FTS5 的 `unicode61` 分词器把 Unicode 类别为字母(L*)、数字(N*)与私
 
 | 命令 | 对应 |
 |---|---|
-| `tightrein kb search <关键词> [--type] [--tags] [--status active] [--limit] [--json]` | `search` |
-| `tightrein kb get <编号> [--json]` | `get` |
-| `tightrein kb related <编号> [--json]` | `related` |
-| `tightrein kb stale [--json]` | `stale` |
-| `tightrein kb sync [--full]` | `sync` |
-| `tightrein kb eval [--baseline <评测编号>]` | 检索评测(1.9) |
-| `tightrein kb queries [--since <日期>]` | 从事件日志汇总检索记录，供挑选评测用例 |
-| `tightrein kb mcp` | 以 stdio 方式运行 MCP 服务 |
+| `tightrein admin kb search <关键词> [--type] [--tags] [--status active] [--limit] [--json]` | `search` |
+| `tightrein admin kb get <编号> [--json]` | `get` |
+| `tightrein admin kb related <编号> [--json]` | `related` |
+| `tightrein admin kb stale [--json]` | `stale` |
+| `tightrein admin kb sync [--full]` | `sync` |
+| `tightrein admin kb eval [--baseline <评测编号>]` | 检索评测(1.9) |
+| `tightrein admin kb queries [--since <日期>]` | 从事件日志汇总检索记录，供挑选评测用例 |
+| `tightrein admin kb mcp` | 以 stdio 方式运行 MCP 服务 |
 
 - `--status` 可以取 `active`、`superseded`、`archived`、`any`；`--type`、`--tags` 可重复。
 - 默认输出适合终端阅读的表格；agent 调用时使用 `--json`，输出结构与 MCP 工具的结构化结果相同。
-- 退出码与其他命令相同(09 篇 4.5)：0 成功；2 参数、查询串不合法或编号不存在；1 知识文件格式错误(`kb sync`)；3 数据库不可用(先执行初始化)。
+- 退出码与其他命令相同(09 篇 4.5)：0 成功；2 参数、查询串不合法或编号不存在；1 知识文件格式错误(`admin kb sync`)；3 数据库不可用(先执行初始化)。
 
 **MCP 服务**
 
 - 使用 MCP 官方 Python SDK(PyPI 包 `mcp`，2.x 版本，要求 Python 3.10 及以上)的高层接口 `MCPServer`(`from mcp.server import MCPServer`)。工具以带类型注解与文档字符串的函数定义，SDK 据此生成参数的 JSON schema。
-- 传输方式为 stdio：`kb_mcp.py` 在 `if __name__ == "__main__":` 与 `tightrein kb mcp` 中调用不带参数的 `run()`，进程从 stdin 读取协议消息、向 stdout 写出；不监听任何端口。agent 工具以子进程方式启动它，例如 Claude Code 使用 `claude mcp add tightrein-kb -- tightrein kb mcp --workspace <工作区绝对路径>` 注册；各工具的注册由 `packaging/` 的安装脚本完成。
+- 传输方式为 stdio：`kb_mcp.py` 在 `if __name__ == "__main__":` 与 `tightrein admin kb mcp` 中调用不带参数的 `run()`，进程从 stdin 读取协议消息、向 stdout 写出；不监听任何端口。agent 工具以子进程方式启动它，例如 Claude Code 使用 `claude mcp add tightrein-kb -- tightrein admin kb mcp --workspace <工作区绝对路径>` 注册；各工具的注册由 `packaging/` 的安装脚本完成。
 - stdio 模式下 stdout 就是协议通道：服务进程内不使用 `print`，日志一律经 `logging` 写到 stderr；启动前的包装脚本也不向 stdout 输出任何内容。
 - 注册四个工具：`kb_search(query, types, tags, status, limit)`、`kb_get(id)`、`kb_related(id)`、`kb_stale()`，返回值与命令行的 `--json` 输出相同。
 - 工具描述写明「只返回摘要，需要正文时用 `kb_get`」，与 16.4 的三级展开一致。
@@ -519,7 +519,7 @@ FTS5 的 `unicode61` 分词器把 Unicode 类别为字母(L*)、数字(N*)与私
 |---|---|
 | `id` | `E-<四位序号>` |
 | `kind` | `retrieval` |
-| `query` | 真实的查询串，取自 `kb queries` 的输出 |
+| `query` | 真实的查询串，取自 `admin kb queries` 的输出 |
 | `filters` | 与原查询相同的过滤条件 |
 | `expected` | 期望命中的编号列表，至少 1 个 |
 | `source` | 来源的运行编号，或「漏检补充」 |
@@ -595,10 +595,10 @@ FTS5 的 `unicode61` 分词器把 Unicode 类别为字母(L*)、数字(N*)与私
 
 | 改动 | 发起方 |
 |---|---|
-| skill 的提示词与角色说明 | `learn improve` 的 prompt 类建议(2.9)，或用户修改后手动 `eval run` |
-| 条目表与评分器 | 用户修改后执行 `eval verify --scorers` 与一次 `eval run` |
-| 流程：模块的步骤代码与阈值 | 用户修改后手动 `eval run` |
-| 各角色的工具、模型与档位 | `learn improve` 的 model 类建议(2.9)，或用户以 `eval run --runner`、`--model` 比较后调整配置 |
+| skill 的提示词与角色说明 | `learn improve` 的 prompt 类建议(2.9)，或用户修改后手动 `admin eval run` |
+| 条目表与评分器 | 用户修改后执行 `admin eval verify --scorers` 与一次 `admin eval run` |
+| 流程：模块的步骤代码与阈值 | 用户修改后手动 `admin eval run` |
+| 各角色的工具、模型与档位 | `learn improve` 的 model 类建议(2.9)，或用户以 `admin eval run --runner`、`--model` 比较后调整配置 |
 
 检索相关的改动只运行检索评测(1.9)。
 
@@ -632,7 +632,7 @@ evaluation/
 ```
 
 - 评审者的说明放在 `evaluation/` 内而不是 `skills/` 下：`skills/` 属于改进建议可以修改的范围(14.6)，评分器不属于。
-- 入口层 `cli/eval.py` 提供 `tightrein eval` 子命令(2.7)。
+- 入口层 `cli/eval.py` 提供 `tightrein admin eval` 子命令(2.7)。
 
 ### 2.3 评测用例
 
@@ -650,7 +650,7 @@ evals/
     cases.jsonl                 检索评测用例(1.9)
 ```
 
-用例编号为 `E-<四位序号>`，在每个模块目录内独立递增，由用户新增用例时选定(2.7 的 `eval add` 自动取下一个)。
+用例编号为 `E-<四位序号>`，在每个模块目录内独立递增，由用户新增用例时选定(2.7 的 `admin eval add` 自动取下一个)。
 
 评测 `fix` 时另加运行即评测的用例(design 8.7)：修复部署后确认通过时，`verify` 保存 `data/eval/cases/<Issue 编号>.json` 与 `<Issue 编号>.input.json`(该 Issue 的 issue 环节交接文档副本)。`evaluation.cases.verify_cases` 把它们与 `evals/` 中封存的用例一起加载，用例编号为 Issue 编号，以修复前的提交为基准；它们不经 manifest 封存，两个文件的哈希记入 `case_hashes`，续跑时核对。
 
@@ -785,7 +785,7 @@ def seal_cases(workspace: Workspace, confirmed_by_user: UserConfirmation) -> str
 
 | 数据 | 读 | 写 |
 |---|---|---|
-| `evals/<模块>/<用例编号>/`、`evals/manifest.json` | 全部 | 只有 `seal_cases` 与 `eval add`，均需用户在终端中确认 |
+| `evals/<模块>/<用例编号>/`、`evals/manifest.json` | 全部 | 只有 `seal_cases` 与 `admin eval add`，均需用户在终端中确认 |
 | `evals/retrieval/cases.jsonl` | 由 `retrieval.benchmark` 经 `cases.py` 读取 | 同上 |
 | tightrein 仓库的 git 历史 | `versions.py` 经 `vcs` 只读命令取出快照 | — |
 | 被测项目仓库 | `versions.py` 经 `vcs` 只读命令导出代码快照 | — |
@@ -818,7 +818,7 @@ data/evals/<评测编号>/
 3. **schema**：每个 `case.json` 按 `data/eval-case.schema.json` 校验；`expected.excludeItems` 中的评分项编号在条目表中存在。
 4. 记录 manifest 文件自身的哈希与 `evals/` 的 git 树对象编号，写进 `plan.json` 与报告，供事后核对这次评测用的是哪一版用例集。
 
-**封存**：用户新增或修改用例后执行 `tightrein eval seal`。它只在交互终端中运行(标准输入不是终端时拒绝执行)，列出与现有 manifest 的差异，经用户输入确认后重算并写入 `manifest.json`，写一个 `user_action` 事件。agent 执行器启动的进程中设置了 `TIGHTREIN_RUN_ID`(01 篇 5.5)，`seal` 与 `eval add` 检测到该变量时同样拒绝执行。
+**封存**：用户新增或修改用例后执行 `tightrein admin eval seal`。它只在交互终端中运行(标准输入不是终端时拒绝执行)，列出与现有 manifest 的差异，经用户输入确认后重算并写入 `manifest.json`，写一个 `user_action` 事件。agent 执行器启动的进程中设置了 `TIGHTREIN_RUN_ID`(01 篇 5.5)，`seal` 与 `admin eval add` 检测到该变量时同样拒绝执行。
 
 #### 2.6.2 版本快照
 
@@ -854,7 +854,7 @@ data/evals/<评测编号>/
 - **并发**：默认逐个运行，`evaluation.parallelism` 可以调大。
 - **预算**：每次运行结束后累计用量；超过 `evaluation.budgetUsd` 时停止启动新运行，报告标为 `incomplete`。
 - **收集**：从输出目录读取该模块的交接文档(恰好一份，否则记为运行错误)、会话记录路径、事件文件中的用量与耗时。
-- **续跑**：一次运行在 `scores.jsonl` 中有记录即视为完成。`tightrein eval resume <评测编号>` 重新校验用例哈希(与 `plan.json` 一致才继续)，只执行缺少的运行。
+- **续跑**：一次运行在 `scores.jsonl` 中有记录即视为完成。`tightrein admin eval resume <评测编号>` 重新校验用例哈希(与 `plan.json` 一致才继续)，只执行缺少的运行。
 
 **运行结果的归类**
 
@@ -901,7 +901,7 @@ data/evals/<评测编号>/
 
 4. 计算 `score` 与 `passed`：`unknown` 不计入分母，也不算通过；存在 `unknown` 的运行 `passed` 为假。
 
-**评分器自检**：带 `replay/` 与 `replayExpectation` 的用例，可用 `tightrein eval verify --scorers` 以 `replay` 执行器运行并评分，逐项结果必须与 `replayExpectation` 一致。条目表或评分器改动后必须通过这一步，防止评分器本身出错而评测照常给分。
+**评分器自检**：带 `replay/` 与 `replayExpectation` 的用例，可用 `tightrein admin eval verify --scorers` 以 `replay` 执行器运行并评分，逐项结果必须与 `replayExpectation` 一致。条目表或评分器改动后必须通过这一步，防止评分器本身出错而评测照常给分。
 
 #### 2.6.5 统计
 
@@ -937,12 +937,12 @@ data/evals/<评测编号>/
 
 | 命令 | 作用 |
 |---|---|
-| `tightrein eval run --module <模块> [--cases E-0001,...] [--version <commit>] [--worktree] [--runner a,b] [--model x,y] [--repeats N]` | 按参数组成计划并运行；`--runner` 与 `--model` 给出多个值时展开为多个变体，计划的用途为 `tool-model` |
-| `tightrein eval resume <评测编号>` | 续跑 |
-| `tightrein eval report <评测编号>` | 重新生成并显示报告 |
-| `tightrein eval verify [--module] [--scorers]` | 只做用例校验(2.6.1)；带 `--scorers` 时同时做评分器自检 |
-| `tightrein eval add --module <模块> --from <交接文档> --commit <commit>` | 由用户在终端中执行：建立下一个编号的用例目录，复制输入，生成 `case.json` 骨架供用户填写期望 |
-| `tightrein eval seal` | 用户确认后重算 manifest(2.6.1) |
+| `tightrein admin eval run --module <模块> [--cases E-0001,...] [--version <commit>] [--worktree] [--runner a,b] [--model x,y] [--repeats N]` | 按参数组成计划并运行；`--runner` 与 `--model` 给出多个值时展开为多个变体，计划的用途为 `tool-model` |
+| `tightrein admin eval resume <评测编号>` | 续跑 |
+| `tightrein admin eval report <评测编号>` | 重新生成并显示报告 |
+| `tightrein admin eval verify [--module] [--scorers]` | 只做用例校验(2.6.1)；带 `--scorers` 时同时做评分器自检 |
+| `tightrein admin eval add --module <模块> --from <交接文档> --commit <commit>` | 由用户在终端中执行：建立下一个编号的用例目录，复制输入，生成 `case.json` 骨架供用户填写期望 |
+| `tightrein admin eval seal` | 用户确认后重算 manifest(2.6.1) |
 
 `add` 与 `seal` 不出现在任何 skill 的说明中，也不在执行器的 `allowedCommands` 中。
 
@@ -971,7 +971,7 @@ data/evals/<评测编号>/
 
 | 错误 | 发生在 | 处理 |
 |---|---|---|
-| `EvalCaseTampered` | 用例哈希不一致、用例多出或缺少、`evals/` 有未提交改动 | 立即停止，列出全部不一致项，提示用户检查后执行 `eval seal`；写一个 `gate` 事件，`decision` 为拒绝 |
+| `EvalCaseTampered` | 用例哈希不一致、用例多出或缺少、`evals/` 有未提交改动 | 立即停止，列出全部不一致项，提示用户检查后执行 `admin eval seal`；写一个 `gate` 事件，`decision` 为拒绝 |
 | `EvalCaseInvalid` | `case.json` 不合 schema、引用了不存在的评分项或输入文件 | 立即停止，逐条列出 |
 | `RubricInvalid` | 条目表引用未注册的评分器、编号重复 | 立即停止 |
 | `EvaluationRefused` | 候选版本触及防作弊路径(2.6.2) | 立即停止，列出触及的文件 |
@@ -980,7 +980,7 @@ data/evals/<评测编号>/
 | 单次运行失败 | 见 2.6.3 的归类 | 记为不通过，继续其他运行 |
 | `JudgeOutputInvalid` | 评审输出重试后仍不合格 | 该次 `judge` 项记为 `unknown`，继续 |
 | `BudgetExceeded` | 累计费用超过 `evaluation.budgetUsd` | 停止启动新运行，已有结果照常统计，报告标为 `incomplete`，可在调整预算后续跑 |
-| 中断 | 进程退出、电脑休眠 | 用 `eval resume` 续跑 |
+| 中断 | 进程退出、电脑休眠 | 用 `admin eval resume` 续跑 |
 
 所有停止都在终端与运行摘要中写明原因与下一步命令，不以部分结果给出 `pass`。
 
@@ -996,6 +996,6 @@ data/evals/<评测编号>/
 | `stats.py`、`compare.py` | 手算均值、样本方差、通过率、差值并比对；构造「一个用例变差」「有 unknown」「不稳定」「全部持平」四组数据，断言判定分别为 `reject`、`needs-review`、`needs-review`、`pass` |
 | `service.py` | 回放夹具(`tests/replay/`)上端到端运行：基线与候选为同一版本、执行器为 `replay` 时，所有差值为 0、方差为 0、判定为 `pass`；中途终止后 `resume` 只补跑缺少的运行；预算耗尽时报告为 `incomplete` |
 | `report.py` | `report.json` 符合 `data/eval-report.schema.json`；`report.md` 与期望文件逐字比较 |
-| 评分器自检 | 每个带 `replay/` 的用例在 CI 中运行 `eval verify --scorers` |
+| 评分器自检 | 每个带 `replay/` 的用例在 CI 中运行 `admin eval verify --scorers` |
 
 本篇用到的基础层定义(编号、枚举、表、路径、配置)统一见 01-foundation.md。

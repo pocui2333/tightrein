@@ -66,17 +66,17 @@ def _issue_gate(issue: Issue) -> tuple[str, str] | None:
     if issue.status is IssueStatus.NEEDS_DECISION:
         if issue.hold is not None:
             return resume.INTERACTIVE_FIX, "tightrein fix start {n} --force"
-        return resume.ISSUE_APPROVAL, "tightrein issue approve {n}"
+        return resume.ISSUE_APPROVAL, "tightrein approve {n}"
     if issue.status is IssueStatus.TODO:
         if issue.is_manual and issue.branch is None:
-            return resume.ISSUE_APPROVAL, "tightrein issue approve {n}"
+            return resume.ISSUE_APPROVAL, "tightrein approve {n}"
         return resume.INTERACTIVE_FIX, "tightrein fix start {n}"
     if in_phase(issue, IssuePhase.FIX):
         return resume.INTERACTIVE_FIX, "tightrein fix start {n}"
     if issue.status is IssueStatus.PENDING_MERGE:
         return resume.PR_REVIEW, "{url}"
     if in_phase(issue, IssuePhase.DEPLOY_CHECK):
-        return resume.AWAITING_DEPLOY, "tightrein next {n}"
+        return resume.AWAITING_DEPLOY, "tightrein show {n}"
     return None
 
 
@@ -135,12 +135,12 @@ def items(conn: sqlite3.Connection, layout: WorkspaceLayout | None = None) -> li
         kind = resume.FIX_PLAN if record.kind is OperationKind.FIX_PLAN else resume.PENDING_OPERATION
         advice = GATE_ADVICE.get(kind) or OPERATION_ADVICE.get(record.kind, OPERATION_DEFAULT)
         found.append(_item(kind, record.id, f"{record.kind.label}(对象 {record.subject_id})",
-                           f"tightrein confirm {record.id}", advice))
+                           f"tightrein approve {record.id}", advice))
     for problem in problems.find(conn, statuses=TRIAGEABLE):
         latest = triage.latest(conn, problem.id)
         if latest is not None and latest.result.disposition is Disposition.MANUAL_QUEUE:
             found.append(_item(resume.MANUAL_QUEUE, problem.id, problem.title,
-                               f"tightrein retriage {problem.id} --note <补充信息>", GATE_ADVICE[resume.MANUAL_QUEUE],
+                               f"tightrein problem retriage {problem.id} --note <补充信息>", GATE_ADVICE[resume.MANUAL_QUEUE],
                                latest.result.treatment, latest.result.severity))
     gated = [(record.issue, gate) for record in issues.find(conn) if (gate := _issue_gate(record.issue)) is not None]
     for issue, gate in sorted(gated, key=lambda pair: GATE_ORDER.index(pair[1][0])):
@@ -158,11 +158,11 @@ def items(conn: sqlite3.Connection, layout: WorkspaceLayout | None = None) -> li
     for question in onboarding_items.all_items(conn):
         if question.state == "blocked":
             found.append(_item(ONBOARDING, question.item, f"接入：{question.title}",
-                               f"tightrein workspace answer {question.item} --recommended",
+                               f"tightrein project answer {question.item} --recommended",
                                (question.recommendation or "按说明补充配置", "接入清单需要用户回答")))
         elif question.state == "failed":
             found.append(_item(ONBOARDING, question.item, f"接入失败：{question.title}：{question.detail}",
-                               "tightrein workspace check", ("按失败原因处理后重新检查", "接入清单中的检查没有通过")))
+                               "tightrein project check", ("按失败原因处理后重新检查", "接入清单中的检查没有通过")))
     for record in suggestions.find(conn, status=SuggestionStatus.PENDING):
         advice = record.evidence.get("advice") or {}
         where = f"(决定文档 {record.target_path})" if record.target_path else ""

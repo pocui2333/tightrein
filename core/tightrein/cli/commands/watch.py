@@ -81,6 +81,6 @@ def _keys(stdin: TextIO) -> Iterator[Callable[[float], str | None]]:
 
 
 def register(commands: Any, common: argparse.ArgumentParser) -> None:
-    parser = leaf(commands, common, "watch", _watch, "在终端中实时查看运行状态、正在进行的修复与模型调用")
+    parser = leaf(commands, common, "watch", _watch, "实时界面：运行状态、正在进行的修复与模型调用")
     parser.add_argument("--interval", type=float, help="刷新间隔(秒)；缺省取 loop.watchIntervalSeconds")
     parser.add_argument("--once", action="store_true", help="只输出一帧后退出")

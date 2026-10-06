@@ -71,7 +71,7 @@ def test_attention_lists_every_kind_with_a_command(tmp_path):
                             ("manual-queue", "P-0001"), ("suppression-expiring", "f1"), ("false-positive", "P-0002"),
                             ("regressed-issue", "0010"), ("suggestion", "LS-0001")]
     assert all(item.command for item in found)
-    assert found[5].command == "tightrein retriage P-0002 --verdict confirmed --reason <原因>"
+    assert found[5].command == "tightrein problem retriage P-0002 --verdict confirmed --reason <原因>"
     assert attention.regressed_issues(world.conn) == {"0010": 2}
 
 

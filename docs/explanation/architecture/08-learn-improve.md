@@ -122,7 +122,7 @@ pipeline/improve/
 | 下一步 | 需要处理的事项与命令，owner 为 user |
 | 引用 | learn 的 JSON 交接文档 |
 
-`weekly.summary` 给出通知文字。周报可用 `tightrein doc check` 校验。
+`weekly.summary` 给出通知文字。周报可用 `tightrein admin doc check` 校验。
 
 ## 6. 经验、清理与缺陷变规则
 
@@ -215,7 +215,7 @@ pipeline/improve/
 7. 写 `data/improve/<建议编号>.md` 与 `.patch`，建议记录 kind `improvement`(`diff` 为补丁)；结果写进 learn 交接文档的 `improve`。
 
 接受只记录决定，应用方法写在决定文档的「下一步」：prompt 类在本工具仓库 `git apply` 补丁并提交，model 类在工作区配置中修改能力档。
-`cli/assemble.App.improve` 组装依赖：评测与 `eval run` 使用同一套依赖。
+`cli/assemble.App.improve` 组装依赖：评测与 `admin eval run` 使用同一套依赖。
 
 ## 9. 读写的表与文件
 

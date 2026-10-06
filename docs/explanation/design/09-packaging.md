@@ -174,7 +174,7 @@
 | 运行时间表 | 各探针与各模块的运行时间，例如静态巡检工作日每天 1 到 2 次 |
 | 预算 | 各环节每天的费用上限 |
 
-配置按四层合成：核心默认值、技术栈默认值、`project.yaml`、本机用户配置，后一层覆盖前一层(architecture/01 5.1)。所有可调的值都在这四层中，代码中不写死；`tightrein config show [--key <键>]` 列出每个键的生效值及其来源层。个人前缀这类因人而异的值，放在本机的用户配置文件中，不写进工作区。
+配置按四层合成：核心默认值、技术栈默认值、`project.yaml`、本机用户配置，后一层覆盖前一层(architecture/01 5.1)。所有可调的值都在这四层中，代码中不写死；`tightrein project config [--key <键>]` 列出每个键的生效值及其来源层。个人前缀这类因人而异的值，放在本机的用户配置文件中，不写进工作区。
 
 ## 9.8 编排的运行逻辑
 
@@ -249,11 +249,11 @@
 | skill | 来源 | 核实结果(2026-09-30) |
 |---|---|---|
 | `differential-review`、`variant-analysis` | `trailofbits/skills` | 7296 星，最近提交 2026-09-28，未归档 |
-| `fp-check`、`sharp-edges`、`semgrep-rule-variant-creator` | `trailofbits/skills` | 同一来源仓库，同上；锁定由用户执行 `tightrein third-party lock` |
+| `fp-check`、`sharp-edges`、`semgrep-rule-variant-creator` | `trailofbits/skills` | 同一来源仓库，同上；锁定由用户执行 `tightrein admin third-party lock` |
 
 ## 9.9 参考
 
 - Agent Skills 开放标准：`SKILL.md` 由 YAML frontmatter 与 markdown 正文组成，Claude Code、Codex CLI、Antigravity CLI、GitHub Copilot、Cursor 等三十多个工具支持同一份文件；启动时每个 skill 只加载名称与描述，任务匹配时才加载全文。
 - Codex CLI 的非交互模式：`codex exec` 运行一次任务后退出，`--output-schema` 要求最终回复符合 JSON schema，`--sandbox read-only` 保持只读，默认即为只读沙箱。
-- Gemini CLI 已于 2026-06-18 停用，继任者为 Antigravity CLI(`agy`)。`agy -p` 配合 `--output-format json` 或 `stream-json`，后者输出 init、step_update、result 等事件；无人值守模式按 `~/.gemini/antigravity-cli/settings.json` 的 `permissions.allow` 放行命令(1.2.17 实测；更早的版本不读，见上游 issue google-antigravity/antigravity-cli#548)，其余需要确认的动作被自动拒绝。`tightrein install` 为 agy 补上只读命令(`git grep`、`git ls-files`、`git log`、`git show`、`git diff`、`grep`、`ls`、`cat`、`head`、`tail`、`wc`)，只补缺的并记进安装记录，卸载时只移除这些。
+- Gemini CLI 已于 2026-06-18 停用，继任者为 Antigravity CLI(`agy`)。`agy -p` 配合 `--output-format json` 或 `stream-json`，后者输出 init、step_update、result 等事件；无人值守模式按 `~/.gemini/antigravity-cli/settings.json` 的 `permissions.allow` 放行命令(1.2.17 实测；更早的版本不读，见上游 issue google-antigravity/antigravity-cli#548)，其余需要确认的动作被自动拒绝。`tightrein admin install` 为 agy 补上只读命令(`git grep`、`git ls-files`、`git log`、`git show`、`git diff`、`grep`、`ls`、`cat`、`head`、`tail`、`wc`)，只补缺的并记进安装记录，卸载时只移除这些。
 - Claude Code 的 headless 模式：`claude -p` 配合 `--output-format json --json-schema`，结果在 `structured_output` 中。

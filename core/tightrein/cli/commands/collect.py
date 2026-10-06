@@ -113,6 +113,10 @@ def register(commands: Any, common: argparse.ArgumentParser) -> None:
     aggregate.add_argument("--rebuild", action="store_true", help="按当前规则整体重放")
     aggregate.add_argument("--reproduce", choices=[LIVE, SKIP], help="复现确认的方式")
     aggregate.add_argument("--no-wait", action="store_true", help="全局锁被占用时立即退出")
+
+
+def register_problem(commands: Any, common: argparse.ArgumentParser) -> None:
+    """problem 组：对问题的人工处理。"""
     ignore = leaf(commands, common, "ignore", _ignore, "忽略一个问题")
     ignore.add_argument("problem")
     ignore.add_argument("--reason", required=True)

@@ -55,7 +55,7 @@ def test_waiting_items_pin_immediate_fixes(tmp_path):
     items = inbox.items(world.conn)
     assert [(item["kind"], item["subjectId"]) for item in items] == [("issue-approval", "0007"),
                                                                      ("pr-review", "0003")]
-    assert items[0]["command"] == "tightrein issue approve 7"
+    assert items[0]["command"] == "tightrein approve 7"
     assert (items[0]["treatment"], items[0]["severity"]) == ("immediate", "P1")
 
 

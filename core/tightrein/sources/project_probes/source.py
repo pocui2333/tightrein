@@ -3,7 +3,7 @@
 每个探针的窗口为上次运行时间到现在(第一次运行回看 sources.platform-errors.initialLookbackHours 小时)。探针成功时
 它的输出信号进入本次运行，新的状态与运行时间随信号在同一事务中保存(probe_states)，探针名记入 coverage.sources；
 失败的探针写明原因、不保存状态，下次到期时重试。没有登记时为 skipped(未启用)，没有到期的探针时为 skipped。
-trial 供 `tightrein probe test` 单独试跑一个探针：只返回校验结果与将产出的信号，不保存任何东西。
+trial 供 `tightrein project probe test` 单独试跑一个探针：只返回校验结果与将产出的信号，不保存任何东西。
 """
 
 from __future__ import annotations

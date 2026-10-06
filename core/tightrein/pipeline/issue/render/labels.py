@@ -95,9 +95,9 @@ TEXTS: dict[str, dict[str, str]] = {
     "mustKeep": {"zh": "不能改", "en": "Must not change", "ja": "変更不可"},
     "findings": {"zh": "发现报告", "en": "Findings report", "ja": "検出レポート"},
     "consequenceShort": {"zh": "后果：{text}", "en": "Consequence: {text}", "ja": "影響：{text}"},
-    "next.approve": {"zh": "审阅并放行：tightrein issue approve {n}",
-                     "en": "Review and approve: tightrein issue approve {n}",
-                     "ja": "確認して承認：tightrein issue approve {n}"},
+    "next.approve": {"zh": "审阅并放行：tightrein approve {n}",
+                     "en": "Review and approve: tightrein approve {n}",
+                     "ja": "確認して承認：tightrein approve {n}"},
     "next.fix": {"zh": "修复：tightrein fix start {n}", "en": "Fix: tightrein fix start {n}",
                  "ja": "修正：tightrein fix start {n}"},
     # GitHub 镜像

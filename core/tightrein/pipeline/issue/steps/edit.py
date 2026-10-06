@@ -22,7 +22,7 @@ from tightrein.store.repos import issue_events, issues
 from tightrein.store.repos.issue_events import USER_EDITED, IssueEventRecord
 from tightrein.store.repos.issues import IssueRecord
 
-STATUS_HINT = "status 与 closeReason 只能用 tightrein issue approve、close、reopen 修改"
+STATUS_HINT = "status 与 closeReason 只能用 tightrein approve、close、reopen 修改"
 
 
 @dataclass(frozen=True)

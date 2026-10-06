@@ -80,7 +80,7 @@ def test_body_sections_follow_the_handoff_layout_and_carry_the_triage_findings()
     assert found["acceptance"] == ("- [ ] 复现测试在修复前失败、修复后通过\n- [ ] 现有测试全部通过\n"
                                    "- [ ] 保持不变：公共接口 OrderService.Get 的签名\n- [ ] 条件一")
     assert "- `src/Services/OrderService.src:12` id 直接用于查询，没有按公司过滤" in text
-    assert "- [ ] 审阅并放行：tightrein issue approve 1(user)" in text
+    assert "- [ ] 审阅并放行：tightrein approve 1(user)" in text
     assert issue_sections.find(issue_sections.split(text), issue_sections.HISTORY).startswith("- 2026-10-05 ")
 
 

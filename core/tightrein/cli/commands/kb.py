@@ -56,26 +56,26 @@ def _mcp(invocation: Any) -> Outcome:
 
 def register(commands: Any, common: argparse.ArgumentParser) -> None:
     group_ = group(commands, "kb", "知识检索")
-    search = leaf(group_, common, "search", _kb("kb search", _search), "按关键词检索", "kb search")
+    search = leaf(group_, common, "search", _kb("kb search", _search), "按关键词检索")
     search.add_argument("query")
     search.add_argument("--type", action="append", default=[], help="类型，可重复")
     search.add_argument("--tags", action="append", default=[], help="标签，可重复，须全部包含")
     search.add_argument("--status", default="active")
     search.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     get = leaf(group_, common, "get", _kb("kb get", lambda i: kb.get(i.app.knowledge(), i.args.entry)),
-               "按编号读取", "kb get")
+               "按编号读取")
     get.add_argument("entry")
     related = leaf(group_, common, "related", _kb("kb related", lambda i: kb.related(i.app.knowledge(),
                                                                                     i.args.entry)),
-                   "关联条目", "kb related")
+                   "关联条目")
     related.add_argument("entry")
-    leaf(group_, common, "stale", _kb("kb stale", lambda i: kb.stale(i.app.knowledge())), "待复核的条目", "kb stale")
+    leaf(group_, common, "stale", _kb("kb stale", lambda i: kb.stale(i.app.knowledge())), "待复核的条目")
     sync = leaf(group_, common, "sync", _kb("kb sync", lambda i: kb.sync(i.app.knowledge(), i.args.full)),
-                "同步索引与 INDEX.md", "kb sync")
+                "同步索引与 INDEX.md")
     sync.add_argument("--full", action="store_true")
     evaluate = leaf(group_, common, "eval", _kb("kb eval", lambda i: kb.evaluate(
-        i.app.knowledge(), i.app.process, i.app.clock, i.args.baseline)), "检索评测", "kb eval")
+        i.app.knowledge(), i.app.process, i.app.clock, i.args.baseline)), "检索评测")
     evaluate.add_argument("--baseline", help="基线评测编号")
-    queries = leaf(group_, common, "queries", _kb("kb queries", _queries), "汇总检索记录", "kb queries")
+    queries = leaf(group_, common, "queries", _kb("kb queries", _queries), "汇总检索记录")
     queries.add_argument("--since", help="起始日期 YYYY-MM-DD，缺省为今天")
-    leaf(group_, common, "mcp", _mcp, "以 stdio 运行知识检索的 MCP 服务", "kb mcp")
+    leaf(group_, common, "mcp", _mcp, "以 stdio 运行知识检索的 MCP 服务")

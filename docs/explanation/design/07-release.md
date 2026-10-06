@@ -89,7 +89,7 @@ Issue 完成且部署后确认通过后，提示用户执行 `fix cleanup <Issue
 
 | 操作 | 所在环节 | 确认方式 |
 |---|---|---|
-| 建分支、建 worktree | 5.3 | `issue approve` 时单独确认；`gates.release-writes: auto` 时直接执行 |
+| 建分支、建 worktree | 5.3 | `approve` 时单独确认；`gates.release-writes: auto` 时直接执行 |
 | `git add`、`git commit` | 7.2 | 确认提交信息与文件清单；`gates.release-writes: auto` 时直接执行 |
 | 合并 `origin/main` 进修复分支 | 7.3 | 单独确认(`gates.release-writes: auto` 时直接执行)；有冲突时逐个文件确认取舍，冲突解决后的合并提交与放弃合并各自单独确认 |
 | `git push` | 7.4 | 确认目标分支与 commit；`gates.release-writes: auto` 时直接执行(只推送修复分支) |

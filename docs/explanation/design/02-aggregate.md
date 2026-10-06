@@ -120,10 +120,10 @@
 
 | 命令 | 作用 |
 |---|---|
-| `ignore <问题> --reason <原因> [--until <条件>]` | 忽略问题。恢复条件可选：到某个日期、再出现 N 次、出现在新版本中；不给条件即永久忽略 |
-| `false-positive <问题> --reason <原因> [--expires <日期>]` | 判为误报，同时生成一条抑制规则，以后同指纹的信号直接抑制；到期日期缺省为当天加 `thresholds.suppressionDays` |
-| `merge <问题A> <问题B>` | 把 B 并入 A，B 的指纹作为 A 的别名，以后 B 指纹的信号都归到 A |
-| `reopen <问题>` | 重新打开已解决或已忽略的问题 |
+| `problem ignore <问题> --reason <原因> [--until <条件>]` | 忽略问题。恢复条件可选：到某个日期、再出现 N 次、出现在新版本中；不给条件即永久忽略 |
+| `problem false-positive <问题> --reason <原因> [--expires <日期>]` | 判为误报，同时生成一条抑制规则，以后同指纹的信号直接抑制；到期日期缺省为当天加 `thresholds.suppressionDays` |
+| `problem merge <问题A> <问题B>` | 把 B 并入 A，B 的指纹作为 A 的别名，以后 B 指纹的信号都归到 A |
+| `problem reopen <问题>` | 重新打开已解决或已忽略的问题 |
 
 抑制规则存放在工作区的 `suppressions.yaml`(示例项目为 `workspaces/demo/suppressions.yaml`)，每条规则写明匹配条件(指纹，或者探针加消息正则)、原因、添加日期和到期日期。到期的规则自动失效，避免抑制规则只增不减。
 

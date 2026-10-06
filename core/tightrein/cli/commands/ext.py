@@ -67,11 +67,11 @@ def _test(invocation: Any) -> Outcome:
 
 def register(commands: Any, common: argparse.ArgumentParser) -> None:
     group_ = group(commands, "ext", "扩展点")
-    leaf(group_, common, "list", _list, "各扩展点的解析结果", "ext list")
-    methods = leaf(group_, common, "methods", _methods, "方法目录中可选的方法", "ext methods")
+    leaf(group_, common, "list", _list, "各扩展点的解析结果")
+    methods = leaf(group_, common, "methods", _methods, "方法目录中可选的方法")
     methods.add_argument("--point", choices=[point.value for point in ExtensionPoint])
-    run = leaf(group_, common, "run", _run, "单独调用一次扩展点(--input 为输入 JSON 文件)", "ext run")
+    run = leaf(group_, common, "run", _run, "单独调用一次扩展点(--input 为输入 JSON 文件)")
     run.add_argument("point", choices=[point.value for point in ExtensionPoint])
-    test = leaf(group_, common, "test", _test, "以夹具测试扩展", "ext test")
+    test = leaf(group_, common, "test", _test, "以夹具测试扩展")
     test.add_argument("--stack", help="技术栈名称")
     test.add_argument("--workspace-extensions", action="store_true", help="测试当前工作区的项目扩展")

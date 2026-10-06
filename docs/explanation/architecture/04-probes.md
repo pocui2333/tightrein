@@ -259,7 +259,7 @@ schemathesis run <openapi.json>
 
 - 检查项按价值分级(`checks.py`，`sources.api-fuzz.checks`)：服务器报错、越权、状态码不符缺省开启；响应结构不符为 `auto`，接口描述由框架导出(spec-export 的方法不是手写文件的 `core/openapi-file`)时开启、手写时关闭；响应过慢、不支持的方法缺省关闭。关闭的检查以 `--exclude-checks` 传入；越权关闭时不加载越权模型；响应过慢开启时才传 `--max-response-time`。
 - 按环境限制(`limits.py`)：`target.environment` 为 `production` 时只测 GET，且只测 `sources.api-fuzz.production.allow` 列出的路由；各档位的 `includeMethod` 不是 GET 或允许清单为空时启动即报错(`ConfigError`，写明键名)，不发出任何请求。
-- 接口描述没有自动导出时，`tightrein spec draft` 以只读任务 `spec-drafter` 读代码起草 `openapi.draft.yaml`，用户在接入清单的「接口描述」项确认后按 `core/openapi-file`(`base: workspace`)登记。
+- 接口描述没有自动导出时，`tightrein project spec draft` 以只读任务 `spec-drafter` 读代码起草 `openapi.draft.yaml`，用户在接入清单的「接口描述」项确认后按 `core/openapi-file`(`base: workspace`)登记。
 - 退出码：`0` 全部通过，`1` 有检查失败，两者都视为正常完成；`2` 为配置或接口描述错误，该角色记为失败。
 
 ### 2.5 报告格式与解析
@@ -336,7 +336,7 @@ replay(request: RecordedRequest, role: str, target: ProbeTarget, session: Sessio
 |---|---|
 | 没有目标地址(没有 `target.baseUrl` 也没有 `--target`) | `skipped`，原因写明缺少目标地址 |
 | 没有 `accounts` | 以匿名身份运行(1.6)，只做匿名身份时不做越权检查，`notes` 写明 |
-| 接口描述来自仓库，而只读 worktree 不存在或不在 `release` 且没有缓存的接口描述 | 探针不运行，`status` 为 `failed`，提示「先执行 `tightrein worktree sync --commit <release>`」 |
+| 接口描述来自仓库，而只读 worktree 不存在或不在 `release` 且没有缓存的接口描述 | 探针不运行，`status` 为 `failed`，提示「先执行 `tightrein project worktree sync --commit <release>`」 |
 | 没有 `spec-export` 的实现 | `skipped`，原因「未提供 spec-export 扩展」 |
 | `spec-export` 返回错误(`build-failed`、`tool-missing` 等)或超时 | `failed`；扩展的 `message`、`hint` 写入 `notes`，标准错误与构建输出保存到 `raw/api-fuzz/spec-export.log` |
 | `authz-endpoints` 或 `authz-roles` 返回错误 | 本次不做越权检查，其余照常，`status` 为 `partial`，原因写入 `notes` |
@@ -413,14 +413,14 @@ check 为 `business-alert`，location 为告警名，严重度提示取标签 `s
 
 | 环节 | 做法 |
 |---|---|
-| 登记 | `sources.project-probes`：name、command(相对工作区，`{python}` 为核心解释器)、every(`15m`、`1h`、`1d`)、keychain(只读凭证的条目名)、timeoutSeconds；`tightrein probe new <名称>` 生成模板并按行写回登记 |
+| 登记 | `sources.project-probes`：name、command(相对工作区，`{python}` 为核心解释器)、every(`15m`、`1h`、`1d`)、keychain(只读凭证的条目名)、timeoutSeconds；`tightrein project probe new <名称>` 生成模板并按行写回登记 |
 | 调度 | 编排的 `sources` 步骤按各探针的 `every` 运行到期的探针(`probe_states` 记上次运行时间)；`--select name:<名称>` 不看间隔 |
 | 输入 | 标准输入一个 JSON：name、lastRunAt、state(上次输出的 state)、window(上次运行到现在)、workspace、environment、baseUrl |
 | 输出 | 标准输出一个 JSON：signals(location、symptom、evidence、severityHint、fingerprint，可选 occurredAt、context)、state、notes；按 `data/project-probe-output.schema.json` 校验 |
 | 失败 | 退出码非 0、超时、输出不是 JSON 或不合契约：本次作废，不产出信号、不保存状态，原因写进说明，标准错误脱敏后写入原始输出目录 |
 | 信号 | source 为 behavior，check 为探针名，message 为 symptom；指纹为探针名与给出指纹的哈希；探针名记入 `coverage.sources` |
-| 试跑 | `tightrein probe test <名称>` 单独运行一次、校验输出、显示将产出的信号，不写数据库、不保存状态、不进入归并 |
-| 辅助函数 | `helpers`：read_input、signal、emit(写前校验)、secret(只读登记的钥匙串条目)、redact、query_logs(经 `tightrein probe logs` 调用工作区的日志平台方法) |
+| 试跑 | `tightrein project probe test <名称>` 单独运行一次、校验输出、显示将产出的信号，不写数据库、不保存状态、不进入归并 |
+| 辅助函数 | `helpers`：read_input、signal、emit(写前校验)、secret(只读登记的钥匙串条目)、redact、query_logs(经 `tightrein project probe logs` 调用工作区的日志平台方法) |
 
 ## 5. static
 
@@ -522,7 +522,7 @@ class Reviewer(Protocol):
 
 | 情况 | 处理 |
 |---|---|
-| 只读 worktree 不在目标 commit | 不运行，提示「先执行 `tightrein worktree sync`」 |
+| 只读 worktree 不在目标 commit | 不运行，提示「先执行 `tightrein project worktree sync`」 |
 | `static-tools` 中某个工具为 `failed`，或 Semgrep 失败 | 该工具的结果为空，其余照常，`status` 为 `partial`，输出保存到 `raw/static/<工具>.log` |
 | `static-tools` 整体返回错误或超时 | 技术栈工具的结果为空，Semgrep 与审查照常，`status` 为 `partial`，扩展的 `message` 与 `hint` 写入 `notes` |
 | `review` 或 `verify` 返回 `schema-invalid`、`limit-reached`、`failed` | 该次调用的主张不产出信号，`status` 为 `partial`，原因写入 `notes` |

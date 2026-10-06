@@ -25,7 +25,7 @@
 
 1. 模块调用 `vcs` 的写操作构造函数(或自身的确认函数)，得到待确认操作，写入 `pending_operations`，渲染说明。
 2. **终端前台运行**(标准输入是终端，且不是 `--scheduled`)：当场显示说明并询问，用户输入 `yes` 视为确认，其他输入视为拒绝。
-3. **其他情况**(定时运行、agent 会话中调用、用户选择稍后处理)：交接文档 `status` 为 `blocked`，`blockedReason` 写明操作编号；运行摘要列出等待确认的操作。用户执行 `tightrein confirm <操作编号>` 或 `tightrein reject <操作编号> [--note <说明>]`；各模块也提供针对本模块的简写(例如 `fix confirm <Issue 编号>`)。
+3. **其他情况**(定时运行、agent 会话中调用、用户选择稍后处理)：交接文档 `status` 为 `blocked`，`blockedReason` 写明操作编号；运行摘要列出等待确认的操作。用户执行 `tightrein approve <操作编号>` 或 `tightrein reject <操作编号> [--note <说明>]`；各模块也提供针对本模块的简写(例如 `fix confirm <Issue 编号>`)。
 4. **执行前复核**：确认后由 `vcs.execute(op)` 执行。执行前重新读取 `preconditions` 中记录的各项状态，与生成时不一致(例如确认之后工作区又被修改)的，操作标为 `expired`，不执行，模块下次运行时重新生成。确认只对这一个操作编号有效。
 5. **执行后续**：执行成功后状态为 `executed`，调用发起模块登记的后续处理(回写 Issue、推进到下一步)；执行失败时标为 `failed`，记录输出，模块停下说明原因。`fix-plan`、`local-migration` 没有命令，确认后直接调用后续处理。
 
@@ -130,7 +130,7 @@ skills/fix/
 
 | 命令 | 特有参数 | 作用 |
 |---|---|---|
-| `fix prepare <编号>` | — | 生成建分支与 worktree 的待确认操作；由 `issue approve` 组合调用，也可单独执行 |
+| `fix prepare <编号>` | — | 生成建分支与 worktree 的待确认操作；由 `approve` 组合调用，也可单独执行 |
 | `fix start <编号>` | `--here`、`--force` | 进入修复会话(3.4)；`--here` 不启动新会话，在当前 agent 会话中按 `fix` skill 继续；`--force` 确认继续带 `hold` 的待决定 Issue |
 | `fix plan <编号>` | `--note <说明>`、`--accept-design` | 第 0 到 4 步：分流、建立确定性来源的复现检查、按需勘察、出计划，生成计划确认或自动确认；`--note` 是用户的要求或补充(例如复现线索)；`--accept-design` 表示用户已同意按设计层面的根因修复，勘察或计划标出设计问题时不再中止；两者都写入 `decisions.json`，之后持续交给各修复角色(4.2) |
 | `fix confirm <编号>` | `--reject`、`--note <说明>` | 确认或拒绝当前计划；拒绝时带 `--note` 即按说明重出计划 |
@@ -143,10 +143,10 @@ skills/fix/
 
 | 命令 | 条件 | 不满足时的提示 |
 |---|---|---|
-| `prepare` | Issue 状态为 `todo`；项目要求个人前缀(3.3)时本机用户配置中有 `branchPrefix` | 「先执行 `issue approve 7`」或「先在 `~/.config/tightrein/config.yaml` 设置 `branchPrefix`」 |
-| `start` | Issue 状态为 `todo`、`in-progress` 或 `pending-merge`，或带 `hold` 的 `needs-decision`(须加 `--force`)；修复 worktree 已创建 | 没有 `hold` 的待决定「先执行 `issue approve 7`」；带 `hold` 时显示原因并提示加 `--force`；worktree 不存在时「先执行 `fix prepare 7`」 |
+| `prepare` | Issue 状态为 `todo`；项目要求个人前缀(3.3)时本机用户配置中有 `branchPrefix` | 「先执行 `approve 7`」或「先在 `~/.config/tightrein/config.yaml` 设置 `branchPrefix`」 |
+| `start` | Issue 状态为 `todo`、`in-progress` 或 `pending-merge`，或带 `hold` 的 `needs-decision`(须加 `--force`)；修复 worktree 已创建 | 没有 `hold` 的待决定「先执行 `approve 7`」；带 `hold` 时显示原因并提示加 `--force`；worktree 不存在时「先执行 `fix prepare 7`」 |
 | `plan` | Issue 为进行中且 `phase` 为 `fix`；worktree 存在 | 「先执行 `fix start 7`」 |
-| `confirm` | 有 `pending` 的 `fix-plan` 操作 | 「没有待确认的计划，先执行 `fix plan 7`」 |
+| `approve` | 有 `pending` 的 `fix-plan` 操作 | 「没有待确认的计划，先执行 `fix plan 7`」 |
 | `apply` | 计划已确认，且确认时的计划哈希与当前计划文件一致 | 「计划已变化，请重新确认」 |
 | `done` | 最近一次 `apply` 结论为通过；工作区改动的哈希与 `apply` 结束时记录的一致 | 「`apply` 之后工作区有新改动，先执行 `fix apply 7 --review-only`」 |
 
@@ -164,7 +164,7 @@ worktree 路径为 `workspaces/<项目>/worktrees/fix-<Issue 编号>/`。worktre
 修复需要用户确认计划，以交互方式运行：
 
 1. `fix start` 检查前置条件与 `hold`，把 Issue 改为进行中、`phase` 为 `fix`(从合并前验证、提交或待合并重新进入时同样如此，「历史」记录原因)。
-2. 调用 `runner.run_interactive(task, first_input=...)`，在修复 worktree 中启动 `stages.fix.session` 指定工具的交互会话。任务字段：`instructions` 为 `skills/fix/SKILL.md` 加首条输入(Issue 文件路径、发现报告路径、上一次验证报告路径与评审意见路径)；`access` 为 `read-only`；`allowedCommands` 只含 `tightrein fix *`、`tightrein next` 与只读 git 命令；`interactive` 为 `true`。
+2. 调用 `runner.run_interactive(task, first_input=...)`，在修复 worktree 中启动 `stages.fix.session` 指定工具的交互会话。任务字段：`instructions` 为 `skills/fix/SKILL.md` 加首条输入(Issue 文件路径、发现报告路径、上一次验证报告路径与评审意见路径)；`access` 为 `read-only`；`allowedCommands` 只含 `tightrein fix *`、`tightrein show` 与只读 git 命令；`interactive` 为 `true`。
 3. 带 `--here` 时不执行第 2 步：第 1 步完成后返回，由用户当前所在的 agent 会话加载 `fix` skill 继续。
 4. 会话中由 skill 依次调用 `fix plan`、`fix confirm`(计划需要用户确认时，用户在会话中表态后由 skill 执行)、`fix apply`、`fix done`。每个子命令都是独立的核心调用，各角色在子命令内部经执行器以无人值守方式运行，结果写入 store；会话本身不产出任何结果。
 5. **续接**：Issue 处于修复阶段(进行中，`phase` 为 `fix`)时再次 `fix start`，由 `service.resume_point()` 读取 `data/fixes/<Issue 编号>/` 下已有的文件判断停在哪一步(`ResumePoint`：没有计划或通道已升级而计划仍是旧通道的为 PLAN，其后依次为 CONFIRM、APPLY、DONE)；执行器支持续接时续接原会话，否则新开会话并把已有的计划与当前 diff 作为首条输入。
@@ -187,7 +187,7 @@ C 只做第 3、4 步，确认后拆成子 Issue，各子 Issue 从第 0 步开�
 | 1 准备 | 3.3 | `prepare` 的后续 | `steps/workspace.py` | `vcs`；项目检查命令(全量) | `prepare.log` |
 | 2 勘察 | 4.4 | `plan` | `steps/scout.py` | 执行器：`fix-scout` | `runner/roles/fix-scout.schema.json`；`scout.md` |
 | 3 出计划 | 4.5、4.6 | `plan` | `steps/risk.py`、`steps/plan.py`、`steps/split.py` | `domain` 纯函数；执行器：`fix-planner`、`frontend-designer` | `handoff/outputs/fix-plan.schema.json`；`plan.md` |
-| 4 确认计划 | 4.7 | `plan`、`confirm` | `steps/plan_gate.py` | 待确认操作 `fix-plan`；`orchestrator/policy/autonomy.py` | `confirmation.json` |
+| 4 确认计划 | 4.7 | `plan`、`approve` | `steps/plan_gate.py` | 待确认操作 `fix-plan`；`orchestrator/policy/autonomy.py` | `confirmation.json` |
 | 5 写复现测试 | 4.8 | `apply` | `steps/repro_test.py` | 执行器：`fix-executor` 第一轮或 `repro-writer` | `runner/roles/repro-test.schema.json`；`repro.json` |
 | 6 写代码 | 4.8、4.9 | `apply` | `steps/execute.py`、`steps/checks.py` | 执行器：`fix-executor` 第二轮；`guards` | `runner/roles/fix-executor.schema.json` |
 | 7 收集结果 | 4.9 | `apply` | `steps/checks.py` | 项目检查命令(全量)；复现检查 | `result.md` |
@@ -333,7 +333,7 @@ Issue 转为待决定(`hold` 为「超出单个任务的上限」)。结果写 `
 | 结果 | 处理 |
 |---|---|
 | 合格 | 登记为本 Issue 的测试类复现检查(与已有的确定性复现检查合在一份清单)，结果写 `repro.json`(修复前复现只在这里做一次) |
-| 缺陷类(`bug`、`security`、`data`、`frontend`、`dependency`)在基准版本上就通过 | `not-reproduced`：问题不成立，Issue 转为 `needs-decision` 并退回分诊(`retriage-requested`) |
+| 缺陷类(`bug`、`security`、`data`、`frontend`、`dependency`)在基准版本上就通过 | `not-reproduced`：问题不成立，Issue 转为 `needs-decision` 并退回分诊(`problem retriage-requested`) |
 | 其他不合格 | 带原因交回重写，重写续接同一会话，最多 `thresholds.fix.planRounds` 次 |
 | 写不出(`cannot-write`)或重写用尽 | 转待决定：Issue 转为 `needs-decision` 并设置 `hold`(「写不出合格的复现测试」)，补充复现线索后 `fix start --force` 继续 |
 
@@ -619,7 +619,7 @@ skills/verify/
 1. `git diff --name-only <baseCommit>` 查看改动文件是否匹配启动计划的 `migrationPaths`。示例项目中的取值：`src/Migrations/MigrationList.cs`(10 篇 6.7)。
 2. 没有匹配：启动时不会执行任何新迁移，继续。
 3. 有匹配：提取新增的迁移条目，连同 `fix-<编号>.json` 中 `migration` 给出的「能否撤销与撤销方式」，生成 `kind` 为 `local-migration` 的待确认操作，`preconditions` 记录迁移文件的哈希；本次验证以 `blocked` 结束，说明将应用到测试库的条目。
-4. 用户确认后执行 `verify local <编号> --confirm-migration`(或 `tightrein confirm <操作编号>` 后重跑)，迁移文件哈希一致时才启动。
+4. 用户确认后执行 `verify local <编号> --confirm-migration`(或 `tightrein approve <操作编号>` 后重跑)，迁移文件哈希一致时才启动。
 
 核心与扩展都不读取任何配置文件与凭证，不连接数据库；迁移是否执行只从 diff 判断。
 
@@ -950,7 +950,7 @@ Issue 取消时同样可以执行清理，第 3 条的拒绝情况在说明中�
 
 | 操作 | 步骤 | `kind` | 确认方式 |
 |---|---|---|---|
-| 建分支、建 worktree | 3.3 | `create-fix-worktree` | `issue approve` 时当场确认 |
+| 建分支、建 worktree | 3.3 | `create-fix-worktree` | `approve` 时当场确认 |
 | 计划确认 | 4.7 | `fix-plan` | `fix confirm` |
 | 应用迁移到测试库 | 11.3 | `local-migration` | `verify local --confirm-migration` |
 | `git add`、`git commit` | 19.1 | `commit` | 确认提交信息与文件清单 |

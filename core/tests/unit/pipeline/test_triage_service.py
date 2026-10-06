@@ -202,7 +202,7 @@ def test_budget_locks_and_worktree_failures_stop_or_skip(tmp_path):
         raise GitCommandError("worktree 不干净")
 
     failed = service(world, runner, sync=broken).run(TriageRequest(select=("P-0003",)))
-    assert failed.run is None and failed.message.endswith("先执行 tightrein worktree sync")
+    assert failed.run is None and failed.message.endswith("先执行 tightrein project worktree sync")
 
 
 def test_output_mode_writes_only_to_the_output_directory_and_dry_run_calls_nothing(tmp_path):
