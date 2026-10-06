@@ -71,19 +71,16 @@ core/.venv/bin/tightrein admin install    # 注册 skills，并在 ~/.local/bin 
 **1. 配置模型。** 新建 `~/.config/tightrein/config.yaml`：
 
 ```yaml
-agents:
-  defaultTool: claude
-  stages:
-    triage:
-      refuter: {capability: standard}   # 评审者须与被评审者使用不同的模型
-    fix:
-      review:
-        deep: {capability: standard}
-  capabilities:
-    light:    {claude: {model: haiku, inputUsdPerMTok: 1, outputUsdPerMTok: 5}}
-    standard: {claude: {model: sonnet, inputUsdPerMTok: 3, outputUsdPerMTok: 15}}
-    strong:   {claude: {model: opus, effort: high, inputUsdPerMTok: 5, outputUsdPerMTok: 25}}
+models:                       # 模型别名：工具、模型、推理强度与价格
+  opus:   {tool: claude, model: opus, effort: high, inputUsdPerMTok: 5, outputUsdPerMTok: 25}
+  sonnet: {tool: claude, model: sonnet, inputUsdPerMTok: 3, outputUsdPerMTok: 15}
+routes:                       # 调用点 → 别名；没写的调用点用 default
+  default: opus
+  triage.refuter: sonnet      # 评审者须与被评审者使用不同的模型
+  fix.review.deep: sonnet
 ```
+
+`tightrein project config --routes` 列出每个调用点实际用的模型，调用点与条件见[配置说明](docs/reference/configuration.md)。
 
 **2. 接入项目。** 工作区位于 `workspaces/`（不纳入版本库）。接入完成前，tightrein 只执行只读检查。
 

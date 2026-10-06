@@ -147,7 +147,7 @@ tightrein collect deployments
 | 取证 | `skills/triage/references/roles/claim-verifier.md` | 只有主张与位置 | `runner/roles/claim-verifier.schema.json` | `read-only` |
 | 起草接口描述(`tightrein project spec draft`) | `roles/spec-drafter.md` | 被测地址 | `runner/roles/spec-drafter.schema.json` | `read-only` |
 
-增量审查与基线审查都用强档(`roleCapabilities.static-review`、`baseline-review` 为 `strong`)：增量审查是新代码缺陷的主要发现者。
+增量审查与基线审查(调用点 `collect.static-review`、`collect.baseline-review`)宜路由到强模型：增量审查是新代码缺陷的主要发现者。
 
 各类任务的 `workdir` 都是只读 worktree，`allowedCommands` 为只读 git 命令，`limits` 取 `stages.collect`；会话记录写入 `transcripts/static-review-<运行编号>.jsonl`、`transcripts/baseline-review-<批次序号>-<运行编号>.jsonl`、`transcripts/variant-scan-<运行编号>-<模式编号>.jsonl`、`transcripts/claim-verifier-<运行编号>-<序号>.jsonl`。
 

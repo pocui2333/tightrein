@@ -6,6 +6,11 @@
 
 ## [未发布]
 
+### 变更
+
+- 修复环节新增「分层代码摘要」：勘察通过后由程序按勘察的位置生成一次(核心位置截取原文，相关位置只取定义行，另列涉及的文件)，存为 `data/fixes/<编号>/brief.json`；出计划、写复现测试、写代码与轻量评审都以它为准，提示要求只打开要改或要核对的行段，不再各自通读代码。
+- 写代码只拿计划中的步骤、修改位置与约束，轻量评审只拿计划摘要、代码摘要与 diff，不再传整份计划；材料用 `<plan>`、`<diff>`、`<code_brief>` 包住。勘察、取证、证伪复核、增量审查与变体扫描的角色说明都加上「先搜索、后阅读」与停止条件；通用的评分条目改称「交付检查项」，不再与 Issue 的验收标准重名。
+
 ### 修复
 
 - 关卡 merge 为 auto 时，`continue` 遇到待合并的 PR 当场跟踪并按条件自动合并，不再只靠定时运行(工作区暂停时 PR 一直停在待合并)。
@@ -17,6 +22,8 @@
 
 - 命令行重新规整：日常命令在顶层(`status` `watch` `show` `find` `new` `continue` `approve` `reject` `run` `pause` `resume`)，其余收进 `issue`、`problem`、`project`、`admin` 四组，流水线单步命令不变。不带命令时等同 `status`；`-w` 可写项目名；帮助只列人会用到的参数。老写法(`next`、`pending`、`confirm`、`issue approve`、`issue create --manual`、`retriage`、`workspace`、`install` 等)已删除，敲老写法时提示新写法。全部命令见 `docs/reference/cli.md`。
 - `tightrein admin install` 在 `~/.local/bin` 建立 `tightrein` 命令链接。
+- 选模型改为两张表：`models`(模型别名：工具、模型、推理强度与价格)与 `routes`(调用点 → 别名，没写的用 `default`)，写在本机用户配置的顶层，`project.yaml` 可按项覆盖。调用点是固定的清单(`fix.planner`、`fix.review.deep`、`triage.refuter` 等，见 `docs/reference/configuration.md`)，`fix.planner`、`fix.scout`、`fix.executor` 可按 `high-risk`、`frontend`、`large` 条件另走路由(例如 `fix.planner.high-risk: fable`)。`tightrein project config --routes` 列出每个调用点实际用的模型与来源。原来的 `agents` 段、`capabilities`、`roleCapabilities`、`defaultTool`、`evaluation.judge` 以及 `stages` 中的 `tool`、`model`、`capability`、`refuter`、`session` 已删除，配置中还有时加载即报出该键与新写法；核心不再给缺省档位，须自己写 `models` 与 `routes.default`。`stages` 中的上限与 `paths` 不变。命令行的 `--runner` 现在对所有调用点生效。
+- improvement-writer 的 model 类建议改为给出模型别名(`model`)，不再给能力档。
 
 ### 变更
 

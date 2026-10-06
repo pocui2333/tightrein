@@ -181,7 +181,7 @@ def _capabilities(failure: Failure, role: str, model: AuthzModel | None) -> dict
         return {}
     rule = model.rule(*failure.operation)
     return {"requiredCapabilities": [] if rule is None else list(rule.requires),
-            "roleCapabilities": list(model.role_capabilities(role))}
+            "grantedCapabilities": list(model.role_capabilities(role))}
 
 
 def to_signals(report: RoleReport, context: RoleContext, model: AuthzModel | None, factory: SignalFactory,

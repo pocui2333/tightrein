@@ -65,6 +65,8 @@ class FixContext:
     knowledge: str = EMPTY
     # 用户的决定与补充(steps/decisions.py 渲染)，由 FixService 在出计划与实施前填入
     decisions: str = ""
+    # 分层代码摘要(steps/brief.py 渲染)：勘察后生成，出计划、写测试、写代码与评审共用
+    brief: str = ""
 
     @property
     def issue(self) -> Issue:

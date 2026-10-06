@@ -48,7 +48,7 @@ runner/
   task.py              RunnerTask、Limits、Access 数据类，与 runner/runner-task.schema.json 互转
   result.py            RunnerResult、Usage、RunnerStatus 数据类，与 runner/runner-result.schema.json 互转
   service.py           run、run_interactive、resume_interactive 的完整流程
-  registry.py          按工具名取适配器；解析工具、模型与推理强度(配置、命令行覆盖、模型档)
+  registry.py          按工具名取适配器；按调用点的路由解析工具、模型与推理强度，叠加命令行覆盖
   process.py           启动子进程(独立进程组)、逐行读取输出、超时与终止
   limits.py            预算检查与累计、按 token 估算费用、无原生轮数上限时的计数
   output.py            从文本中提取 JSON、按 schema 校验、生成重试说明
@@ -81,9 +81,8 @@ runner/
 | `allowedCommands` | 字符串列表 | 允许执行的命令前缀，例如 `git log`、`dotnet build` |
 | `limits` | 对象 | `maxTurns`、`maxDurationMs`、`maxCostUsd`；缺省时取 `project.yaml` 中该环节的值 |
 | `interactive` | 布尔 | 是否交互运行 |
-| `tool`、`model` | 字符串，可空 | 显式指定；为空时按 `stages.<stage>` 与模型档解析 |
-| `capability` | 字符串，可空 | 模型档(design 9.6)，例如 `strong`；为空时按 `stages.<stage>.roles.<角色>.capability` 与 `roleCapabilities.<角色>` 解析，档对应的模型与推理强度取自 `capabilities` |
-| `effort` | 字符串，可空 | 推理强度；为空时取所选模型档在该工具上的 `effort`；适配器翻译成该工具的参数(Claude Code 与 agy 为 `--effort`，Codex CLI 为 `-c model_reasoning_effort=<强度>`)；实际使用的强度记在 `invoke_agent` span 的属性中 |
+| `route` | 字符串，可空 | 调用点(01 篇 5.2，`config/routes.py` 的 `CALL_POINTS`)，例如 `fix.planner`；按路由表解析工具、模型与推理强度(别名的 `effort`，适配器翻译成该工具的参数：Claude Code 与 agy 为 `--effort`，Codex CLI 为 `-c model_reasoning_effort=<强度>`；实际使用的强度记在 `invoke_agent` span 的属性中)；为空只用于测试，执行时报错 |
+| `conditions` | 列表 | 调用的条件：`high-risk`、`frontend`、`large`；依次查 `routes.<调用点>.<条件>`，再查 `routes.<调用点>` 与 `routes.default` |
 | `approvedProtectedPaths` | 路径列表 | 用户在确认修复计划时单独放行的受保护文件，只对 `fix-executor` 有意义 |
 | `web` | 布尔 | 是否允许联网检索；核心当前没有角色设为真 |
 | `readPaths` | 路径列表 | 工作目录之外允许读取的文件，例如截图评审要查看的截图 |
@@ -156,7 +155,7 @@ class ParsedRun:
 
 - 任务说明、skill 正文与上下文由核心拼成一个提示文件，交给工具，不依赖各工具自己发现 skill 的机制，保证换工具时模型看到的内容相同。
 - 提示文件在「输出」之前有一节「输出语言」(`runner/prompt.build_prompt`，取 `project.language`，缺省 en)：所有给人读的文字按该语言书写，代码、路径、标识符、命令、配置键、JSON 字段名与引用原文保持原样。全部执行器任务都经这里拼装，角色说明中不重复。
-- 工具与模型：`task.tool` 与 `task.model` 优先(角色与任务设置 `stages.<stage>.roles|tasks.<名称>`、评审类设置由组装任务时填入，01 篇 5.2)，其次是命令行覆盖，其次是各层合并后的 `stages.<stage>` 与 `capabilities` 映射(`project.yaml` 覆盖本机用户配置的 `agents` 段，环节没有工具时取 `defaultTool`，核心不给缺省工具；01 篇 5.1、5.3)；可执行文件路径取自本机用户配置。
+- 工具与模型：按任务的调用点与条件在各层合并后的路由表中解析(`project.yaml` 按项覆盖本机用户配置的 `models`、`routes`，核心不给缺省路由，没有路由时报出调用点；01 篇 5.1 到 5.3)，命令行的 `--runner` 改写所有调用点的工具(工具与别名的不同时不沿用别名的模型与推理强度，`--runner replay` 时全部回放)，`--model` 改写模型；可执行文件路径取自本机用户配置。
 - 工具自身的限制作为第一层照常启用，第二层由 `guards` 保证(第 3 节)。
 
 **Claude Code**
@@ -204,7 +203,7 @@ class ParsedRun:
 | `limits.maxCostUsd` | 无原生上限，费用由核心按各 `agent_response` 步骤的用量估算 |
 | `model` | `--model`(`agy models` 列出，例如 `gemini-3.1-pro-high`、`claude-sonnet-4-6`) |
 | 续接 | 无人值守续接(格式重试)为 `--conversation <会话 ID>` |
-| 交互启动与收尾 | 不支持：不能预先指定会话 ID，会话记录在工具自己的数据目录中；启动交互会话时报配置错误，提示把 `stages.<环节>.session.tool` 设为 claude 或 codex |
+| 交互启动与收尾 | 不支持：不能预先指定会话 ID，会话记录在工具自己的数据目录中；启动交互会话时报配置错误，提示把 `routes.fix.session` 指向 claude 或 codex 的模型别名 |
 | `web` | 没有开关。实测(1.2.14，只读模式)`search_web` 放行，读取网页(`read_url_content`)被拒绝并结束本轮；搜索结果只经模型回复体现，出处是 `vertexaisearch.cloud.google.com` 的跳转链接。`web` 为真时提示末尾另说明只依据搜索摘要作答；`web` 为假的只读任务同样可以搜索，不受核心控制 |
 
 **三个工具在权限约束上的差异**：Claude Code 有工具与命令前缀白名单；Codex CLI 没有命令白名单，由沙箱限制读写；agy 两者都没有，只能做到「写入与命令全部拒绝」或「放开全部」，适配器取前者。被拒绝时 agy 立即结束本轮(`denied_actions` 记为一条 `error` 事件)，常没有输出，靠格式重试续接；只读角色查不了 git 历史，`fix-executor` 不能自己运行检查命令。第二层检查(第 3 节)对三个工具相同。
@@ -252,7 +251,7 @@ class ParsedRun:
 | 轮数 | 工具支持的(Claude Code)以参数设置；不支持的，核心逐行读取事件时对 `tool-call` 计数，超过 `maxTurns` 按超时同样的方式终止，`errorType` 为 `turn-limit` |
 | 单次费用 | 工具支持的(Claude Code)以参数设置；其余在读取到用量事件时累计估算，超过 `maxCostUsd` 时终止，`errorType` 为 `cost-limit` |
 | 每日预算 | 启动前读取 `budget_usage` 中该环节当天的累计，已达 `stages.<stage>` 的上限时不启动，返回 `limit-reached`、`errorType` 为 `daily-budget`；运行结束后把本次费用累加进 `budget_usage`(11.3) |
-| 费用估算 | 工具不返回费用时，按 `capabilities` 中该模型的每百万 token 价格计算，`costEstimated` 为真 |
+| 费用估算 | 工具不返回费用时，按 `models` 中该工具该模型的每百万 token 价格计算，`costEstimated` 为真 |
 
 - 格式重试的费用与耗时计入同一任务。
 - 进程以独立进程组启动，终止时整组终止，agent 启动的子进程不会残留。
@@ -287,7 +286,7 @@ class ParsedRun:
 
 | 数据 | 读 | 写 |
 |---|---|---|
-| `project.yaml`(`stages`、`capabilities`)、本机用户配置(`agents` 段、工具路径) | 是 | 否 |
+| `project.yaml`(`stages`、`models`、`routes`)、本机用户配置(`models`、`routes`、工具路径) | 是 | 否 |
 | `budget_usage` | 启动前检查 | 结束后累加 |
 | `agent_sessions` | 续接时 | 交互会话开始与结束 |
 | `data/runs/<运行编号>/transcripts/<角色>-<对象编号>.jsonl` | 否 | 是 |

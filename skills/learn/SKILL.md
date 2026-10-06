@@ -82,8 +82,8 @@ tightrein learn reject <建议编号> --reason <原因>
 | `probe-config` 采集配置 | 某检查的误报、被抑制、作废或间歇未复现的信号占比过高 | 只记录决定；按证据中的建议动作自己修改 `project.yaml` 的 `sources` 段 |
 | `coverage-gap` 覆盖缺口 | 接口连续多周没有被覆盖 | 只记录决定；自己调整模糊测试范围 |
 | `knowledge-review` 知识复核 | 缺陷模式、取舍等条目过期、长期未命中，或同类条目相互矛盾、重复 | 必须用 `--action`：`renew` 续期，`archive` 归档，`merge` 保留命中最多的一条、其余标为已取代 |
-| `control` 控制措施 | 某模型的一次通过率连续多周偏低；用户一周内频繁纠正某类自动决定 | 只记录决定；按决定文档 `data/improve/<编号>.md` 的「下一步」自己修改配置(换模型档，或把关卡改为 `user`) |
-| `improvement` 改进建议 | 用户运行 `learn improve` 且评测完成 | 只记录决定；按决定文档自己应用：prompt 类在本工具仓库 `git apply` 同名 `.patch` 并提交，model 类修改能力档 |
+| `control` 控制措施 | 某模型的一次通过率连续多周偏低；用户一周内频繁纠正某类自动决定 | 只记录决定；按决定文档 `data/improve/<编号>.md` 的「下一步」自己修改配置(在 `routes` 中换别名，或把关卡改为 `user`) |
+| `improvement` 改进建议 | 用户运行 `learn improve` 且评测完成 | 只记录决定；按决定文档自己应用：prompt 类在本工具仓库 `git apply` 同名 `.patch` 并提交，model 类在 `routes` 中改该调用点的别名 |
 
 - **接受前必须向用户展示建议全文**(`learn suggestions` 的输出，含证据；控制措施与改进建议另展示决定文档，改进建议还要展示补丁与
   两组用例的评测对比)，得到用户同意后才执行 `learn accept`；不要替用户决定，也不要替用户应用补丁或修改配置。

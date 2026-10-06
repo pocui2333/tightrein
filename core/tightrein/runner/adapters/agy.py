@@ -82,7 +82,7 @@ WEB_NOTE = (
     "只依据搜索结果的摘要作答，出处写摘要中的链接并注明来源站点。\n"
 )
 INTERACTIVE_UNSUPPORTED = ("agy 不支持交互会话：不能预先指定会话 ID，会话记录也不在本工具可读的位置。"
-                           "请把 stages.<环节>.session.tool 设为 claude 或 codex")
+                           "请把 routes.fix.session 指向 claude 或 codex 的模型别名")
 
 
 def usage_of(data: Mapping[str, Any] | None) -> Usage:

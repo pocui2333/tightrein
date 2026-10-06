@@ -1,4 +1,4 @@
-"""自我改进只建议(redesign/08-learn.md 第 1 节)：从近期的失败中归纳一条对提示词或模型档的修改建议，附评测对比，
+"""自我改进只建议(redesign/08-learn.md 第 1 节)：从近期的失败中归纳一条对提示词或模型路由的修改建议，附评测对比，
 写成 decision 文档进收件箱，由用户批准后自己应用；程序不修改任何提示、配置或代码。
 
 suggest：
@@ -6,7 +6,8 @@ suggest：
 2. improvement-writer 归纳一条建议(没有共同原因时为空)；
 3. 校验：prompt 类补丁只改 skills/ 下的文件，且不触及评测、边界与 improve 本身(evaluation.versions.FORBIDDEN_PATTERNS)；
 4. 评测：该环节的用例分为参与改进(来源对象在 addresses 或出问题的来源中)与未参与改进；后者少于
-   learn.improve.minHeldOutCases 时不出建议。prompt 类以 HEAD 加补丁为候选，model 类以建议的能力档对应的模型对比当前模型；
+   learn.improve.minHeldOutCases 时不出建议。prompt 类以 HEAD 加补丁为候选，model 类以建议的别名的模型对比该环节主要
+   调用点(config.routes.primary)当前解析出的模型，工具须相同；
 5. 汇总两组的确定性项(code 评分项)通过率与平均分；评测完整、未参与改进的用例确定性通过率没有下降、参与改进的有提升时
    推荐批准，否则推荐拒绝；
 6. 写 data/improve/<建议编号>.md(decision)与 .patch，建议记录 kind improvement。
@@ -22,6 +23,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any
 
+from tightrein.config import routes
 from tightrein.config.project import ProjectConfig
 from tightrein.domain.clock import Clock
 from tightrein.domain.enums import (
@@ -184,15 +186,17 @@ class ImproveService:
         deps = self.deps
         stage = Stage(proposed["stage"])
         repeats = deps.config.whole_threshold("learn.improve.repeats")
-        current = deps.config.model_choice(stage)
+        current = deps.config.model_choice(routes.primary(stage.value))
         if proposed["target"] == PROMPT:
             return version_plan(stage, VersionSpec(CANDIDATE, HEAD, patch=patch), current.tool, current.model,
                                 case_ids, repeats)
-        if not proposed["capability"]:
-            return "model 类建议没有给出能力档"
-        candidate = deps.config.model_choice(stage, capability=proposed["capability"])
+        if not proposed["model"]:
+            return "model 类建议没有给出模型别名"
+        candidate = deps.config.routes.aliases.get(proposed["model"])
+        if candidate is None:
+            return f"模型别名 {proposed['model']} 没有在 models 中定义"
         if candidate.tool != current.tool or candidate.model == current.model:
-            return f"能力档 {proposed['capability']} 与当前使用的模型相同，没有可对比的候选"
+            return f"别名 {proposed['model']} 与当前使用的模型相同或工具不同，没有可对比的候选"
         return tool_model_plan(stage, [current.tool], [current.model, candidate.model], case_ids=case_ids,
                                repeats=repeats)
 
@@ -265,8 +269,9 @@ class ImproveService:
             change = f"修改 {stage} 的角色说明：{'、'.join(patch_paths(proposed['patch'] or ''))}"
             apply = "在本工具仓库用 `git apply` 应用工作区 data/improve/ 下同名的 .patch 补丁，提交后生效"
         else:
-            change = f"{stage} 环节改用能力档 {proposed['capability']}"
-            apply = f"在工作区 project.yaml 写 `stages.{stage}.capability: {proposed['capability']}`"
+            point = routes.primary(stage)
+            change = f"{stage} 环节的调用点 {point} 改用模型别名 {proposed['model']}"
+            apply = f"在本机用户配置或工作区 project.yaml 的 routes 中写 `{point}: {proposed['model']}`"
         text = SuggestionText(
             conclusion=f"{change}；评测{'支持' if recommended else '不支持'}采纳",
             background="\n\n".join([f"依据：{proposed['rationale']}", "针对的失败：\n" + "\n".join(lines),
@@ -275,7 +280,7 @@ class ImproveService:
             accept=change, reject="不采纳，保持现状", recommended=recommended, reason=reason, apply=apply,
             references=() if report.report_path is None else
             (Reference(deps.layout.relative(report.report_path), "评测报告"),))
-        target = ",".join(patch_paths(proposed["patch"] or "")) or proposed["capability"]
+        target = ",".join(patch_paths(proposed["patch"] or "")) or proposed["model"]
         subject = f"{proposed['target']}:{stage}:{target}"
         return Draft(SuggestionKind.IMPROVEMENT, subject,
                      {"runId": run.id, "stage": stage, "target": proposed["target"],

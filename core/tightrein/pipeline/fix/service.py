@@ -72,7 +72,7 @@ from tightrein.pipeline.checks.regressions.runner import RegressionExecutor, Reg
 from tightrein.pipeline.common import conventions, stage_runs
 from tightrein.pipeline.common.stage_runs import StageRun
 from tightrein.pipeline.fix.prompts import repro_test as repro_prompt
-from tightrein.pipeline.fix.prompts.common import FixCalls, FixPrompt
+from tightrein.pipeline.fix.prompts.common import FixCalls, FixPrompt, risk_conditions
 from tightrein.pipeline.fix.render import documents, issue_history
 from tightrein.pipeline.fix.render import plan as plan_render
 from tightrein.pipeline.fix.render import report as report_render
@@ -90,6 +90,7 @@ from tightrein.pipeline.fix.steps import (
     split,
     workspace,
 )
+from tightrein.pipeline.fix.steps import brief as brief_step
 from tightrein.pipeline.fix.steps import report as report_step
 from tightrein.pipeline.fix.steps.checkpoint import Checkpoint
 from tightrein.pipeline.fix.steps import risk as risk_step
@@ -127,6 +128,7 @@ REVIEW_STATE = "review.json"
 PATCH_FILE = "changes.patch"
 CHECKLIST_PATH = "regressions/{issue}/check.yaml"
 SESSION_ROLE = "fix-session"
+SESSION_ROUTE = "fix.session"
 SESSION_COMMANDS = ("tightrein fix", "tightrein show", *READ_ONLY_COMMANDS)
 ACTOR = "fix"
 PLAN_APPROVED = "自动确认修复计划：满足"
@@ -416,7 +418,7 @@ class FixService:
             run_id=self._begin().id, stage=Stage.FIX, role=SESSION_ROLE, subject=Subject("issue", issue_id), attempt=1,
             instructions=Instructions(deps.tool.skill("fix").read_text(encoding="utf-8")),
             workdir=self.worktree(issue_id), output_schema=None, access=Access.READ_ONLY,
-            allowed_commands=SESSION_COMMANDS, interactive=True)
+            allowed_commands=SESSION_COMMANDS, interactive=True, route=SESSION_ROUTE)
         first = self._first_input(issue_id, point)
         result = None
         if resumed:
@@ -464,6 +466,7 @@ class FixService:
         run = self._begin()
         ctx = context.load(deps.conn, deps.layout, issue_id, deps.context)
         ctx.decisions = decided.render()
+        ctx.brief = brief_step.render(brief_step.load(directory))
         base = self._base_outputs(issue_id)
         route = self._route(issue_id, ctx)
         if route.oversize:
@@ -622,6 +625,8 @@ class FixService:
             design_accepted=decided.design_accepted, scout=scout, large=route.lane is Lane.LARGE,
             test_paths=tuple(guard.test_paths))
         proposal = propose(self._calls(run, issue_id), ctx, settings)
+        if proposal.brief is not None:
+            brief_step.save(self.fix_dir(issue_id), proposal.brief)
         if proposal.scouting is not None:
             writer = self.writer(issue_id)
             path = writer.write(documents.SCOUT, documents.scout(writer, deps.clock.now(), proposal.scouting))
@@ -783,6 +788,7 @@ class FixService:
         run = self._begin()
         ctx = context.load(deps.conn, deps.layout, issue_id, deps.context)
         ctx.decisions = decisions.load(directory).render()
+        ctx.brief = brief_step.render(brief_step.load(directory))
         route = route_step.load(directory) or route_step.decide(deps.config, ctx.issue, ctx.triage)
         return _Apply(self, run, ctx, planned, confirmation, route).run(review_only)
 
@@ -926,11 +932,8 @@ class _Apply:
         if limit is not None:
             constraints.insert(0, f"当前规模档 {tier.label}：不超过 {limit.max_files} 个文件、{limit.max_lines} 行")
         acceptance = [*ctx.acceptance, "复现测试修复前失败、修复后通过", "现有测试与项目检查全部通过"]
+        # 计划与代码摘要已写在任务里，不再列出计划、勘察文件的路径，免得执行器再去读一遍
         references = [Reference(deps.layout.relative(deps.layout.root / ctx.record.path), "Issue")]
-        for name, note in ((documents.PLAN, "计划"), (documents.SCOUT, "勘察结果")):
-            path = self.service.fix_dir(self.issue_id) / name
-            if path.is_file():
-                references.append(Reference(str(path), note))
         document = documents.task(
             self.writer, deps.clock.now(), goal=f"Issue {self.issue_id}：{ctx.issue.title}\n\n{self.plan['summary']}",
             inputs=[f"Issue 文件 {ctx.record.path}", "已确认的计划(见下文)", f"通道 {self.route.text()}"],
@@ -938,7 +941,8 @@ class _Apply:
             deliverables="第一轮：一个复现测试与运行它的命令；第二轮：代码改动，结构化结果写明改了什么、偏离与遗留。",
             references=references)
         self.writer.write(documents.TASK, document)
-        return sections.strip_frontmatter(document_files.render(document, deps.config.language, deps.zone)).strip()
+        text = sections.strip_frontmatter(document_files.render(document, deps.config.language, deps.zone)).strip()
+        return "\n\n".join(part for part in (text, ctx.brief) if part)  # 写复现测试与写代码共用代码摘要
 
     # 第 5 步
 
@@ -974,12 +978,15 @@ class _Apply:
             deps.config.get("fix.repro.testFilePatterns"), int(deps.config.get("fix.repro.siblingTests"))),
             int(deps.config.get("fix.repro.siblingLines")))
 
+        # 与写代码同一会话时条件须与写代码一轮相同，工具与模型才一致
+        conditions = risk_conditions(self.plan) if role == repro_prompt.EXECUTOR else ()
+
         def build(attempt: int, feedback: Sequence[str]) -> RunnerTask:
             return repro_prompt.task(self.calls.prompt, self.ctx, self.task_text, attempt, role=role,
                                      expects_pass=expects_pass, test_paths=self.settings.test_paths,
                                      prefixes=project_checks.repro_test_prefixes(commands),
                                      check_commands=execute.allowed_commands(commands), siblings=siblings,
-                                     feedback=feedback)
+                                     feedback=feedback, conditions=conditions)
 
         found = repro_test.write(self.calls, build, rules, expects_pass=expects_pass,
                                  defect=self.route.task_type in DEFECT_TYPES and not self.ctx.issue.is_manual,

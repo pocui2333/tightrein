@@ -35,6 +35,7 @@ from tightrein.runner.task import Instructions, RunnerTask, SkillRef, Subject
 from tightrein.store.files.layout import WorkspaceLayout
 
 ROLE = "knowledge-curator"
+ROUTE = "learn.knowledge-curator"  # 调用点：无论哪个环节发起写入，模型都按这条路由
 OUTPUT_SCHEMA = "runner/roles/knowledge-curator.schema.json"
 SKILL = "learn"
 REFERENCE = "references/knowledge-curator.md"
@@ -103,7 +104,7 @@ def curator_task(layout: WorkspaceLayout, origin: WriteOrigin, draft: KnowledgeD
     return RunnerTask(
         run_id=origin.run_id, stage=origin.stage, role=ROLE, subject=origin.subject, attempt=attempt,
         instructions=Instructions(instructions(draft, candidates, feedback), (SkillRef(SKILL, (REFERENCE,)),)),
-        workdir=layout.knowledge_dir(), output_schema=OUTPUT_SCHEMA, access=Access.READ_ONLY,
+        workdir=layout.knowledge_dir(), output_schema=OUTPUT_SCHEMA, access=Access.READ_ONLY, route=ROUTE,
     )
 
 

@@ -37,7 +37,7 @@ def test_a_model_low_for_consecutive_weeks_gets_one_upgrade_suggestion(tmp_path)
     (draft,) = controls.drafts(context(world), WEEK, [first_pass("opus", 2, 5), first_pass("sonnet", 1, 5)])
     assert (draft.kind, draft.subject, draft.evidence["rates"]) == (
         SuggestionKind.CONTROL, "first-pass:opus", [2 / 6, 0.2, 0.4])
-    assert "stages.fix.roles.fix-executor.capability" in draft.document.apply
+    assert "routes.fix.executor" in draft.document.apply
     assert "tightrein admin eval run" in draft.document.apply and draft.document.recommended is True
 
 

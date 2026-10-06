@@ -1,7 +1,7 @@
 """分数驱动的控制措施(redesign/08-learn.md 第 2 节)：只生成建议进收件箱，凡改配置的都由用户批准后自己修改。
 
 - 模型一次通过率：first-pass 的 model= 维度连续 learn.controls.weeks 周(含本周)样本不少于 learn.minSamples 且都低于
-  learn.controls.firstPassFloor 时，建议写代码的角色升档或换模型(附对比评测的命令)；
+  learn.controls.firstPassFloor 时，建议写代码的调用点换用更强或其他模型的别名(附对比评测的命令)；
 - 用户频繁纠正：本周驳回修复计划、关闭 Issue、确认撤销 PR 分别达到 learn.controls.corrections 次，且对应关卡
   (plan-confirm、issue-approve、merge)为 auto 时，建议改为 user；
 - 连续失败停下转待决定由编排的熔断完成(不改配置)，这里不生成建议。
@@ -23,7 +23,7 @@ from tightrein.pipeline.learn.steps.suggestions import Draft
 
 FIRST_PASS = "first-pass"
 MODEL_DIMENSION = "model="
-WRITER_ROLE = "stages.fix.roles.fix-executor.capability"
+WRITER_ROLE = "routes.fix.executor"
 GATES = {"plan-rejected": Gate.PLAN_CONFIRM, "issue-closed": Gate.ISSUE_APPROVE, "reverted": Gate.MERGE}
 CORRECTION_LABELS = {"plan-rejected": "驳回修复计划", "issue-closed": "关闭 Issue", "reverted": "撤销合并"}
 
@@ -44,12 +44,12 @@ def _low_models(ctx: MetricContext, week: date, current: Sequence[MetricValue]) 
         model = value.dimension[len(MODEL_DIMENSION):]
         rates = "、".join(f"{rate:.0%}" for rate, _ in series)
         text = SuggestionText(
-            conclusion=f"写代码的模型 {model} 一次通过率连续 {weeks} 周低于 {floor:.0%}，建议升档或换模型",
+            conclusion=f"写代码的模型 {model} 一次通过率连续 {weeks} 周低于 {floor:.0%}，建议换用更强的模型",
             background=f"修复一次通过率(复现测试与项目检查第一轮即通过)按模型统计，{model} 最近 {weeks} 周依次为 "
                        f"{rates}，每周样本不少于 {minimum}。",
-            accept=f"把写代码的角色改用更强的档或其他模型(配置键 `{WRITER_ROLE}`，或本机用户配置中该档对应的模型)",
+            accept=f"把写代码的调用点改用更强或其他模型的别名(配置键 `{WRITER_ROLE}`，或该别名在 models 中的模型)",
             reject="保持当前模型，继续观察",
-            recommended=True, reason="一次通过率持续偏低会增加修正轮数与费用，写代码出错有复现测试与评审兜底，升档的收益可由评测确认",
+            recommended=True, reason="一次通过率持续偏低会增加修正轮数与费用，写代码出错有复现测试与评审兜底，换模型的收益可由评测确认",
             apply=f"先运行 `tightrein admin eval run --module fix --model {model},<候选模型>` 对比，再自己修改 `{WRITER_ROLE}`")
         found.append(Draft(SuggestionKind.CONTROL, f"first-pass:{model}",
                            {"metric": FIRST_PASS, "model": model, "rates": [rate for rate, _ in series],

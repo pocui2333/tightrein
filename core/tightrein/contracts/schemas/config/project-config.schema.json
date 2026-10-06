@@ -1415,39 +1415,6 @@
         "$ref": "#/$defs/stage"
       }
     },
-    "capabilities": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "object",
-        "additionalProperties": {
-          "type": "object",
-          "required": [
-            "model",
-            "inputUsdPerMTok",
-            "outputUsdPerMTok"
-          ],
-          "additionalProperties": false,
-          "properties": {
-            "model": {
-              "type": "string",
-              "minLength": 1
-            },
-            "effort": {
-              "type": "string",
-              "minLength": 1
-            },
-            "inputUsdPerMTok": {
-              "type": "number",
-              "minimum": 0
-            },
-            "outputUsdPerMTok": {
-              "type": "number",
-              "minimum": 0
-            }
-          }
-        }
-      }
-    },
     "notify": {
       "type": "object",
       "additionalProperties": false,
@@ -1909,17 +1876,6 @@
         }
       }
     },
-    "defaultTool": {
-      "type": "string",
-      "minLength": 1
-    },
-    "roleCapabilities": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "string",
-        "minLength": 1
-      }
-    },
     "schedule": {
       "type": "object",
       "required": [
@@ -2066,22 +2022,6 @@
         "repeats": {
           "type": "integer",
           "minimum": 3
-        },
-        "judge": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "runner": {
-              "type": "string",
-              "minLength": 1
-            },
-            "capability": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          }
         },
         "parallelism": {
           "type": "integer",
@@ -2452,6 +2392,24 @@
           }
         }
       }
+    },
+    "models": {
+      "type": "object",
+      "description": "模型别名：一处定义工具、模型、推理强度与价格(价格只在工具不返回费用时用于估算)",
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/modelAlias"
+      }
+    },
+    "routes": {
+      "type": "object",
+      "description": "调用点 → 别名；没写的调用点用 default。调用点与条件见 config/routes.py 的 CALL_POINTS",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
     }
   },
   "$defs": {
@@ -2616,22 +2574,6 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "tool": {
-          "type": "string",
-          "minLength": 1
-        },
-        "model": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "capability": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "limits": {
           "$ref": "#/$defs/limits"
         }
@@ -2683,22 +2625,6 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "tool": {
-          "type": "string",
-          "minLength": 1
-        },
-        "model": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "capability": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "limits": {
           "$ref": "#/$defs/limits"
         },
@@ -2713,22 +2639,6 @@
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "tool": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "model": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "capability": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
                 "limits": {
                   "$ref": "#/$defs/complexityLimits"
                 },
@@ -2745,22 +2655,6 @@
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "tool": {
-                "type": "string",
-                "minLength": 1
-              },
-              "model": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "capability": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
               "limits": {
                 "$ref": "#/$defs/complexityLimits"
               }
@@ -2773,22 +2667,6 @@
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "tool": {
-                "type": "string",
-                "minLength": 1
-              },
-              "model": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "capability": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
               "limits": {
                 "$ref": "#/$defs/limits"
               }
@@ -2810,53 +2688,6 @@
         "screenshotReview": {
           "$ref": "#/$defs/reviewer"
         },
-        "refuter": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "tool": {
-              "type": "string",
-              "minLength": 1
-            },
-            "model": {
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "capability": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          }
-        },
-        "session": {
-          "type": "object",
-          "required": [
-            "tool"
-          ],
-          "additionalProperties": false,
-          "properties": {
-            "tool": {
-              "type": "string",
-              "minLength": 1
-            },
-            "model": {
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "capability": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          }
-        },
         "budget": {
           "type": "object",
           "required": [
@@ -2874,6 +2705,43 @@
               "minimum": 0
             }
           }
+        }
+      }
+    },
+    "modelAlias": {
+      "type": "object",
+      "required": [
+        "tool"
+      ],
+      "additionalProperties": false,
+      "dependentRequired": {
+        "inputUsdPerMTok": [
+          "outputUsdPerMTok"
+        ],
+        "outputUsdPerMTok": [
+          "inputUsdPerMTok"
+        ]
+      },
+      "properties": {
+        "tool": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "effort": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputUsdPerMTok": {
+          "type": "number",
+          "minimum": 0
+        },
+        "outputUsdPerMTok": {
+          "type": "number",
+          "minimum": 0
         }
       }
     }

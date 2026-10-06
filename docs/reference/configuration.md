@@ -36,7 +36,7 @@ tools:
 
 ## 静态巡检的基线审查
 
-工作区的第一次静态巡检(还没有上次巡检的终点)用 `full` 档时自动做基线审查：不看 diff，把已有代码按目录模块分批(小模块合批)，每批由强档模型整份审查一次，疑点再逐条取证。低级疑点与超出取证上限的疑点进入待处理清单：超出上限的由之后的巡检继续取证，低级的在需要时以 `tightrein collect --probe static --select pending:low`(或 `pending:<编号>`)取证。也可以随时显式运行基线审查：
+工作区的第一次静态巡检(还没有上次巡检的终点)用 `full` 档时自动做基线审查：不看 diff，把已有代码按目录模块分批(小模块合批)，每批由调用点 `collect.baseline-review` 路由到的模型整份审查一次，疑点再逐条取证。低级疑点与超出取证上限的疑点进入待处理清单：超出上限的由之后的巡检继续取证，低级的在需要时以 `tightrein collect --probe static --select pending:low`(或 `pending:<编号>`)取证。也可以随时显式运行基线审查：
 
 ```
 tightrein collect --probe static --level baseline --dry-run
@@ -167,98 +167,78 @@ checks:
 
 访问 GitHub 的 git 远程命令(push、fetch、pull、ls-remote)、gh 与第三方 skill 下载遇到网络类错误(超时、连接重置、TLS 握手失败、无法解析主机等，模式在 `runtime.network.errorPatterns`)时，自动换另一条路重试一次：按 `network.noProxy` 直连的改为经代理，经代理的改为直连(需要本机配置了 `network.proxy` 或环境中有代理变量)。认证失败、推送被拒等不重试。每次换路写事件，运行摘要「网络换路」列出；`admin install`、`third-party` 等命令把换路写到错误输出。
 
-## 本机用户配置：agent 工具、模型与网络代理
+## 本机用户配置：模型别名、路由表与网络代理
 
-用哪些 agent 工具、各环节用哪个工具与模型档、各档对应的模型与价格，以及本机的网络代理，写在 `~/.config/tightrein/config.yaml` 中一次，所有工作区生效；项目需要不同的工具或模型时在 `project.yaml` 中写同名键覆盖(architecture/01 5.1、5.3)。核心不给缺省工具，没有写时运行到该环节报出完整键名与写法。只用一种工具时写 `agents.defaultTool` 与该工具的各档模型，并让证伪复核、深度评审与生成者使用不同的档；用两种工具时评审可写另一种工具：
+选模型只有两张表，写在 `~/.config/tightrein/config.yaml` 的顶层一次，所有工作区生效；项目需要不同的模型时在 `project.yaml` 中写同样的两段，按项覆盖(同名别名、同一路由键整体替换用户配置的那一项，architecture/01 5.1、5.3)：
+
+- `models`(模型别名)：一处定义工具(`tool`，必填)、模型(`model`，省略时用工具自己的缺省模型)、推理强度(`effort`，可省略)与每百万 token 的价格(`inputUsdPerMTok`、`outputUsdPerMTok`，美元，两项同时写或都不写；只在工具不返回费用时用于估算)。同一工具的同一模型在不同别名中价格不同时报配置错误；
+- `routes`(路由表)：调用点 → 别名。没写的调用点用 `default`；核心不给任何别名与路由，`routes.default` 与对应调用点都没写时，运行到该调用点报出调用点名，提示写 `routes.default` 或 `routes.<调用点>`。
+
+推荐的写法(Claude 做主力，agy 做只读判断)：
 
 ```yaml
-agents:
-  defaultTool: claude
-  stages:
-    triage:
-      refuter: {tool: codex}           # 证伪复核用另一种工具，档取 roleCapabilities.refuter
-    fix:
-      review:
-        deep: {tool: codex}            # 深度评审，档取核心缺省 strong
-  capabilities:                        # 各档在各工具上的模型、推理强度与每百万 token 价格(美元)
-    light:
-      claude: {model: haiku, inputUsdPerMTok: 1, outputUsdPerMTok: 5}
-      codex: {model: gpt-5.5, effort: low, inputUsdPerMTok: 1.25, outputUsdPerMTok: 10}
-    standard:
-      claude: {model: sonnet, inputUsdPerMTok: 3, outputUsdPerMTok: 15}
-      codex: {model: gpt-5.5, effort: medium, inputUsdPerMTok: 1.25, outputUsdPerMTok: 10}
-    strong:
-      claude: {model: opus, effort: high, inputUsdPerMTok: 5, outputUsdPerMTok: 25}
-      codex: {model: gpt-5.5, effort: high, inputUsdPerMTok: 1.25, outputUsdPerMTok: 10}
+models:                     # 模型别名：一处定义工具、模型、推理强度与价格(价格只在工具不返回费用时用于估算)
+  flash:      {tool: agy,    model: gemini-3.8-flash-low,  inputUsdPerMTok: 0.5, outputUsdPerMTok: 3}
+  flash-high: {tool: agy,    model: gemini-3.8-flash-high, inputUsdPerMTok: 0.5, outputUsdPerMTok: 3}
+  opus:       {tool: claude, model: opus, effort: high,    inputUsdPerMTok: 4,   outputUsdPerMTok: 20}
+  opus-mid:   {tool: claude, model: opus, effort: medium,  inputUsdPerMTok: 4,   outputUsdPerMTok: 20}
+  fable:      {tool: claude, model: fable}
+routes:                     # 调用点 → 别名；没写的调用点用 default
+  default: opus
+  fix.scout: flash-high
+  fix.planner: opus
+  fix.planner.high-risk: fable
+  fix.review.deep: flash-high
+  triage.refuter: flash-high
 network:
   proxy: http://127.0.0.1:8118
   noProxy: [github.com, api.github.com, codeload.github.com, objects.githubusercontent.com, raw.githubusercontent.com]
 ```
 
-也可以用 Antigravity CLI(`agy`，Gemini CLI 的继任者，`agy models` 列出可用模型)做证伪复核与深度评审，在 `capabilities` 中补上评审用到的档：
+调用点是固定的清单，每个对应一处真实的模型调用(定义在 `core/tightrein/config/routes.py` 的 `CALL_POINTS`)；名称为 `<环节>.<角色>`，角色名以环节名开头时去掉这一段(`fix-scout` → `fix.scout`)。写了清单以外的键或不认识的条件时，加载配置即报出完整键名：
 
-```yaml
-agents:
-  defaultTool: claude
-  stages:
-    triage:
-      refuter: {tool: agy}
-    fix:
-      review:
-        deep: {tool: agy}
-  capabilities:
-    standard:
-      agy: {model: gemini-3.1-pro-low, inputUsdPerMTok: 2, outputUsdPerMTok: 12}
-    strong:
-      agy: {model: gemini-3.1-pro-high, inputUsdPerMTok: 2, outputUsdPerMTok: 12}
-```
+| 调用点 | 说明 | 可用条件 |
+|---|---|---|
+| `collect.static-review` | 静态巡检的增量审查 | |
+| `collect.baseline-review` | 静态巡检的基线审查，每批一次 | |
+| `collect.variant-scan` | 以一个缺陷模式为种子的全量扫描 | |
+| `collect.claim-verifier` | 静态巡检候选主张的取证 | |
+| `collect.spec-drafter` | 没有自动导出时起草接口描述(`project spec draft`) | |
+| `triage.claim-verifier` | 分诊取证 | |
+| `triage.refuter` | 证伪复核；须与 `triage.claim-verifier` 使用不同的工具或模型 | |
+| `triage.dedup` | 分诊查重 | |
+| `fix.scout` | 勘察根因位置、联动方与可复用实现 | `frontend` |
+| `fix.planner` | 出修复计划 | `high-risk`、`large` |
+| `fix.frontend-designer` | 计划含前端文件时的前端设计说明 | |
+| `fix.executor` | 写复现测试与写代码(同一会话的两轮) | `high-risk` |
+| `fix.repro-writer` | 安全、数据类的复现测试(与写代码不同的会话) | |
+| `fix.review.light` | 轻量评审 | |
+| `fix.review.deep` | 深度评审(盲审)；须与 `fix.executor` 使用不同的工具或模型 | |
+| `fix.session` | 修复的终端交互会话 | |
+| `verify.screenshot-review` | 合并前验证的截图查看 | |
+| `learn.lesson-writer` | 经验撰写与同类条目的矛盾比对 | |
+| `learn.rule-writer` | 缺陷变规则 | |
+| `learn.improvement-writer` | 改进建议 | |
+| `learn.knowledge-curator` | 知识写入的去重判断(由写入知识的环节发起) | |
+| `eval.judge` | 评测的模型评审 | |
 
-agy 在无人值守模式下按它自己的命令白名单放行命令，`tightrein admin install` 为它补上 `git grep` 等只读命令；只读任务在沙箱中不能写文件，白名单以外的命令被拒绝，检查由核心之后执行；它也不支持交互会话，`defaultTool: agy` 时把 `stages.fix.session.tool` 设为 claude 或 codex。详见 architecture/02 2.5。
+条件只有三种，写成调用点的后缀，只能用在上表列出该条件的调用点上：
 
-个别角色或任务可以单独指定工具、模型或档：在 `stages.<环节>.roles.<角色>` 或 `tasks.<任务>` 下写 `tool`、`model`、`capability`(用户配置与 `project.yaml` 都可写)，优先于环节的工具；证伪复核、评审与截图评审仍用 `refuter`、`review.*`、`screenshotReview`。核心只给能力档，不写死工具与模型。例如出计划(方向错了后续全部白做)用 Fable、写复现测试与写代码用 Opus：
+| 条件 | 含义 |
+|---|---|
+| `high-risk` | 修复的风险判定为高风险(`review.riskRules` 命中，或分诊与计划标记)；`fix.executor` 按已确认计划中的判定 |
+| `frontend` | 改动涉及前端文件(按 `stages.fix.roles.frontend-designer.paths` 判定)；勘察时看 Issue 的根因位置，没有已知位置时不带 |
+| `large` | 大任务(C 通道) |
 
-```yaml
-agents:
-  defaultTool: claude
-  stages:
-    fix:
-      roles:
-        fix-planner: {model: fable}      # 出计划
-        fix-executor: {model: opus}      # 写复现测试与写代码(同一会话的两轮)
-        repro-writer: {model: opus}      # 安全、数据类的复现测试(另一会话)
-      review:
-        deep: {tool: agy}                # 深度评审用另一家的模型
-```
+带条件的调用依次取 `<调用点>.<条件1>`、`<调用点>.<条件2>`…、`<调用点>`、`default` 中第一条写了的路由；`fix.planner` 的条件次序为 `high-risk`、`large`。证伪复核与深度评审按解析后的工具与模型检查独立性：`triage.refuter` 须与 `triage.claim-verifier` 不同，`fix.review.deep` 须与 `fix.executor` 及其写了路由的条件变体(例如 `fix.executor.high-risk`)不同，不满足时报出要改的 `routes.` 行。命令行的 `--runner` 改写所有调用点的工具(工具与别名的不同时不沿用别名的模型与推理强度)，`--model` 改写模型。
 
-修复计划预估改动的文件中有前端文件(`stages.fix.roles.frontend-designer.paths`，核心缺省为常见前端扩展名与目录，项目可写 `paths` 覆盖或 `paths+` 追加)时，`frontend-designer` 在实施前给出前端设计说明，`fix-executor` 按它实现。下例由 Claude 做主力，agy 做前端设计、勘察、查重、截图查看、证伪复核与深度评审：
+`tightrein project config --routes` 列出每个调用点(及写了路由的条件变体)解析出的别名、工具、模型、推理强度与生效的路由行，例如 `fix.planner.high-risk → fable  claude/fable  [routes.fix.planner.high-risk (用户配置)]`；`tightrein project config --key routes`、`--key models` 列出各层中的值。
 
-```yaml
-agents:
-  defaultTool: claude
-  stages:
-    triage:
-      refuter: {tool: agy}               # 证伪复核
-      tasks:
-        dedup: {tool: agy}               # 查重
-    fix:
-      roles:
-        fix-scout: {tool: agy}           # 勘察
-        frontend-designer: {tool: agy}   # 前端设计说明，档取 roleCapabilities 的 strong
-      review:
-        deep: {tool: agy}                # 深度评审
-    verify:
-      screenshotReview: {tool: agy}      # 截图查看
-  capabilities:
-    light:
-      claude: {model: haiku, inputUsdPerMTok: 1, outputUsdPerMTok: 5}
-      agy: {model: gemini-3.8-flash-low, inputUsdPerMTok: 0.5, outputUsdPerMTok: 3}
-    standard:
-      claude: {model: sonnet, inputUsdPerMTok: 3, outputUsdPerMTok: 15}
-      agy: {model: gemini-3.8-flash-medium, inputUsdPerMTok: 0.5, outputUsdPerMTok: 3}
-    strong:
-      claude: {model: opus, effort: high, inputUsdPerMTok: 5, outputUsdPerMTok: 25}
-      agy: {model: gemini-3.8-flash-high, inputUsdPerMTok: 0.5, outputUsdPerMTok: 3}
-```
+旧的写法(`agents` 段、`capabilities`、`roleCapabilities`、`defaultTool`、`evaluation.judge`，以及 `stages.<环节>` 中的 `tool`、`model`、`capability`、`refuter`、`session`)已经删去，配置中还有时加载即报出该键与新写法。`stages.<环节>.roles|tasks.<角色>.limits`、`review.light|deep.limits`、`screenshotReview.limits` 等上限与 `paths` 照常生效，它们不是选模型的设置。
+
+Antigravity CLI(`agy`，Gemini CLI 的继任者，`agy models` 列出可用模型)在无人值守模式下按它自己的命令白名单放行命令，`tightrein admin install` 为它补上只读的搜索命令；只读任务在沙箱中不能写文件，白名单以外的命令被拒绝，检查由核心之后执行；它也不支持交互会话，`routes.default` 指向 agy 的别名时把 `routes.fix.session` 指向 claude 或 codex 的别名。详见 architecture/02 2.5。
+
+修复计划预估改动的文件中有前端文件(`stages.fix.roles.frontend-designer.paths`，核心缺省为常见前端扩展名与目录，项目可写 `paths` 覆盖或 `paths+` 追加)时，`frontend-designer` 在实施前给出前端设计说明，`fix-executor` 按它实现。
 
 agy 做勘察时用白名单中的 `git grep`、`git log` 等只读命令搜索代码与提交历史；没有执行 `tightrein admin install` 时只能逐个打开文件，又慢又费 token。
 

@@ -192,7 +192,7 @@ skills/triage/
 | `access` | `read-only` |
 | `allowedCommands` | 只读 git 命令(`log`、`show`、`blame`、`grep`)与文本搜索 |
 | `limits` | `stages.triage.tasks.dedup`：轮数、时间、费用上限 |
-| 模型档 | `stages.triage.tasks.dedup.capability`，默认轻量档 |
+| 模型 | 调用点 `triage.dedup` 的路由 |
 | `outputSchema` | `runner/tasks/triage-dedup.schema.json`：`sameRootCause`、`target`(问题编号或 Issue 编号)、`evidence`(`文件路径:行号` 列表)、`reason` |
 
 3. **代码检查**：`sameRootCause` 为真时 `target` 必须在候选中，`evidence` 必须非空且位置真实存在。不通过按 4.6 的重做规则处理，仍不通过视为「不同根因」继续分诊。
@@ -218,7 +218,7 @@ skills/triage/
 | `access` | `read-only` |
 | `allowedCommands` | 只读 git 命令与文本搜索；不允许构建、测试与启动服务 |
 | `limits` | `stages.triage.roles.<角色>.limits[<复杂度>]`；复杂度由 `domain.sizing.complexity(problem, hint)` 计算(13.3) |
-| 模型档 | `stages.triage.roles.<角色>.capability`，默认强档(9.6)；复杂度只决定 `limits` |
+| 模型 | 调用点 `triage.claim-verifier`(证伪复核为 `triage.refuter`)的路由；复杂度只决定 `limits` |
 | `interactive` | `false` |
 | `outputSchema` | `runner/roles/claim-verifier.schema.json` |
 | 第三方 skill | `claim-verifier` 与 `refuter` 加载 `fp-check`(已安装且哈希核对通过时，architecture/09 7.2) |
@@ -257,7 +257,7 @@ skills/triage/
 |---|---|
 | `instructions` | `roles/refuter.md` + `evidence-standard.md` + 与第一次完全相同的主张与事实；不包含第一次的判定与输出 |
 | 任务表述 | 「专门寻找理由反驳这条主张，同时如实承认反驳不了的地方」 |
-| 工具与模型 | `stages.triage.refuter`，默认强档，须与第一次取证所用的工具或模型不同(配置校验时检查) |
+| 工具与模型 | 调用点 `triage.refuter` 的路由，须与 `triage.claim-verifier` 解析出的工具或模型不同(配置校验时检查) |
 | 其余字段 | 与 4.5 相同 |
 | `outputSchema` | `runner/roles/refuter.schema.json`(字段与 `claim-verifier` 相同) |
 

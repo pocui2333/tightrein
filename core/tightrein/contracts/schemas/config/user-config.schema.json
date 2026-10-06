@@ -60,30 +60,6 @@
         }
       }
     },
-    "agents": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "defaultTool": {
-          "$ref": "project-config.schema.json#/properties/defaultTool"
-        },
-        "stages": {
-          "type": "object",
-          "propertyNames": {
-            "$ref": "../common.schema.json#/$defs/Stage"
-          },
-          "additionalProperties": {
-            "$ref": "#/$defs/agentStage"
-          }
-        },
-        "capabilities": {
-          "$ref": "project-config.schema.json#/properties/capabilities"
-        },
-        "roleCapabilities": {
-          "$ref": "project-config.schema.json#/properties/roleCapabilities"
-        }
-      }
-    },
     "network": {
       "type": "object",
       "additionalProperties": false,
@@ -99,89 +75,18 @@
           }
         }
       }
+    },
+    "models": {
+      "$ref": "project-config.schema.json#/properties/models"
+    },
+    "routes": {
+      "$ref": "project-config.schema.json#/properties/routes"
     }
   },
   "$defs": {
     "text": {
       "type": "string",
       "pattern": "\\S"
-    },
-    "agentChoice": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "tool": {
-          "type": "string",
-          "minLength": 1
-        },
-        "model": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "capability": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      }
-    },
-    "agentStage": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "tool": {
-          "type": "string",
-          "minLength": 1
-        },
-        "model": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "capability": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "refuter": {
-          "$ref": "#/$defs/agentChoice"
-        },
-        "session": {
-          "$ref": "project-config.schema.json#/$defs/stage/properties/session"
-        },
-        "screenshotReview": {
-          "$ref": "#/$defs/agentChoice"
-        },
-        "review": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "light": {
-              "$ref": "#/$defs/agentChoice"
-            },
-            "deep": {
-              "$ref": "#/$defs/agentChoice"
-            }
-          }
-        },
-        "roles": {
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/agentChoice"
-          }
-        },
-        "tasks": {
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/agentChoice"
-          }
-        }
-      }
     }
   }
 }

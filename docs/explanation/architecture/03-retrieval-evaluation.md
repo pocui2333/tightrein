@@ -446,7 +446,7 @@ FTS5 的 `unicode61` 分词器把 Unicode 类别为字母(L*)、数字(N*)与私
 | `outputSchema` | `runner/roles/knowledge-curator.schema.json` |
 | `access` | `read-only` |
 | `allowedCommands` | 无 |
-| 模型档 | `roleCapabilities.knowledge-curator`，默认轻量档(`design/09-packaging.md` 9.6) |
+| 模型 | 调用点 `learn.knowledge-curator` 的路由(无论哪个环节发起写入) |
 
 **判断结果的 schema**(`runner/roles/knowledge-curator.schema.json`)
 
@@ -896,7 +896,7 @@ data/evals/<评测编号>/
    - 评测中的 `judge` 项一律由本组件的模型评审打分，不采用沙箱输出中 `fix-reviewer` 的结论：改进建议可能改动评审说明本身，用被评对象的评审给自己打分无法发现评审变宽松。
    - 评审者看不到生成者的会话记录与推理过程，只看输出(12.5)。
    - 评审说明要求逐项独立判断、只按评分项原文判断、不报评分项以外的问题、不因篇幅加分、无法判断时给 `unknown`。
-   - 评审者的工具与模型取自 `evaluation.judge`；与被评变体相同时，报告在该变体上标注「评审与生成者使用同一模型」。
+   - 评审者的工具与模型取自调用点 `eval.judge` 的路由；与被评变体相同时，报告在该变体上标注「评审与生成者使用同一模型」。
    - 评审输出不合 schema 时由执行器重试一次(9.5)，仍不合格则该次的全部 `judge` 项记为 `unknown`，`reason` 写明「评审输出无效」。
 
 4. 计算 `score` 与 `passed`：`unknown` 不计入分母，也不算通过；存在 `unknown` 的运行 `passed` 为假。
@@ -964,7 +964,7 @@ data/evals/<评测编号>/
 ### 2.9 与 learn improve 的衔接
 
 1. `learn improve`(design 14.4)先检查 prompt 类建议的补丁只改 `skills/` 下的文件且不触及 2.6.2 的禁止路径，不符合即不出建议，不调用评测。
-2. 该环节的用例按来源对象分为参与改进与未参与改进两组；后者少于 `thresholds.learn.improve.minHeldOutCases` 时不出建议。prompt 类以 `HEAD` 加补丁为候选(`purpose="version"`)，model 类以候选能力档的模型与当前模型对比(`purpose="tool-model"`)；次数取 `thresholds.learn.improve.repeats`。
+2. 该环节的用例按来源对象分为参与改进与未参与改进两组；后者少于 `thresholds.learn.improve.minHeldOutCases` 时不出建议。prompt 类以 `HEAD` 加补丁为候选(`purpose="version"`)，model 类以候选别名的模型与该环节主要调用点当前的模型对比(`purpose="tool-model"`)；次数取 `thresholds.learn.improve.repeats`。
 3. `learn improve` 按两组分别汇总确定性(`code`)项的通过率与平均分，写进 decision 文档 `data/improve/<建议编号>.md`，评测编号记在其中；是否采纳由用户决定并自己应用(14.5)。
 
 ### 2.10 错误处理
