@@ -15,7 +15,7 @@ from typing import Any
 from tightrein.domain.enums import ReviewMode
 from tightrein.domain.issue_sections import ACCEPTANCE, CAUSE, PROBLEM
 from tightrein.evaluation import rubric
-from tightrein.pipeline.fix.prompts.common import STAGE, FixPrompt, json_block
+from tightrein.pipeline.fix.prompts.common import PLAN_FOR_REVIEW, STAGE, FixPrompt, json_block, plan_view
 from tightrein.pipeline.fix.steps.context import FixContext
 from tightrein.runner.roles import join, read_only_task, reviewer_setting
 from tightrein.runner.task import RunnerTask
@@ -25,6 +25,8 @@ SCHEMA = "handoff/outputs/fix-review.schema.json"
 REVIEW_SECTIONS = (PROBLEM, CAUSE, ACCEPTANCE)
 
 
+REVIEW_SCOPE = ("## 评审范围\n\n以下面的改动(diff)为准，结合计划摘要与代码摘要判断；只在需要核对改动周围的上下文时打开文件的对应行段，"
+                "不要通读或在整个项目里重新搜索。")
 SPECIAL_CASE = ("## 特判检查\n\n逐处核对新增的条件分支与字面量：是否只针对复现测试或测试数据的输入写了特殊处理"
                 "(按输入值、编号或固定字符串分支而不是修正通用逻辑)。发现时记为阻断项，kind 为 hardcode。")
 
@@ -43,8 +45,9 @@ def task(prompt: FixPrompt, context: FixContext, plan: Mapping[str, Any], diff_t
     else:
         issue = "\n\n".join([f"# Issue {context.issue_id}：{context.issue.title}", *context.keyed(REVIEW_SECTIONS)])
         body = join(prompt.role(ROLE), f"本次为{mode.label}，输出的 `mode` 写 `{mode.value}`。",
-                    rubric.render(rubric.load(STAGE), "judge"), issue, json_block("已确认的修复计划", plan),
-                    f"## 相对基准 commit 的改动\n\n```diff\n{diff_text}\n```",
+                    rubric.render(rubric.load(STAGE), "judge"), issue, REVIEW_SCOPE,
+                    json_block("已确认的修复计划(摘要)", plan_view(plan, PLAN_FOR_REVIEW), "plan"), context.brief,
+                    f"## 相对基准 commit 的改动\n\n<diff>\n```diff\n{diff_text}\n```\n</diff>",
                     f"## 实际结果(第 7 步)\n\n{results}" if results else "",
                     "## 程序检查的提示\n\n" + ("\n".join(f"- {item}" for item in checks) or "- 无"), SPECIAL_CASE)
     return read_only_task(run_id=prompt.run_id, stage=STAGE, role=f"{ROLE}-{mode.value}",

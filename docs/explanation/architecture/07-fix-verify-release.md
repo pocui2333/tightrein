@@ -185,7 +185,7 @@ C 只做第 3、4 步，确认后拆成子 Issue，各子 Issue 从第 0 步开�
 |---|---|---|---|---|---|
 | 0 分流 | 4.2、4.3 | `plan` | `steps/route.py`、`steps/repro.py`、`steps/context.py` | `orchestrator/policy/lanes.py` 纯函数；`store`、`retrieval` | `route.json`、`progress.md`、`task.md`；超限时 `decision.md` |
 | 1 准备 | 3.3 | `prepare` 的后续 | `steps/workspace.py` | `vcs`；项目检查命令(全量) | `prepare.log` |
-| 2 勘察 | 4.4 | `plan` | `steps/scout.py` | 执行器：`fix-scout` | `runner/roles/fix-scout.schema.json`；`scout.md` |
+| 2 勘察 | 4.4 | `plan` | `steps/scout.py`、`steps/brief.py` | 执行器：`fix-scout`；程序按勘察的位置生成分层代码摘要 | `runner/roles/fix-scout.schema.json`；`scout.md`、`brief.json`(核心位置的原文、相关位置的定义行、涉及的文件；出计划、写测试、写代码与轻量评审共用，深度评审盲审不用) |
 | 3 出计划 | 4.5、4.6 | `plan` | `steps/risk.py`、`steps/plan.py`、`steps/split.py` | `domain` 纯函数；执行器：`fix-planner`、`frontend-designer` | `handoff/outputs/fix-plan.schema.json`；`plan.md` |
 | 4 确认计划 | 4.7 | `plan`、`approve` | `steps/plan_gate.py` | 待确认操作 `fix-plan`；`orchestrator/policy/autonomy.py` | `confirmation.json` |
 | 5 写复现测试 | 4.8 | `apply` | `steps/repro_test.py` | 执行器：`fix-executor` 第一轮或 `repro-writer` | `runner/roles/repro-test.schema.json`；`repro.json` |

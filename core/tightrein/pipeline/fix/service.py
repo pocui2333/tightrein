@@ -90,6 +90,7 @@ from tightrein.pipeline.fix.steps import (
     split,
     workspace,
 )
+from tightrein.pipeline.fix.steps import brief as brief_step
 from tightrein.pipeline.fix.steps import report as report_step
 from tightrein.pipeline.fix.steps.checkpoint import Checkpoint
 from tightrein.pipeline.fix.steps import risk as risk_step
@@ -464,6 +465,7 @@ class FixService:
         run = self._begin()
         ctx = context.load(deps.conn, deps.layout, issue_id, deps.context)
         ctx.decisions = decided.render()
+        ctx.brief = brief_step.render(brief_step.load(directory))
         base = self._base_outputs(issue_id)
         route = self._route(issue_id, ctx)
         if route.oversize:
@@ -622,6 +624,8 @@ class FixService:
             design_accepted=decided.design_accepted, scout=scout, large=route.lane is Lane.LARGE,
             test_paths=tuple(guard.test_paths))
         proposal = propose(self._calls(run, issue_id), ctx, settings)
+        if proposal.brief is not None:
+            brief_step.save(self.fix_dir(issue_id), proposal.brief)
         if proposal.scouting is not None:
             writer = self.writer(issue_id)
             path = writer.write(documents.SCOUT, documents.scout(writer, deps.clock.now(), proposal.scouting))
@@ -783,6 +787,7 @@ class FixService:
         run = self._begin()
         ctx = context.load(deps.conn, deps.layout, issue_id, deps.context)
         ctx.decisions = decisions.load(directory).render()
+        ctx.brief = brief_step.render(brief_step.load(directory))
         route = route_step.load(directory) or route_step.decide(deps.config, ctx.issue, ctx.triage)
         return _Apply(self, run, ctx, planned, confirmation, route).run(review_only)
 
@@ -926,11 +931,8 @@ class _Apply:
         if limit is not None:
             constraints.insert(0, f"当前规模档 {tier.label}：不超过 {limit.max_files} 个文件、{limit.max_lines} 行")
         acceptance = [*ctx.acceptance, "复现测试修复前失败、修复后通过", "现有测试与项目检查全部通过"]
+        # 计划与代码摘要已写在任务里，不再列出计划、勘察文件的路径，免得执行器再去读一遍
         references = [Reference(deps.layout.relative(deps.layout.root / ctx.record.path), "Issue")]
-        for name, note in ((documents.PLAN, "计划"), (documents.SCOUT, "勘察结果")):
-            path = self.service.fix_dir(self.issue_id) / name
-            if path.is_file():
-                references.append(Reference(str(path), note))
         document = documents.task(
             self.writer, deps.clock.now(), goal=f"Issue {self.issue_id}：{ctx.issue.title}\n\n{self.plan['summary']}",
             inputs=[f"Issue 文件 {ctx.record.path}", "已确认的计划(见下文)", f"通道 {self.route.text()}"],
@@ -938,7 +940,8 @@ class _Apply:
             deliverables="第一轮：一个复现测试与运行它的命令；第二轮：代码改动，结构化结果写明改了什么、偏离与遗留。",
             references=references)
         self.writer.write(documents.TASK, document)
-        return sections.strip_frontmatter(document_files.render(document, deps.config.language, deps.zone)).strip()
+        text = sections.strip_frontmatter(document_files.render(document, deps.config.language, deps.zone)).strip()
+        return "\n\n".join(part for part in (text, ctx.brief) if part)  # 写复现测试与写代码共用代码摘要
 
     # 第 5 步
 

@@ -53,7 +53,7 @@ def task(prompt: FixPrompt, context: FixContext, inputs: PlanInputs, attempt: in
         earlier.append("## 上一轮的评审意见与不通过项\n\n" + "\n".join(f"- {item}" for item in inputs.review_notes))
     earlier.append(decisions_text(context.decisions))
     body = join(prompt.role(ROLE), prompt.rules(), large, PLAN_RULES, context.issue_text(),
-                json_block("勘察结论", inputs.scouting) if inputs.scouting is not None else "",
+                context.brief, json_block("勘察结论", inputs.scouting, "scouting") if inputs.scouting is not None else "",
                 json_block("风险判定", inputs.risk.to_dict()), limits, *earlier,
                 f"## 相关知识\n\n{context.knowledge}", feedback_text(feedback))
     return read_only_task(run_id=prompt.run_id, stage=STAGE, role=ROLE, subject=prompt.subject(context.issue_id),

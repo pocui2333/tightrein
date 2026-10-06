@@ -23,6 +23,7 @@ from tightrein.guards.protected import matching_pattern
 from tightrein.pipeline.fix.prompts import fix_planner, fix_scout, frontend_designer
 from tightrein.pipeline.fix.prompts.common import FixCalls
 from tightrein.pipeline.fix.prompts.fix_planner import PlanInputs
+from tightrein.pipeline.fix.steps import brief as brief_step
 from tightrein.pipeline.fix.steps import risk as risk_step
 from tightrein.pipeline.fix.steps import scout, split
 from tightrein.pipeline.fix.steps.context import FixContext
@@ -104,6 +105,7 @@ class Proposal:
     problems: list[str] = field(default_factory=list)
     design: dict[str, Any] | None = None
     frontend: dict[str, Any] | None = None
+    brief: dict[str, Any] | None = None  # 勘察通过后由程序生成的分层代码摘要
 
     def record(self, role: str, status: RunnerStatus) -> None:
         self.attempts.append({"role": role, "status": status.value})
@@ -146,6 +148,8 @@ def _scout(calls: FixCalls, context: FixContext, settings: ProposalSettings, pro
             proposal.problems += feedback
             continue
         proposal.scouting = dict(result.output)
+        proposal.brief = brief_step.build(proposal.scouting, settings.worktree)
+        context.brief = brief_step.render(proposal.brief)
         if result.output.get("designIssue") and not settings.design_accepted:
             proposal.design = proposal.scouting["designIssue"]
         return True

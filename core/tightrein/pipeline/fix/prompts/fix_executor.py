@@ -10,7 +10,7 @@ from dataclasses import replace
 from typing import Any
 
 from tightrein.domain.enums import Access
-from tightrein.pipeline.fix.prompts.common import STAGE, FixPrompt, decisions_text, json_block
+from tightrein.pipeline.fix.prompts.common import PLAN_FOR_EXECUTOR, STAGE, FixPrompt, decisions_text, json_block, plan_view
 from tightrein.pipeline.fix.steps.context import FixContext
 from tightrein.runner.roles import READ_ONLY_COMMANDS, join
 from tightrein.runner.task import Instructions, RunnerTask
@@ -36,7 +36,7 @@ def task(prompt: FixPrompt, context: FixContext, plan: Mapping[str, Any], attemp
         fixes = join("## 按检查与评审意见修改", "只改下列不通过项指出的位置，修不了的如实说明：",
                      "\n".join(f"- {item}" for item in corrections))
     head = () if continued else (prompt.role(ROLE), prompt.rules(), task_text)
-    body = join(*head, CODE_ROUND, json_block("已确认的修复计划", plan),
+    body = join(*head, CODE_ROUND, json_block("已确认的修复计划", plan_view(plan, PLAN_FOR_EXECUTOR), "plan"),
                 DESIGN_NOTE if plan.get("frontendDesign") else "",
                 f"## 复现测试\n\n{repro_test}" if repro_test else "",
                 f"## Issue {context.issue_id} 的验收标准\n\n{acceptance}", decisions_text(context.decisions), fixes)
