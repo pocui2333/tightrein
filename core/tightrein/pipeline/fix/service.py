@@ -456,6 +456,8 @@ class FixService:
         directory = self.fix_dir(issue_id)
         if accept_design:
             decisions.accept_design(directory, deps.clock)
+        elif not self.output_mode and transitions.record_of(self._env(), issue_id).issue.is_manual:
+            decisions.accept_design(directory, deps.clock, decisions.MANUAL_DESIGN)
         if note:
             decisions.record(directory, deps.clock, note_source, note)
         decided = decisions.load(directory)

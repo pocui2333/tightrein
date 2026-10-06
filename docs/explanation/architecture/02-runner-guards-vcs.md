@@ -199,7 +199,7 @@ class ParsedRun:
 | `outputSchema` | `--json-schema <schema 文件>`，结果在 `result` 的 `structured_output` 中；接受 `$schema` 声明 |
 | `access: read-only` | 缺省权限模式加 `--sandbox`，不跳过权限：文件写入与绝大部分 shell 命令被自动拒绝 |
 | `access: workspace-write` | `--mode accept-edits`：文件编辑放行，shell 命令仍被自动拒绝 |
-| `allowedCommands` | 无法放行：无人值守模式不读 settings.json 的 `permissions.allow`；`--dangerously-skip-permissions` 放开全部命令，不使用 |
+| `allowedCommands` | 命令行上没有逐条放行的参数：按 agy 自己的白名单(settings.json 的 `permissions.allow`)放行，`tightrein install` 补上只读命令；提示末尾列出其中已放行的只读命令与工具调用上限，要求先用 `git grep` 定位再读文件。只读任务在 `--sandbox` 中，终端写入被拦住；`--dangerously-skip-permissions` 放开全部命令，不使用 |
 | `limits.maxTurns` | 无原生上限，由核心按完成的 `tool` 步骤计数(2.7) |
 | `limits.maxCostUsd` | 无原生上限，费用由核心按各 `agent_response` 步骤的用量估算 |
 | `model` | `--model`(`agy models` 列出，例如 `gemini-3.1-pro-high`、`claude-sonnet-4-6`) |

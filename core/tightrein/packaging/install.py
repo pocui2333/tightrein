@@ -3,6 +3,9 @@
 - Codex CLI 与 Antigravity CLI(agy)：在目标目录(缺省都是 ~/.agents/skills)下为每个 skill 建立指向 `skills/<名称>` 的链接，
   修改 skill 后无需重装；同一路径的链接只建一次，两个工具各自记录。
 - Claude Code：构建本地插件市场(packaging/claude.py)，经 `claude plugin` 安装或更新；版本不变时不重装。
+- agy 的命令白名单：为 agy 安装时在 ~/.gemini/antigravity-cli/settings.json 的 permissions.allow 中补上只读命令
+  (runner/adapters/agy.READ_COMMANDS)，无人值守时 agy 据此可以用 git grep 等搜索代码；只补缺的，记进安装记录的
+  allowedCommands，uninstall 只移除记录中的这些。
 - 锁定的第三方 skill：缓存缺失时按锁定的 commit 下载，在 `skills/<名称>` 建立指向缓存的链接，核心的提示拼装与
   各工具都经这个位置取得。
 - 先检查、后执行：`skills check` 不通过、第三方缓存与清单不符、目标位置已有不是本工具安装的条目时，列出全部问题
@@ -30,6 +33,7 @@ from tightrein.domain.clock import Clock, format_iso
 from tightrein.packaging import claude, skills_check, third_party
 from tightrein.packaging.skills_check import CommandTree
 from tightrein.packaging.third_party import Fetch, LockedSkill
+from tightrein.runner.adapters import agy
 from tightrein.store.files import atomic, yaml_text
 from tightrein.store.files.layout import ToolLayout
 from tightrein.vcs.process import Completed, VcsProcess
@@ -51,6 +55,9 @@ REMOVE_LINK = "unlink"
 BUILD = "build"
 COMMAND = "command"
 REMOVE_DIR = "remove"
+ALLOW = "allow"
+UNALLOW = "unallow"
+PERMISSIONS = "permissions"
 
 OK = "ok"
 MISSING = "missing"
@@ -82,6 +89,10 @@ class Context:
     process: VcsProcess
     fetch: Fetch
     commands: CommandTree
+
+    @property
+    def agy_settings(self) -> Path:
+        return self.home / agy.SETTINGS_PATH
 
     def cache(self, name: str, commit: str) -> Path:
         return self.tool.third_party_cache(name, commit)
@@ -116,6 +127,8 @@ class Action:
             BUILD: f"构建 Claude Code 插件 {self.path}",
             COMMAND: f"执行 {' '.join(self.argv)}",
             REMOVE_DIR: f"删除目录 {self.path}",
+            ALLOW: f"在 agy 白名单 {self.path} 中放行只读命令 {'、'.join(self.argv)}",
+            UNALLOW: f"从 agy 白名单 {self.path} 中移除本工具放行的命令 {'、'.join(self.argv)}",
         }
         return texts[self.kind]
 
@@ -262,6 +275,11 @@ def plan_install(ctx: Context, chosen: Sequence[Target]) -> tuple[Plan, dict[str
                                  "skills": {name: _source_hash(ctx, source, lock) for name, source in found.items()}}
         if previous is not None and all(previous.get(key) == entry[key] for key in ("path", "method", "skills")):
             entry["installedAt"] = previous["installedAt"]
+        if target.tool == AGY:
+            missing = [item for item in agy.READ_COMMANDS if item not in agy.allowed(ctx.agy_settings)]
+            if missing:
+                plan.actions.append(Action(ALLOW, ctx.agy_settings, argv=tuple(missing)))
+            entry["allowedCommands"] = sorted({*((previous or {}).get("allowedCommands") or []), *missing})
         if target.method == LINK:
             for name, source in found.items():
                 _link(plan, target.path / name, source, owned, planned)
@@ -314,6 +332,8 @@ def plan_uninstall(ctx: Context, chosen: Sequence[Target]) -> tuple[Plan, dict[s
     record = json.loads(json.dumps(installed))
     for tool in tools:
         entry = installed["tools"][tool]
+        if entry.get("allowedCommands"):
+            plan.actions.append(Action(UNALLOW, ctx.agy_settings, argv=tuple(entry["allowedCommands"])))
         if entry["method"] == LINK:
             for name in sorted(entry["skills"]):
                 path = Path(entry["path"]) / name
@@ -347,6 +367,21 @@ def _apply(ctx: Context, action: Action, lock: Mapping[str, LockedSkill], source
         ctx.run(action.argv)
     elif action.kind == REMOVE_DIR and action.path is not None:
         shutil.rmtree(action.path)
+    elif action.kind in (ALLOW, UNALLOW) and action.path is not None:
+        _edit_allow(action.path, action.argv, add=action.kind == ALLOW)
+
+
+def _edit_allow(path: Path, commands: Sequence[str], *, add: bool) -> None:
+    """改 agy 设置中的 permissions.allow，其余设置原样保留。"""
+    data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    allow = data.setdefault("permissions", {}).setdefault("allow", [])
+    entries = [f"command({item})" for item in commands]
+    if add:
+        allow += [item for item in entries if item not in allow]
+    else:
+        allow[:] = [item for item in allow if item not in entries]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic.write_text(path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
 
 
 def _skill_name(directory: Path) -> str | None:
@@ -388,6 +423,10 @@ def check(ctx: Context, chosen: Sequence[Target], installed: Mapping[str, Any] |
     repo = {skill.name: ctx.cache(skill.name, skill.ref) for skill in lock if skill.locked and skill.ref}
     items = _link_items(Target(REPO, ctx.tool.skills_dir(), LINK), repo, owned)
     for target in chosen:
+        if target.tool == AGY:
+            missing = [item for item in agy.READ_COMMANDS if item not in agy.allowed(ctx.agy_settings)]
+            items.append(CheckItem(AGY, PERMISSIONS, str(ctx.agy_settings), MISSING if missing else OK,
+                                   f"白名单缺少 {'、'.join(missing)}" if missing else ""))
         if target.method == LINK:
             items += _link_items(target, found, owned)
             continue

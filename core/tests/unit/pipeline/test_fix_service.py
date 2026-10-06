@@ -612,6 +612,19 @@ def test_a_manual_issue_takes_lane_b_and_its_feature_test_is_registered(tmp_path
     assert manifest.load(world.layout.regression_dir(world.issue_id)).problems == ()
 
 
+def test_a_manual_issue_does_not_stop_on_a_design_issue(tmp_path):
+    """用户亲自提出的需求：正文就是用户给出的方向，勘察标出的设计问题不再中止，记为用户的决定交给各角色。"""
+    world = fixing(tmp_path, manual=("登录只在正常启动后判断", "去掉采集前单独的无头登录检查。"))
+    issue = {"rootCause": "登录判断有两条路径", "reason": "只改参数治不了根", "locations": [f"{SERVICE_PATH}:3"]}
+    world.runner.add("fix-scout", scouting(designIssue=issue)).add("fix-planner", plan_output(world))
+    result = service(world).plan(world.issue_id)
+    assert result.status is HandoffStatus.BLOCKED and result.operation is not None, result.message
+    assert world.issue().hold is None
+    decided = decisions.load(world.layout.fixes_dir(world.issue_id))
+    assert decided.design_accepted and decided.entries[0]["source"] == decisions.MANUAL_DESIGN
+    assert "不要把它作为中止理由" in world.runner.tasks[0].instructions.prompt
+
+
 AUTONOMY = {"gates": {"issue-approve": "auto", "plan-confirm": "auto", "fix-session": "auto"}}
 
 

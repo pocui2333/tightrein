@@ -25,8 +25,8 @@
 
 只输出一个符合 schema 的 JSON 对象。**先写 `analysis`**：自由书写你查了什么、怎样判断根因与联动方、复现线索(不限格式)；之后是结构化字段：
 
-- `existing`、`reusable`、`dataStructure`、`linkage`、`problems`：每项为 `{location, description}`，`location` 写成 `文件路径:行号`，`description` 写那里实际是什么。没有的写空数组。
-- `designIssue`：根源在设计本身时给出 `rootCause`、`reason`(局部修补为何不彻底)、`locations`；否则为空。
+- `existing`、`reusable`、`dataStructure`、`linkage`、`problems`：每项为 `{location, description}`，`location` 写成 `文件路径:行号`，`description` 写那里实际是什么。没有的写空数组。`location` 必须是当前代码中已经存在的文件与行(程序会逐个核对)；打算新建的文件(例如要写的测试文件)只写进 `analysis` 的复现线索，不写成 `location`。
+- `designIssue`：根源在设计本身时给出 `rootCause`、`reason`(局部修补为何不彻底)、`locations`，三项都要有；否则写 `null`，不写空对象。
 - `affectedEndpoints`：形如 `GET /api/orders/{id}`；`affectedPages`：页面路由路径。
 - `incidental`：与本 Issue 无关的缺陷，`file`、`line`、`symbol`、`text`。
 

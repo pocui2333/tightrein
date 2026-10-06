@@ -255,5 +255,5 @@
 
 - Agent Skills 开放标准：`SKILL.md` 由 YAML frontmatter 与 markdown 正文组成，Claude Code、Codex CLI、Antigravity CLI、GitHub Copilot、Cursor 等三十多个工具支持同一份文件；启动时每个 skill 只加载名称与描述，任务匹配时才加载全文。
 - Codex CLI 的非交互模式：`codex exec` 运行一次任务后退出，`--output-schema` 要求最终回复符合 JSON schema，`--sandbox read-only` 保持只读，默认即为只读沙箱。
-- Gemini CLI 已于 2026-06-18 停用，继任者为 Antigravity CLI(`agy`)。`agy -p` 配合 `--output-format json` 或 `stream-json`，后者输出 init、step_update、result 等事件；无人值守模式不读 settings.json 的 `permissions.allow`(上游 issue google-antigravity/antigravity-cli#548)，需要确认的动作被自动拒绝。
+- Gemini CLI 已于 2026-06-18 停用，继任者为 Antigravity CLI(`agy`)。`agy -p` 配合 `--output-format json` 或 `stream-json`，后者输出 init、step_update、result 等事件；无人值守模式按 `~/.gemini/antigravity-cli/settings.json` 的 `permissions.allow` 放行命令(1.2.17 实测；更早的版本不读，见上游 issue google-antigravity/antigravity-cli#548)，其余需要确认的动作被自动拒绝。`tightrein install` 为 agy 补上只读命令(`git grep`、`git ls-files`、`git log`、`git show`、`git diff`、`grep`、`ls`、`cat`、`head`、`tail`、`wc`)，只补缺的并记进安装记录，卸载时只移除这些。
 - Claude Code 的 headless 模式：`claude -p` 配合 `--output-format json --json-schema`，结果在 `structured_output` 中。
