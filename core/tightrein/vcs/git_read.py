@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -75,8 +76,8 @@ class GitReader:
     def __init__(self, process: VcsProcess) -> None:
         self.process = process
 
-    def _git(self, repo: Path, *args: str, ok_codes: Sequence[int] = (0,)) -> str:
-        return self.process.git(repo, *args, ok_codes=ok_codes).stdout
+    def _git(self, repo: Path, *args: str, ok_codes: Sequence[int] = (0,), stdin: str | None = None) -> str:
+        return self.process.git(repo, *args, stdin=stdin, ok_codes=ok_codes).stdout
 
     def status(self, repo: Path) -> RepoStatus:
         text = self._git(repo, "status", "--porcelain=v2", "--branch", "--untracked-files=all", "-z")
@@ -185,14 +186,24 @@ class GitReader:
         return tuple(sorted(set(parse.iter_nul(text))))
 
     def diff_hash(self, repo: Path, base: str) -> str:
-        """base 到工作目录的完整 diff 加未跟踪文件的内容的 sha256，作为提交操作的幂等键与前置条件。"""
+        """base 到工作目录的改动的 sha256，作为提交操作的幂等键与前置条件：逐个改动的文件(含未跟踪的)记路径、
+        base 中的模式与 blob、工作目录中的模式与内容的 blob。与改动是否已提交无关；合并只改了其他文件的 main 后
+        以合并进来的 main 版本为基准，结果与合并前相同。"""
+        tracked = parse.iter_nul(self._git(repo, *NO_QUOTE, "diff", "--name-only", "--no-renames", "-z", base))
+        paths = sorted({*tracked, *self.untracked(repo)})
+        before: dict[str, str] = {}
+        if paths:
+            for entry in parse.iter_nul(self._git(repo, *NO_QUOTE, "ls-tree", "-r", "-z", base, "--", *paths)):
+                meta, _, path = entry.partition("\t")
+                mode, _, blob = meta.split(" ")
+                before[path] = f"{mode} {blob}"
+        present = [path for path in paths if (repo / path).is_file()]
+        blobs = self._git(repo, "hash-object", "--stdin-paths", stdin="".join(f"{path}\n" for path in present)).split() \
+            if present else []
+        after = {path: f"{_file_mode(repo / path)} {blob}" for path, blob in zip(present, blobs)}
         digest = hashlib.sha256()
-        text = self._git(repo, *NO_QUOTE, "diff", "--binary", "--full-index", "--no-color", "--no-ext-diff",
-                         "--src-prefix=a/", "--dst-prefix=b/", base)
-        digest.update(text.encode("utf-8"))
-        for path in self.untracked(repo):
-            digest.update(b"\0" + path.encode("utf-8") + b"\0")
-            digest.update((repo / path).read_bytes())
+        for path in paths:
+            digest.update(f"{path}\0{before.get(path, '-')}\0{after.get(path, '-')}\0".encode("utf-8"))
         return digest.hexdigest()
 
     def merge_base(self, repo: Path, left: str, right: str) -> str:
@@ -228,3 +239,10 @@ class GitReader:
 
     def worktree_list(self, repo: Path) -> list[WorktreeInfo]:
         return parse.parse_worktrees(self._git(repo, "worktree", "list", "--porcelain", "-z"))
+
+
+def _file_mode(path: Path) -> str:
+    """git 记录的文件模式：符号链接、可执行文件或普通文件。"""
+    if path.is_symlink():
+        return "120000"
+    return "100755" if os.access(path, os.X_OK) else "100644"
