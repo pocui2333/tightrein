@@ -1,0 +1,43 @@
+name: sentry
+kind: error_tracking
+summary: 读取 Sentry 中时间窗口内有新事件的错误分组(后端异常与浏览器端错误，含堆栈与操作轨迹)，只读 API
+applicability: 项目已接入 Sentry SDK(后端或浏览器端)；自建 Sentry 或兼容其 API 的 GlitchTip 改 url 即可
+site: sentry               # url、organization 取自 sites.json 的 sentry 分组
+secret: sentry.token       # 只读令牌(event:read)在 secrets.json 中的条目名
+secretRequired: true
+optionsSchema:
+  type: object
+  required: [url, organization, projects, environment, retentionDays, limit, breadcrumbs]
+  additionalProperties: false
+  properties:
+    url:
+      description: Sentry 的地址，SaaS 为 https://sentry.io；写在 sites.json
+      type: string
+      pattern: '^https?://'
+    organization:
+      description: 组织的 slug；写在 sites.json
+      type: string
+      minLength: 1
+    projects:
+      description: 项目的 slug 或编号；为空时为组织下全部项目
+      type: array
+      items: {type: string, minLength: 1}
+    environment:
+      description: 只看这个环境；为空时不限
+      type: [string, "null"]
+    retentionDays:
+      description: 平台的数据保留天数，用于判断读取窗口是否超出保留期
+      type: integer
+      minimum: 1
+    limit:
+      description: 每次读取的分组条数上限
+      type: integer
+      minimum: 1
+    breadcrumbs:
+      description: 每个分组保留的最近操作轨迹条数
+      type: integer
+      minimum: 0
+limitations:
+  - 每个分组另发一次请求取最新事件，limit 不宜过大(受 Sentry 的速率限制)
+  - 只读 is:unresolved 的分组；平台上的解决状态不回写也不读取，问题的解决按覆盖运行判断
+  - 前端错误要还原到源码行，项目构建时须向 Sentry 上传 source map

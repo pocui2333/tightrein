@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "implement/locate/locate.schema.json",
+  "title": "implement.locate 的输出：补全的代码笔记",
+  "type": "object",
+  "required": [
+    "knowledgeSuggestions",
+    "analysis",
+    "core",
+    "related",
+    "trigger",
+    "affectedEndpoints",
+    "affectedPages",
+    "missing",
+    "incidentalFindings"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "knowledgeSuggestions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "analysis": {
+      "type": "string",
+      "minLength": 1
+    },
+    "core": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "related": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "trigger": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "affectedEndpoints": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "affectedPages": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "missing": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "incidentalFindings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/incidental"
+      }
+    }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "required": [
+        "location",
+        "description"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "location": {
+          "type": "string",
+          "minLength": 3
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "incidental": {
+      "type": "object",
+      "required": [
+        "file",
+        "line",
+        "symbol",
+        "category",
+        "confidence",
+        "evidence",
+        "text"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "line": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "category": {
+          "enum": [
+            "defect",
+            "security",
+            "performance",
+            "data"
+          ]
+        },
+        "confidence": {
+          "enum": [
+            "confirmed",
+            "suspected"
+          ]
+        },
+        "evidence": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "recordings": [
+    {
+      "point": "assess.triage",
+      "subject": "P-0001",
+      "round": 1,
+      "call": 1,
+      "dir": "01-assess.triage-r1",
+      "tool": "claude",
+      "exitCode": 0,
+      "sha256": "5357167ed657f53c89e3f0448a524ba646e3574445207db904a68c8accbf2511"
+    },
+    {
+      "point": "implement.design",
+      "subject": "0001",
+      "round": null,
+      "call": 1,
+      "dir": "02-implement.design",
+      "tool": "claude",
+      "exitCode": 0,
+      "sha256": "a3a0eb07a68e3cf3613aa041ce94216b1f3393966333f4c34c6d6f329b6d641f"
+    },
+    {
+      "point": "implement.code",
+      "subject": "0001",
+      "round": 1,
+      "call": 1,
+      "dir": "03-implement.code-r1",
+      "tool": "claude",
+      "exitCode": 0,
+      "sha256": "dca2407effaaa543c9c7ec1f60ddcb06be60eb88cb3dca9e68d08d10d773a375"
+    },
+    {
+      "point": "implement.review",
+      "subject": "0001",
+      "round": 1,
+      "call": 1,
+      "dir": "04-implement.review-r1",
+      "tool": "claude",
+      "exitCode": 0,
+      "sha256": "51fcdf9e52eca682811002c1e09204126a5dc83a6b624f7a840f2a39b943ecd2"
+    }
+  ]
+}

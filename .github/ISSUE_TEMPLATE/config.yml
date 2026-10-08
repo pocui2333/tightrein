@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全漏洞
+    url: https://github.com/pocui2333/tightrein/security/advisories/new
+    about: 请私下报告，不要公开提交。
+  - name: 文档
+    url: https://github.com/pocui2333/tightrein/blob/main/docs/reference/configuration.md
+    about: 提问前请先查阅配置与运行说明。

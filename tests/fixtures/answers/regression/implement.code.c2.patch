@@ -1,0 +1,22 @@
+diff --git a/calc.py b/calc.py
+--- a/calc.py
++++ b/calc.py
+@@ -6,6 +6,6 @@ def total(values):
+ 
+ 
+ def average(values):
+-    if values is None:
++    if not values:
+         return 0
+     return total(values) / len(values)
+diff --git a/tests/test_calc.py b/tests/test_calc.py
+--- a/tests/test_calc.py
++++ b/tests/test_calc.py
+@@ -11,3 +11,7 @@ def test_average():
+ 
+ def test_average_none():
+     assert average(None) == 0
++
++
++def test_average_empty():
++    assert average([]) == 0

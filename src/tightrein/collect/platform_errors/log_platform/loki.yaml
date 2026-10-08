@@ -1,0 +1,34 @@
+name: loki
+kind: log_platform
+summary: 在 Grafana Loki 上按 LogQL 查询时间窗口内的日志原文，只读 API
+applicability: 应用运行日志、项目规范的日志或访问日志已送入 Grafana Loki(自建或 Grafana Cloud)
+site: loki                 # 地址等取自 sites.json 的 loki 分组
+secret: loki.token         # 只读访问令牌在 secrets.json 中的条目名；没有时不带认证
+optionsSchema:
+  type: object
+  required: [url, retentionDays, pageSize]
+  additionalProperties: false
+  properties:
+    url:
+      description: Loki 的地址(Grafana Cloud 为 https://logs-prod-<区域>.grafana.net)；写在 sites.json
+      type: string
+      pattern: '^https?://'
+    user:
+      description: 基本认证的用户名(Grafana Cloud 为实例编号)；为空时令牌按 Bearer 发送；写在 sites.json
+      type: [string, "null"]
+    tenant:
+      description: 多租户部署的 X-Scope-OrgID；为空时不带；写在 sites.json
+      type: [string, "null"]
+    retentionDays:
+      description: 平台的数据保留天数，用于判断读取窗口是否超出保留期
+      type: integer
+      minimum: 1
+    pageSize:
+      description: 每次请求的条数
+      type: integer
+      minimum: 1
+      maximum: 5000
+limitations:
+  - 只支持日志查询(LogQL 的流选择器与过滤)，不支持指标查询
+  - 同一纳秒的多条日志跨页时可能少读，条数上限内读完的窗口不受影响
+  - 字段映射另选日志解析方法(log_parse/json_lines 或 log_parse/regex)

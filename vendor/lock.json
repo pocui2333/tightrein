@@ -1,0 +1,82 @@
+{
+  "lockVersion": 1,
+  "skills": [
+    {
+      "name": "differential-review",
+      "source": "https://github.com/trailofbits/skills",
+      "commit": "123037ec8aed26f0d86327cc39137ee5043e5deb",
+      "path": "plugins/differential-review/skills/differential-review",
+      "license": "CC-BY-SA-4.0",
+      "treeHash": "sha256:bbadec0a9de4818191a5266b9e41d471c3110b0422c967377f7224c78d6af634",
+      "files": {
+        "SKILL.md": "f9af6a8193fc1a9f8ca3c54bb8d19095a5f20c9472ca6d014488bbde50b67da0",
+        "adversarial.md": "3cb823f38c6e551cbcf5f72325d2bb219dacdad774072519c31d50d92db19800",
+        "agents/openai.yaml": "0279d56f88dc1a04d4b1941a25fa7672912a3ceb0557b13c38d069908b30ae61",
+        "assets/trail-of-bits-mark.svg": "4bf74c789b38dcf6ad762c136b6832363d27ae19fbaa9a18ec18d66ecce6ca05",
+        "methodology.md": "16b335d24cf2145e3dc4a37f50056550d29db2efa20e6df78fec95ec1e6fb0b4",
+        "patterns.md": "52abb18abbc73502a3d3b2f36a7a035adc1db40fd812d1d5424cf065036a06e9",
+        "reporting.md": "0016876dc6f158e926448bff1b6f634796757c7afe09dff177cfe30250724fc4"
+      },
+      "lockedAt": "2026-10-07"
+    },
+    {
+      "name": "variant-analysis",
+      "source": "https://github.com/trailofbits/skills",
+      "commit": "123037ec8aed26f0d86327cc39137ee5043e5deb",
+      "path": "plugins/variant-analysis/skills/variant-analysis",
+      "license": "CC-BY-SA-4.0",
+      "treeHash": "sha256:b95fbd56f552a4d34dab7ed2538405303993877b994df76468e9f9c1e10eb7bb",
+      "files": {
+        "SKILL.md": "7b6b78e499bcb88d05c68254ffc91ebc28edabf4e9808adcc40e2628ebb9407e",
+        "agents/openai.yaml": "6d6b67250ba8300e79491ac12e73262f54f2bf50776276fd04607ae4e3006fde",
+        "assets/trail-of-bits-mark.svg": "4bf74c789b38dcf6ad762c136b6832363d27ae19fbaa9a18ec18d66ecce6ca05",
+        "references/reporting.md": "07a1d8f25537ec3da44b7c6e484bf922ab2eeaee733ced6df423df7bea517906",
+        "references/root-cause.md": "b4556f22adadc894b22c8df01d98bb94596d4e035386c780fbca73594014660c",
+        "references/searching.md": "22834e63e7412220feec9bd1d4cfd9298c17679489ad66d13be450928bf5d158",
+        "references/triage.md": "f1f0277096ae41641be311c783f2f7a1c677c2c6b6e8a485986d8d5ed7fa3653",
+        "resources/codeql/cpp.ql": "efd574081969d2bdd19e1756302d843fdbf936968a72de62eb24d66db43efc0c",
+        "resources/codeql/go.ql": "d3fa419af29bb15bf81510c54bc1ce0cf55f5b7adbdbf79cc2c8cd922d2365fb",
+        "resources/codeql/java.ql": "ee4a92a5cbde67304d17a2c5fb739fe9acf1d39ebac9406e3d3a2c1cbbbb19c1",
+        "resources/codeql/javascript.ql": "b6ceaa3acb6ba6fa89903c14c8fd3aa7cf48316e6b2588dcacae51bb423b3526",
+        "resources/codeql/python.ql": "135ec55760e1e827065e34b002c6d954b4c4293d07233a93d7ff31d9d97528a9",
+        "resources/semgrep/cpp.yaml": "41f034c9a5967cc3b87bf5880243ed21f633017111489ee843dd5d002271b10a",
+        "resources/semgrep/go.yaml": "8a8257eb8e0a7150cb7dffa2b64813691fd560de24b0f85fa6640ec2bfc6595f",
+        "resources/semgrep/java.yaml": "5be3990b052bc9ce5e1aa203d1f3c93cb3cde7d46eba463c24c661fc6b342902",
+        "resources/semgrep/javascript.yaml": "2f97e3545fcac449820c2d058bcb9cc36822e238b6249efa3a5dcb4f5f576912",
+        "resources/semgrep/python.yaml": "c1ce15574569d45555d582707db030b226763d81b2d521d9e61d6067440948f2",
+        "resources/variant-report-template.md": "03333c762318a89dd819784a62695f7660713479a5009a15189314400836202f"
+      },
+      "lockedAt": "2026-10-07"
+    },
+    {
+      "name": "sharp-edges",
+      "source": "https://github.com/trailofbits/skills",
+      "commit": "123037ec8aed26f0d86327cc39137ee5043e5deb",
+      "path": "plugins/sharp-edges/skills/sharp-edges",
+      "license": "CC-BY-SA-4.0",
+      "treeHash": "sha256:5eae39f119b5f81f0ac996660f695172a1ab1a3933d19d32114e6e2196814c8a",
+      "files": {
+        "SKILL.md": "3b69a709c2f8f0cfcf57d40a3186e166f307865cc8ed924be4098e549a121e9c",
+        "agents/openai.yaml": "d18c31ffb600df69db714161add9a1fe1dca38011b52a0c8926d4d4d3fb1ea4f",
+        "assets/trail-of-bits-mark.svg": "4bf74c789b38dcf6ad762c136b6832363d27ae19fbaa9a18ec18d66ecce6ca05",
+        "references/auth-patterns.md": "1fbf526ca1db7204f9ebb1bf4eb3c48c544676623d23e5d28e01f6f63c355be2",
+        "references/case-studies.md": "2e81a320728b4597bf84c490176d5bf212f1e6ba6f87aafba61ad1734de35332",
+        "references/config-patterns.md": "1d99f2716f7bef18efe71015ce0c56e0f4961c042faa503d796d6d4d1626fdc6",
+        "references/crypto-apis.md": "8baddc83a1f964d6d8b15678d60a37c93029c18dc162bd7c00895e585ff1a825",
+        "references/lang-c.md": "d077d711c73749c924eae81c06018b14bbf1ec9b93d71723c472b43df5d7d5ae",
+        "references/lang-csharp.md": "8fa9e93d36c0e1397b7ca81307163370fc43cf700215b7c6d7aa1b09fdb91fb4",
+        "references/lang-go.md": "839c0e7b4e3fa2f3b37c651e926aa59d69d20bfef5e67f569eedacf11354844d",
+        "references/lang-java.md": "3b93b6049f7e0e356a1ffebc0b4642f3cef315d90be45b63e15c8c4814f9ebeb",
+        "references/lang-javascript.md": "cf72f55d31318666942a8d1d64340befc3c4e7223afc2ca196e6a776ffa4c895",
+        "references/lang-kotlin.md": "c891148c10a4941c3396416a10ac64512eb3a9e13ea5eeaec3902da4b51501dd",
+        "references/lang-php.md": "7960d9773874cf06c5b470a5ca3ab406d896e66b71e713d809bc1ecfcab63485",
+        "references/lang-python.md": "36543becc25b4e3f41eaedcab62e9b204657e6742b8ac95e405bcd040d33bf03",
+        "references/lang-ruby.md": "d9ba749caaccb8a3bb39e2199b2062c0957cf48739218ba8022d49be5cba2088",
+        "references/lang-rust.md": "3d14993ea70b2b2df3fc0f388cbd1631470895c27ccbd9d764296d1da8f5b6ee",
+        "references/lang-swift.md": "a64ab8692db0f3e43526088c63c7fdcb7354d1b24e6fe7ca759aea3260890e04",
+        "references/language-specific.md": "4522b4a37cfd7d3aa689209dfd4569f3b39074bd1f5987a36a6e819f501141b6"
+      },
+      "lockedAt": "2026-10-07"
+    }
+  ]
+}

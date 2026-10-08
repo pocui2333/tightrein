@@ -1,0 +1,11 @@
+{
+  "controls": {
+    "collect.project_probes": {
+      "probes": [
+        {"name": "average", "command": ["{python}", "scripts/probe_average.py"], "every": "1h", "secrets": [],
+         "timeout": "1m"}
+      ]
+    },
+    "collect.dedup": {"watchOccurrences": 1}
+  }
+}

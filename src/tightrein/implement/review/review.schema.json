@@ -1,0 +1,228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "审查的结论(implement.review 与 implement.review.deep 共用)",
+  "type": "object",
+  "required": [
+    "analysis",
+    "acceptance",
+    "previousBlockers",
+    "blockers",
+    "unverified",
+    "incidentalFindings",
+    "knowledgeSuggestions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "analysis": {
+      "type": "string",
+      "minLength": 1
+    },
+    "acceptance": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "criterion",
+          "result",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "criterion": {
+            "type": "string",
+            "minLength": 1
+          },
+          "result": {
+            "enum": [
+              "pass",
+              "fail",
+              "unknown"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "previousBlockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "location",
+          "kind",
+          "verdict",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "location": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "verdict": {
+            "enum": [
+              "resolved",
+              "unresolved",
+              "misjudged"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "kind",
+          "location",
+          "trigger",
+          "problem",
+          "category",
+          "rootCause"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "location": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trigger": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "problem": {
+            "type": "string",
+            "minLength": 1
+          },
+          "category": {
+            "enum": [
+              "local",
+              "plan_gap",
+              "needs_user",
+              "design"
+            ]
+          },
+          "rootCause": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "unverified": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "item",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "incidentalFindings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/incidental"
+      }
+    },
+    "knowledgeSuggestions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "$defs": {
+    "incidental": {
+      "type": "object",
+      "required": [
+        "file",
+        "line",
+        "symbol",
+        "category",
+        "confidence",
+        "evidence",
+        "text"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "line": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "category": {
+          "enum": [
+            "defect",
+            "security",
+            "performance",
+            "data"
+          ]
+        },
+        "confidence": {
+          "enum": [
+            "confirmed",
+            "suspected"
+          ]
+        },
+        "evidence": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      }
+    }
+  }
+}

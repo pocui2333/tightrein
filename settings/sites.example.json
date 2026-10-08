@@ -1,0 +1,17 @@
+{
+  "github": {
+    "host": "github.com",
+    "api": "https://api.github.com"
+  },
+  "sentry": {
+    "url": "https://sentry.example.com",
+    "organization": "example-org"
+  },
+  "loki": {
+    "url": "https://loki.example.com",
+    "tenant": "example-tenant"
+  },
+  "alertmanager": {
+    "url": "https://alertmanager.example.com"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/collect/incidental/finding.schema.json",
+  "title": "任务外发现",
+  "description": "评估与实施中 agent 顺带发现、与当前任务无关的问题，写在交接文档 facts.incidentalFindings 的每一项。评估与实施的输出 schema 复制同样的结构；类别不是 defect、security、performance、data 的，采集时由程序丢弃",
+  "type": "object",
+  "required": ["file", "line", "symbol", "category", "confidence", "evidence", "text"],
+  "additionalProperties": false,
+  "properties": {
+    "file": {"type": "string", "minLength": 1, "description": "文件路径，相对仓库根", "examples": ["src/Services/RefundService.cs"]},
+    "line": {"type": ["integer", "null"], "minimum": 1, "description": "行号；不确定时为 null(不参与指纹)"},
+    "symbol": {"type": ["string", "null"], "minLength": 1, "description": "函数或方法名(类名.方法名)；不在函数里时为 null",
+               "examples": ["RefundService.Retry"]},
+    "category": {"type": "string", "minLength": 1,
+                 "description": "类别：defect(缺陷)、security(安全)、performance(性能)、data(数据)；命名、风格、重构建议等其他类别不收",
+                 "examples": ["defect"]},
+    "confidence": {"enum": ["confirmed", "suspected"], "description": "把握程度：confirmed(确定，看到了代码证据)、suspected(疑似)"},
+    "evidence": {"type": "string", "minLength": 1, "maxLength": 500, "description": "一句证据：看到了什么代码或行为",
+                 "examples": ["Retry() 重试成功后没有把 ManualReview 置回 false"]},
+    "text": {"type": "string", "minLength": 1, "maxLength": 2000, "description": "发现的原文：一句话写现象",
+             "examples": ["退款重试后不清除人工复核标记"]}
+  }
+}

@@ -1,0 +1,21 @@
+name: alertmanager
+kind: alert_source
+summary: 经 Alertmanager API v2 读取已触发、未静默、未被抑制的业务告警，只读 API
+applicability: 系统已有 Prometheus 或 Grafana 的告警规则(Prometheus Alertmanager、Grafana 内置告警、Grafana Cloud、Mimir)
+site: alertmanager         # url、user 取自 sites.json 的 alertmanager 分组
+secret: alertmanager.token # 只读令牌在 secrets.json 中的条目名；没有时不带认证
+optionsSchema:
+  type: object
+  required: [url]
+  additionalProperties: false
+  properties:
+    url:
+      description: Alertmanager 的地址；Grafana 内置告警为 <Grafana 地址>/api/alertmanager/grafana；写在 sites.json
+      type: string
+      pattern: '^https?://'
+    user:
+      description: 基本认证的用户名；为空时令牌按 Bearer 发送；写在 sites.json
+      type: [string, "null"]
+limitations:
+  - 只读当前处于触发状态的告警，两次运行之间触发又恢复的告警读不到
+  - 告警规则在平台上配置，tightrein 不重复实现告警规则；Grafana 的服务账号令牌只需 Viewer 角色

@@ -1,0 +1,21 @@
+name: openapi_url
+kind: spec_source
+summary: 从运行中的服务读取接口描述(JSON 或 YAML)
+applicability: 服务运行时提供接口描述地址(框架自动导出，如 Swagger)
+optionsSchema:
+  type: object
+  required: [url, timeoutSeconds]
+  additionalProperties: false
+  properties:
+    url:
+      description: 接口描述的地址，例如 https://staging.example.com/openapi.json；写在工作区 settings.json 的 overrides.controls."collect.api_fuzz".openapi_url
+      type: string
+      pattern: '^https?://'
+    timeoutSeconds:
+      description: 请求的超时秒数(缺省见 settings/defaults.json)
+      type: integer
+      minimum: 1
+limitations:
+  - 需要服务在运行；每次重新读，不缓存
+example: |
+  "overrides": {"controls": {"collect.api_fuzz": {"openapi_url": {"url": "https://staging.example.com/openapi.json"}}}}

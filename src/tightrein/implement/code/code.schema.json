@@ -1,0 +1,236 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "implement/code/code.schema.json",
+  "title": "implement.code 的输出：实施结果",
+  "type": "object",
+  "required": [
+    "knowledgeSuggestions",
+    "analysis",
+    "status",
+    "changedFiles",
+    "testsWritten",
+    "verification",
+    "deviations",
+    "bigIssue",
+    "incidentalFindings",
+    "outOfScope",
+    "release"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "knowledgeSuggestions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "analysis": {
+      "$ref": "#/$defs/text"
+    },
+    "status": {
+      "enum": [
+        "completed",
+        "aborted"
+      ]
+    },
+    "changedFiles": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/text"
+      }
+    },
+    "testsWritten": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/text"
+      }
+    },
+    "verification": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "command",
+          "output"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "$ref": "#/$defs/text"
+          },
+          "output": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "deviations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/text"
+      }
+    },
+    "bigIssue": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "description",
+            "locations"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "description": {
+              "$ref": "#/$defs/text"
+            },
+            "locations": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/text"
+              }
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "incidentalFindings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/incidental"
+      }
+    },
+    "outOfScope": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/text"
+      }
+    },
+    "release": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "scope",
+            "subject",
+            "why",
+            "prTitle",
+            "problem",
+            "approach",
+            "limitations"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "scope": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "subject": {
+              "$ref": "#/$defs/text"
+            },
+            "why": {
+              "$ref": "#/$defs/text"
+            },
+            "prTitle": {
+              "$ref": "#/$defs/text"
+            },
+            "problem": {
+              "$ref": "#/$defs/text"
+            },
+            "approach": {
+              "$ref": "#/$defs/text"
+            },
+            "limitations": {
+              "$ref": "#/$defs/text"
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "if": {
+    "properties": {
+      "status": {
+        "const": "aborted"
+      }
+    }
+  },
+  "then": {
+    "properties": {
+      "bigIssue": {
+        "type": "object"
+      }
+    }
+  },
+  "$defs": {
+    "text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "incidental": {
+      "type": "object",
+      "required": [
+        "file",
+        "line",
+        "symbol",
+        "category",
+        "confidence",
+        "evidence",
+        "text"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "line": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "category": {
+          "enum": [
+            "defect",
+            "security",
+            "performance",
+            "data"
+          ]
+        },
+        "confidence": {
+          "enum": [
+            "confirmed",
+            "suspected"
+          ]
+        },
+        "evidence": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,22 @@
+name: openapi_file
+kind: spec_source
+summary: 读取现成的 OpenAPI 或 Swagger 接口描述文件(JSON 或 YAML)，文件在仓库或工作区中
+applicability: 仓库中提交了随代码更新的接口描述文件，或在工作区中维护了一份接口描述
+optionsSchema:
+  type: object
+  required: [path, base]
+  additionalProperties: false
+  properties:
+    path:
+      description: 接口描述文件相对基准目录(base)的路径；写在工作区 settings.json 的 overrides.controls."collect.api_fuzz".openapi_file
+      type: string
+      pattern: '^[^/\\][^\\]*$'
+    base:
+      description: path 的基准目录：repo 为仓库根目录(按被测部署的 commit 读)，workspace 为工作区根目录
+      type: string
+      enum: [repo, workspace]
+limitations:
+  - 取自仓库的按 commit 缓存在 data/cache/openapi/；取自工作区的每次重新读
+  - 文件不存在时 api_fuzz 本次跳过(不是失败)
+example: |
+  "overrides": {"controls": {"collect.api_fuzz": {"openapi_file": {"path": "openapi.yaml", "base": "repo"}}}}

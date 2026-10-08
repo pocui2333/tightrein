@@ -1,0 +1,8 @@
+{
+  "name": "tightrein-e2e-runtime",
+  "private": true,
+  "description": "tightrein 脚本巡检的 Node 侧：Playwright 配置、登录、页面观察 fixture 与信号 reporter",
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

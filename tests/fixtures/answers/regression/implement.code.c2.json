@@ -1,0 +1,31 @@
+{
+  "knowledgeSuggestions": [],
+  "analysis": "上一次只处理了 None，空列表仍除以零；改为 values 为空(含 None)时返回 0，补空列表的测试；pytest 全部通过。",
+  "status": "completed",
+  "changedFiles": [
+    "calc.py",
+    "tests/test_calc.py"
+  ],
+  "testsWritten": [
+    "tests/test_calc.py::test_average_empty"
+  ],
+  "verification": [
+    {
+      "command": "python -m pytest -q",
+      "output": "3 passed"
+    }
+  ],
+  "deviations": [],
+  "bigIssue": null,
+  "incidentalFindings": [],
+  "outOfScope": [],
+  "release": {
+    "scope": "calc",
+    "subject": "average 对空列表返回 0",
+    "why": "average([]) 除以零崩溃",
+    "prTitle": "fix(calc): average 对空列表返回 0",
+    "problem": "average([]) 抛出 ZeroDivisionError",
+    "approach": "values 为空时提前返回 0，并补测试",
+    "limitations": "无"
+  }
+}

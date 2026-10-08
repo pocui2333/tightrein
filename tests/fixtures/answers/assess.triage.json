@@ -1,0 +1,98 @@
+{
+  "analysis": "探针报 average([]) 抛 ZeroDivisionError。读 calc.py：average 直接返回 total(values) / len(values)，没有处理空列表；values 为空时 len(values) 为 0，必然除以零。调用方没有在上游挡住空列表。",
+  "verdict": "confirmed",
+  "facts": [
+    {
+      "location": "calc.py:8-9",
+      "observation": "average 直接用 len(values) 作除数，没有判断空列表"
+    }
+  ],
+  "trigger": "传入空列表 average([])",
+  "counterEvidence": [],
+  "impact": {
+    "kind": "non-core-error",
+    "roles": [
+      "调用 average 的代码"
+    ],
+    "data": "无",
+    "callSites": [
+      "calc.py:9"
+    ],
+    "consequence": "空列表时抛出 ZeroDivisionError，调用方崩溃"
+  },
+  "sourceOfPhenomenon": null,
+  "rootCauses": [
+    {
+      "file": "calc.py",
+      "line": 9,
+      "symbol": "average"
+    }
+  ],
+  "fixedOnMain": null,
+  "tradeoffHit": null,
+  "missingInfo": [],
+  "incidental": [],
+  "report": {
+    "title": "average 对空列表除以零崩溃",
+    "summary": "average([]) 抛出 ZeroDivisionError，应返回 0。",
+    "steps": [
+      "调用 average([])"
+    ],
+    "expected": "返回 0",
+    "actual": "抛出 ZeroDivisionError: division by zero",
+    "acceptance": [
+      "average([]) 返回 0",
+      "average([1, 2, 3]) 仍返回 2"
+    ],
+    "severity": "P2",
+    "severityReason": "非核心的统计函数，只在空输入时出错"
+  },
+  "assessment": {
+    "worth": "fix",
+    "worthReason": "改动一行即可消除崩溃",
+    "taskType": "bug",
+    "size": "small",
+    "files": [
+      {
+        "path": "calc.py",
+        "isNew": false
+      }
+    ],
+    "direction": "values 为空时返回 0",
+    "flags": {
+      "design": {
+        "flagged": false,
+        "reason": null,
+        "locations": []
+      },
+      "dataStructure": {
+        "flagged": false,
+        "reason": null,
+        "locations": []
+      },
+      "publicContract": {
+        "flagged": false,
+        "reason": null,
+        "locations": []
+      }
+    },
+    "reevaluateWhen": null,
+    "outOfScope": [],
+    "mustKeep": [
+      "非空列表的结果不变"
+    ]
+  },
+  "notes": [
+    {
+      "location": "calc.py:8-9",
+      "description": "average：除以 len(values)，空列表时出错",
+      "role": "core"
+    },
+    {
+      "location": "calc.py:4-5",
+      "description": "total：求和，average 调用它",
+      "role": "related"
+    }
+  ],
+  "knowledgeSuggestions": []
+}

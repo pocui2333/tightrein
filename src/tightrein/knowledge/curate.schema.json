@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "curate.schema.json",
+  "title": "knowledge.curate 的输出：一条建议沉淀与已有条目的关系，及要写入的完整条目",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["analysis", "decision", "targetIds", "supersedes", "entry", "reason"],
+  "properties": {
+    "analysis": {"type": "string", "minLength": 1, "description": "先写：建议讲的是什么规律，与每条候选是不是同一件事"},
+    "decision": {"enum": ["add", "update", "merge", "noop"]},
+    "targetIds": {"type": "array", "items": {"type": "string"}, "description": "update 恰好 1 条；merge 与 noop 至少 1 条；add 为空"},
+    "supersedes": {"type": "array", "items": {"type": "string"}, "description": "只有 add 可填：被推翻的候选"},
+    "entry": {
+      "description": "add、update、merge 时为完整条目；noop 时为 null",
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "slug", "title", "summary", "locations", "body"],
+          "properties": {
+            "kind": {"enum": ["conventions", "patterns", "lessons"]},
+            "slug": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+            "title": {"type": "string", "minLength": 1},
+            "summary": {"type": "string", "minLength": 1},
+            "locations": {"type": "array", "items": {"type": "string", "pattern": "^(path|route|page):\\S"}},
+            "body": {"type": "string", "minLength": 1}
+          }
+        }
+      ]
+    },
+    "reason": {"type": "string", "minLength": 1}
+  }
+}

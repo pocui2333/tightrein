@@ -1,0 +1,19 @@
+name: github_deployments
+kind: deploy_source
+summary: 读取 GitHub Deployments 与各自最新的状态(gh api，只读)
+applicability: 部署流程会在 GitHub 上建 Deployment 并回写状态(GitHub Actions 的 environment、Vercel 与 Netlify 的 GitHub 集成等)；gh 已登录且能读该仓库
+optionsSchema:
+  type: object
+  required: [environment, limit]
+  additionalProperties: false
+  properties:
+    environment:
+      description: 只看这个环境(如 production)；null 时不限
+      type: [string, "null"]
+    limit:
+      description: 每次读取的部署条数上限
+      type: integer
+      minimum: 1
+limitations:
+  - 每个部署另发一次请求取最新状态，limit 不宜过大(受 GitHub 的速率限制)
+  - 部署流程不回写状态时一直算 running

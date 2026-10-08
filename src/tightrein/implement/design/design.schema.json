@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "implement/design/design.schema.json",
+  "title": "implement.design 的输出：方案(只留编码、定案与审查用得上的字段)",
+  "type": "object",
+  "required": ["knowledgeSuggestions", "analysis", "summary", "hypothesis", "steps", "files", "estimate", "oversize", "protectedTouches", "flags",
+               "migration", "newDependencies", "deletions", "acceptanceMapping", "userVisibleChange", "affectedEndpoints",
+               "affectedPages", "notDoing", "userDecisions"],
+  "additionalProperties": false,
+  "properties": {
+    "knowledgeSuggestions": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "analysis": {"$ref": "#/$defs/text"},
+    "summary": {"$ref": "#/$defs/text"},
+    "hypothesis": {
+      "type": "object",
+      "required": ["cause", "evidence", "edits"],
+      "additionalProperties": false,
+      "properties": {
+        "cause": {"$ref": "#/$defs/text"},
+        "evidence": {
+          "type": "array", "minItems": 1,
+          "items": {"type": "object", "required": ["location", "fact"], "additionalProperties": false,
+                    "properties": {"location": {"$ref": "#/$defs/location"}, "fact": {"$ref": "#/$defs/text"}}}
+        },
+        "edits": {
+          "type": "array",
+          "items": {"type": "object", "required": ["location", "change"], "additionalProperties": false,
+                    "properties": {"location": {"$ref": "#/$defs/location"}, "change": {"$ref": "#/$defs/text"}}}
+        }
+      }
+    },
+    "steps": {
+      "type": "array", "minItems": 1,
+      "items": {"type": "object", "required": ["file", "change", "verification"], "additionalProperties": false,
+                "properties": {"file": {"$ref": "#/$defs/text"}, "change": {"$ref": "#/$defs/text"},
+                               "verification": {"$ref": "#/$defs/text"}}}
+    },
+    "files": {
+      "type": "array", "minItems": 1,
+      "items": {"type": "object", "required": ["path", "isNew", "reason"], "additionalProperties": false,
+                "properties": {"path": {"$ref": "#/$defs/text"}, "isNew": {"type": "boolean"},
+                               "reason": {"type": ["string", "null"]}}}
+    },
+    "estimate": {"type": "object", "required": ["files", "lines"], "additionalProperties": false,
+                 "properties": {"files": {"type": "integer", "minimum": 0}, "lines": {"type": "integer", "minimum": 0}}},
+    "oversize": {
+      "anyOf": [
+        {"type": "object", "required": ["reason", "parts"], "additionalProperties": false,
+         "properties": {
+           "reason": {"$ref": "#/$defs/text"},
+           "parts": {"type": "array", "minItems": 2,
+                     "items": {"type": "object", "required": ["title", "goal", "acceptance"], "additionalProperties": false,
+                               "properties": {"title": {"$ref": "#/$defs/text"}, "goal": {"$ref": "#/$defs/text"},
+                                              "acceptance": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/text"}}}}}
+         }},
+        {"type": "null"}
+      ]
+    },
+    "protectedTouches": {
+      "type": "array",
+      "items": {"type": "object", "required": ["path", "change", "reason"], "additionalProperties": false,
+                "properties": {"path": {"$ref": "#/$defs/text"}, "change": {"$ref": "#/$defs/text"}, "reason": {"$ref": "#/$defs/text"}}}
+    },
+    "flags": {
+      "type": "object", "required": ["design", "dataStructure", "publicContract"], "additionalProperties": false,
+      "properties": {"design": {"$ref": "#/$defs/flag"}, "dataStructure": {"$ref": "#/$defs/flag"},
+                     "publicContract": {"$ref": "#/$defs/flag"}}
+    },
+    "migration": {
+      "anyOf": [
+        {"type": "object", "required": ["entries", "reversible", "revertMethod"], "additionalProperties": false,
+         "properties": {"entries": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/text"}},
+                        "reversible": {"type": "boolean"}, "revertMethod": {"$ref": "#/$defs/text"}}},
+        {"type": "null"}
+      ]
+    },
+    "newDependencies": {
+      "type": "array",
+      "items": {"type": "object", "required": ["name", "version", "reason"], "additionalProperties": false,
+                "properties": {"name": {"$ref": "#/$defs/text"}, "version": {"$ref": "#/$defs/text"}, "reason": {"$ref": "#/$defs/text"}}}
+    },
+    "deletions": {
+      "type": "array",
+      "items": {"type": "object", "required": ["path", "reason"], "additionalProperties": false,
+                "properties": {"path": {"$ref": "#/$defs/text"}, "reason": {"$ref": "#/$defs/text"}}}
+    },
+    "acceptanceMapping": {
+      "type": "array",
+      "items": {"type": "object", "required": ["criterion", "steps"], "additionalProperties": false,
+                "properties": {"criterion": {"$ref": "#/$defs/text"},
+                               "steps": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1}}}}
+    },
+    "userVisibleChange": {"$ref": "#/$defs/text"},
+    "affectedEndpoints": {"type": "array", "items": {"$ref": "#/$defs/text"}},
+    "affectedPages": {"type": "array", "items": {"$ref": "#/$defs/text"}},
+    "notDoing": {"type": "array", "items": {"$ref": "#/$defs/text"}},
+    "userDecisions": {
+      "type": "array",
+      "items": {"type": "object", "required": ["question", "recommendation", "reason"], "additionalProperties": false,
+                "properties": {"question": {"$ref": "#/$defs/text"}, "recommendation": {"$ref": "#/$defs/text"},
+                               "reason": {"$ref": "#/$defs/text"}}}
+    }
+  },
+  "$defs": {
+    "text": {"type": "string", "minLength": 1},
+    "location": {"type": "string", "minLength": 3},
+    "flag": {"type": "object", "required": ["flagged", "reason"], "additionalProperties": false,
+             "properties": {"flagged": {"type": "boolean"}, "reason": {"type": ["string", "null"]}}}
+  }
+}

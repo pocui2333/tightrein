@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "implement/design/frontend.schema.json",
+  "title": "implement.design.frontend 的输出：前端设计说明",
+  "type": "object",
+  "required": ["pages", "layout", "interactions", "states", "styling", "mobile", "copy", "planConflicts"],
+  "additionalProperties": false,
+  "properties": {
+    "pages": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/page"}},
+    "layout": {"$ref": "#/$defs/texts"},
+    "interactions": {"type": "array", "items": {"$ref": "#/$defs/interaction"}},
+    "states": {"type": "array", "items": {"$ref": "#/$defs/state"}},
+    "styling": {"type": "array", "items": {"$ref": "#/$defs/style"}},
+    "mobile": {"$ref": "#/$defs/texts"},
+    "copy": {"type": "array", "items": {"$ref": "#/$defs/copy"}},
+    "planConflicts": {"$ref": "#/$defs/texts"}
+  },
+  "$defs": {
+    "text": {"type": "string", "minLength": 1},
+    "texts": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "page": {
+      "type": "object", "required": ["location", "structure"], "additionalProperties": false,
+      "properties": {"location": {"$ref": "#/$defs/text"}, "structure": {"$ref": "#/$defs/text"}}
+    },
+    "interaction": {
+      "type": "object", "required": ["target", "behavior"], "additionalProperties": false,
+      "properties": {"target": {"$ref": "#/$defs/text"}, "behavior": {"$ref": "#/$defs/text"}}
+    },
+    "state": {
+      "type": "object", "required": ["target", "loading", "empty", "error"], "additionalProperties": false,
+      "properties": {"target": {"$ref": "#/$defs/text"}, "loading": {"$ref": "#/$defs/text"},
+                     "empty": {"$ref": "#/$defs/text"}, "error": {"$ref": "#/$defs/text"}}
+    },
+    "style": {
+      "type": "object", "required": ["target", "value", "source"], "additionalProperties": false,
+      "properties": {"target": {"$ref": "#/$defs/text"}, "value": {"$ref": "#/$defs/text"}, "source": {"$ref": "#/$defs/text"}}
+    },
+    "copy": {
+      "type": "object", "required": ["location", "text", "key"], "additionalProperties": false,
+      "properties": {"location": {"$ref": "#/$defs/text"}, "text": {"$ref": "#/$defs/text"}, "key": {"type": ["string", "null"]}}
+    }
+  }
+}

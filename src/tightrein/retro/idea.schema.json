@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "idea.schema.json",
+  "title": "retro.idea 的输出：一条复盘记录的简单解决思路",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["idea", "settle"],
+  "properties": {
+    "idea": {"type": "string", "minLength": 1, "maxLength": 300, "description": "一两句话的解决思路"},
+    "settle": {
+      "type": ["string", "null"],
+      "maxLength": 300,
+      "description": "值得沉淀为经验或规则时写一句要沉淀的内容；不值得时为 null"
+    }
+  }
+}

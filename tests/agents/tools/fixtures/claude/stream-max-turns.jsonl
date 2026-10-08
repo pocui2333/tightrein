@@ -1,0 +1,2 @@
+{"type":"system","subtype":"init","cwd":"/ws/worktrees/readonly","session_id":"7a1d0c52-3e4f-4b8a-b6c7-1d2e3f4a5b6c","tools":["Read","Grep","Glob","Bash"],"mcp_servers":[],"model":"claude-opus-4-1","permissionMode":"dontAsk","apiKeySource":"none"}
+{"type":"result","subtype":"error_max_turns","is_error":true,"duration_ms":300000,"duration_api_ms":250000,"num_turns":40,"session_id":"7a1d0c52-3e4f-4b8a-b6c7-1d2e3f4a5b6c","total_cost_usd":0.9,"usage":{"input_tokens":90000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":4000}}

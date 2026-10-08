@@ -1,0 +1,29 @@
+name: vercel
+kind: deploy_source
+summary: 读取 Vercel 项目的部署列表(REST API，只读)
+applicability: 项目部署在 Vercel，且部署由 Git 集成触发(手动上传的部署没有 commit，不计入)
+secret: vercel.token       # 只读令牌在 secrets.json 中的条目名
+secretRequired: true
+optionsSchema:
+  type: object
+  required: [projectId, target, teamId, limit]
+  additionalProperties: false
+  properties:
+    projectId:
+      description: Vercel 项目编号(prj_...)；写在 controls."release.deploy".vercel
+      type: string
+      minLength: 1
+    target:
+      description: 部署目标，通常为 production
+      type: string
+      minLength: 1
+    teamId:
+      description: 项目属于团队时的团队编号；个人项目为 null
+      type: [string, "null"]
+    limit:
+      description: 每次读取的部署条数上限
+      type: integer
+      minimum: 1
+limitations:
+  - 只看 target 指定的部署目标；预览部署不计入
+  - 令牌需要读取该项目部署的权限

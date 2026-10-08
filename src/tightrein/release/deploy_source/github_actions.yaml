@@ -1,0 +1,23 @@
+name: github_actions
+kind: deploy_source
+summary: 把部署工作流在主干上的运行当作部署记录(gh run list，只读)
+applicability: 项目用 GitHub Actions 的工作流部署(合并到主干后由某个工作流发布)；gh 已登录且能读该仓库
+optionsSchema:
+  type: object
+  required: [workflow, branch, limit]
+  additionalProperties: false
+  properties:
+    workflow:
+      description: 部署工作流的文件名或名称(如 deploy.yml)；写在 controls."release.deploy".github_actions
+      type: string
+      minLength: 1
+    branch:
+      description: 只看这个分支上的运行；null 时取项目的主干分支
+      type: [string, "null"]
+    limit:
+      description: 每次读取的运行条数上限
+      type: integer
+      minimum: 1
+limitations:
+  - 工作流的一次运行算一次部署：同一工作流里还有测试等非部署任务时，以整个运行的结论为准
+  - skipped 的运行不算失败，由之后包含该提交的运行确认上线

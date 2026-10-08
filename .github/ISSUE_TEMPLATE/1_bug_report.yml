@@ -1,0 +1,53 @@
+name: 缺陷报告
+description: 报告错误或不符合预期的行为
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前请先搜索[已有 Issue](https://github.com/pocui2333/tightrein/issues)，避免重复。安全漏洞请按 [SECURITY.md](https://github.com/pocui2333/tightrein/blob/main/SECURITY.md) 私下报告。
+
+  - type: textarea
+    attributes:
+      label: 问题描述
+      description: 发生了什么，你预期的是什么。
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: 复现步骤
+      description: 执行的命令与相关配置(去掉令牌、地址等敏感信息)。无法复现的问题很难修复。
+      placeholder: |
+        1. tightrein workspace init --workspace workspaces/my-app --repo ...
+        2. tightrein run --workspace workspaces/my-app
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: 输出与日志
+      description: 完整的错误输出；必要时附上 `--verbose` 的输出。
+      render: shell
+
+  - type: input
+    attributes:
+      label: tightrein 版本
+      description: "`tightrein --version` 的输出"
+      placeholder: tightrein 0.1.0
+    validations:
+      required: true
+
+  - type: input
+    attributes:
+      label: agent 工具与版本
+      placeholder: 例如 Claude Code 2.1.0
+    validations:
+      required: true
+
+  - type: input
+    attributes:
+      label: 系统与 Python 版本
+      placeholder: 例如 macOS 15.4 arm64，Python 3.12.6
+    validations:
+      required: true

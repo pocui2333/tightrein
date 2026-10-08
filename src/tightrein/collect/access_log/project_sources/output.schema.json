@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/collect/access_log/project_sources/output.schema.json",
+  "title": "访问日志取数脚本的输出",
+  "description": "项目自己的取数脚本经标准输出交回的 JSON：访问日志原文的行(lines)，或已解析的请求(requests)，二选一；不合格时本次作废、读取位置不前进",
+  "type": "object",
+  "required": ["truncated"],
+  "additionalProperties": false,
+  "oneOf": [
+    {"required": ["lines"]},
+    {"required": ["requests"]}
+  ],
+  "properties": {
+    "lines": {
+      "type": "array",
+      "description": "窗口内的访问日志原文，每项一行；解析按 controls.\"collect.access_log\" 的 fields 或 pattern",
+      "items": {"type": "string"}
+    },
+    "requests": {
+      "type": "array",
+      "description": "窗口内已解析的请求",
+      "items": {
+        "type": "object",
+        "required": ["method", "route", "status", "durationMs"],
+        "additionalProperties": false,
+        "properties": {
+          "method": {"type": "string", "minLength": 1, "description": "HTTP 方法"},
+          "route": {"type": "string", "minLength": 1, "description": "路由模板(如 /api/orders/{id})；带查询串时程序去掉"},
+          "status": {"type": "integer", "minimum": 100, "maximum": 599, "description": "响应状态码"},
+          "durationMs": {"type": ["number", "null"], "minimum": 0, "description": "耗时(毫秒)；没有记录时为 null"}
+        }
+      }
+    },
+    "truncated": {"type": "boolean", "description": "是否因条数上限只交回了窗口中的一部分"},
+    "notes": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "写进运行摘要的说明"}
+  }
+}

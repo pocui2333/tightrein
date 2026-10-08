@@ -1,0 +1,109 @@
+{
+ "version": "1.178.0",
+ "results": [
+  {
+   "check_id": "empty-catch",
+   "path": "src/Services/OrderService.cs",
+   "start": {
+    "line": 9,
+    "col": 13,
+    "offset": 146
+   },
+   "end": {
+    "line": 15,
+    "col": 14,
+    "offset": 287
+   },
+   "extra": {
+    "message": "空的 catch 吞掉了异常",
+    "metadata": {},
+    "severity": "WARNING",
+    "fingerprint": "requires login",
+    "lines": "requires login",
+    "validation_state": "NO_VALIDATOR",
+    "engine_kind": "OSS"
+   }
+  },
+  {
+   "check_id": "no-eval",
+   "path": "web/main.js",
+   "start": {
+    "line": 2,
+    "col": 10,
+    "offset": 37
+   },
+   "end": {
+    "line": 2,
+    "col": 20,
+    "offset": 47
+   },
+   "extra": {
+    "message": "不要使用 eval",
+    "metadata": {},
+    "severity": "ERROR",
+    "fingerprint": "requires login",
+    "lines": "requires login",
+    "validation_state": "NO_VALIDATOR",
+    "engine_kind": "OSS"
+   }
+  }
+ ],
+ "errors": [
+  {
+   "code": 3,
+   "level": "warn",
+   "type": "Syntax error",
+   "message": "Syntax error at line web/garbage.js:1:\n `x = $$$ ((( eval(\n` was unexpected",
+   "path": "web/garbage.js"
+  },
+  {
+   "code": 3,
+   "level": "warn",
+   "type": [
+    "PartialParsing",
+    [
+     {
+      "path": "src/Broken.cs",
+      "start": {
+       "line": 1,
+       "col": 1,
+       "offset": 0
+      },
+      "end": {
+       "line": 4,
+       "col": 4,
+       "offset": 69
+      }
+     }
+    ]
+   ],
+   "message": "Syntax error at line src/Broken.cs:1:\n `namespace A {\n  public class B {\n    void C() { var x = ; ) ) ) }\n  }` was unexpected",
+   "path": "src/Broken.cs",
+   "spans": [
+    {
+     "file": "src/Broken.cs",
+     "start": {
+      "line": 1,
+      "col": 1,
+      "offset": 0
+     },
+     "end": {
+      "line": 4,
+      "col": 4,
+      "offset": 69
+     }
+    }
+   ]
+  }
+ ],
+ "paths": {
+  "scanned": [
+   "src/Broken.cs",
+   "src/Services/OrderService.cs",
+   "web/garbage.js",
+   "web/main.js"
+  ]
+ },
+ "engine_requested": "OSS",
+ "skipped_rules": []
+}

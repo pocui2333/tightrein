@@ -1,0 +1,27 @@
+name: regex
+kind: log_parse
+summary: 按正则的命名分组从每条日志的首行抽取时间、级别、类别与消息，续行并入上一条
+applicability: 日志是逐行的文本格式，每条日志的首行有固定的写法
+optionsSchema:
+  type: object
+  required: [pattern, timeFormat, timezone, levels, multiline, rolloverToleranceMinutes]
+  additionalProperties: false
+  properties:
+    pattern:
+      description: 从行首匹配的正则，须有命名分组 time、level、message，可选 category、eventId
+      type: string
+      minLength: 1
+    timeFormat:
+      description: time 分组的 strptime 写法；为空时按 ISO 8601
+      type: [string, 'null']
+      minLength: 1
+    timezone: {description: 不带时区的时间所用的时区(IANA 名称), type: string, minLength: 1}
+    levels:
+      description: 级别映射，键为原文中的写法(不区分大小写)，值为归一化级别
+      type: object
+      additionalProperties: {enum: [trace, debug, information, warning, error, critical]}
+    multiline: {description: 不以 pattern 开头的行是否并入上一条, type: boolean}
+    rolloverToleranceMinutes: {description: 只有时刻时判定跨过午夜的容差(分钟), type: integer, minimum: 0}
+limitations:
+  - 时间只有时刻时按读取顺序补日期，跨天的乱序日志可能算错日期
+  - 不解析堆栈帧，续行只并入原文

@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/assess/handoff.schema.json",
+  "title": "assess.triage 交接的必填事实",
+  "type": "object",
+  "required": [
+    "problem",
+    "verdict",
+    "severity",
+    "disposition",
+    "destination",
+    "issue",
+    "issues",
+    "mergedInto",
+    "knowledgeSuggestions",
+    "misjudged"
+  ],
+  "properties": {
+    "problem": {
+      "type": "string",
+      "pattern": "^P-\\d{4,}$"
+    },
+    "verdict": {
+      "enum": [
+        "confirmed",
+        "conditional",
+        "refuted",
+        "insufficient",
+        "merged"
+      ]
+    },
+    "severity": {
+      "anyOf": [
+        {
+          "enum": [
+            "P0",
+            "P1",
+            "P2",
+            "P3"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "disposition": {
+      "enum": [
+        "fix_now",
+        "fix_later",
+        "watch",
+        "wont_fix"
+      ]
+    },
+    "destination": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "issue": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "mergedInto": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "case": {
+      "enum": [
+        "verified",
+        "reproducible",
+        "full",
+        "light"
+      ]
+    },
+    "knowledgeSuggestions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "misjudged": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "point",
+            "detail"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "false_confirm",
+                "false_refute",
+                "false_block"
+              ]
+            },
+            "point": {
+              "type": "string"
+            },
+            "detail": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

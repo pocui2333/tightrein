@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tightrein"
+version = "0.2.0"
+description = "Unattended defect discovery and repair pipeline driven by AI agents, with human-controlled boundaries and approvals"
+license = "MIT"
+authors = [{name = "Cui Ty"}]
+requires-python = ">=3.12"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+]
+# jsonschema：边界上校验外部输入与 agent 的结构化输出；pyyaml：方法清单(<方法>.yaml)；schemathesis：API 模糊测试
+dependencies = ["jsonschema==4.26.0", "pyyaml==6.0.3", "schemathesis==4.28.0"]
+
+[project.urls]
+Homepage = "https://github.com/pocui2333/tightrein"
+Issues = "https://github.com/pocui2333/tightrein/issues"
+
+[project.scripts]
+tightrein = "tightrein.cli.main:entry"
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "mypy>=1.11", "ruff>=0.6"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["tightrein*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.md", "*.json", "*.yaml", "*.sql", "**/*.md", "**/*.json", "**/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers --import-mode=importlib"
+markers = ["external: 需要外部工具(Semgrep、Schemathesis、Playwright)，没装时跳过"]
+
+[tool.ruff]
+line-length = 120
+src = ["src", "tests"]
+
+[tool.mypy]
+python_version = "3.12"
+packages = ["tightrein"]
+mypy_path = "src"
+ignore_missing_imports = true

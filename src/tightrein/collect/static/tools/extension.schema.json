@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/collect/static/tools/extension.schema.json",
+  "title": "项目与技术栈确定性工具脚本的输出",
+  "type": "object",
+  "required": ["tools", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "status", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "status": {"enum": ["ok", "failed", "skipped"]},
+          "reason": {"type": ["string", "null"]},
+          "logFile": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tool", "kind", "rule", "file", "line", "column", "message", "severity"],
+        "additionalProperties": false,
+        "properties": {
+          "tool": {"type": "string", "minLength": 1},
+          "kind": {"enum": ["lint", "build-warning", "vulnerability"]},
+          "rule": {"type": "string", "minLength": 1},
+          "file": {"type": "string", "minLength": 1},
+          "line": {"type": ["integer", "null"], "minimum": 1},
+          "column": {"type": ["integer", "null"], "minimum": 1},
+          "message": {"type": "string"},
+          "severity": {"enum": ["critical", "high", "medium", "low"]},
+          "package": {
+            "type": ["object", "null"],
+            "required": ["name"],
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "version": {"type": ["string", "null"]},
+              "advisoryUrl": {"type": ["string", "null"]}
+            }
+          }
+        }
+      }
+    }
+  }
+}

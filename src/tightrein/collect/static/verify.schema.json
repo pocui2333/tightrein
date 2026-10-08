@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tightrein.local/schemas/collect/static/verify.schema.json",
+  "title": "静态巡检一条主张的取证结论",
+  "type": "object",
+  "required": ["analysis", "verdict", "facts", "trigger", "counterEvidence", "impact", "sourceOfPhenomenon",
+               "rootCauses", "missingInfo"],
+  "additionalProperties": false,
+  "properties": {
+    "analysis": {"type": "string", "minLength": 1},
+    "verdict": {"enum": ["confirmed", "conditional", "refuted", "insufficient"]},
+    "facts": {"type": "array", "items": {"$ref": "#/$defs/fact"}},
+    "trigger": {"type": ["string", "null"]},
+    "counterEvidence": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/counterEvidence"}},
+    "impact": {"anyOf": [{"$ref": "#/$defs/impact"}, {"type": "null"}]},
+    "sourceOfPhenomenon": {"anyOf": [{"$ref": "#/$defs/sourceOfPhenomenon"}, {"type": "null"}]},
+    "rootCauses": {"type": "array", "items": {"$ref": "#/$defs/rootCause"}},
+    "missingInfo": {"type": "array", "items": {"$ref": "#/$defs/missingInfo"}}
+  },
+  "$defs": {
+    "location": {"type": "string", "pattern": "^[^\\s:][^:]*:\\d+(-\\d+)?$"},
+    "fact": {
+      "type": "object",
+      "required": ["location", "observation"],
+      "additionalProperties": false,
+      "properties": {
+        "location": {"$ref": "#/$defs/location"},
+        "observation": {"type": "string", "minLength": 1}
+      }
+    },
+    "counterEvidence": {
+      "type": "object",
+      "required": ["check", "entry", "upstreamValidation", "result"],
+      "additionalProperties": false,
+      "properties": {
+        "check": {"type": "string", "minLength": 1},
+        "entry": {"type": "string", "minLength": 1},
+        "upstreamValidation": {
+          "type": "object",
+          "required": ["status", "location"],
+          "additionalProperties": false,
+          "properties": {
+            "status": {"enum": ["present", "absent"]},
+            "location": {"anyOf": [{"$ref": "#/$defs/location"}, {"type": "null"}]}
+          }
+        },
+        "result": {"type": "string", "minLength": 1}
+      }
+    },
+    "impact": {
+      "type": "object",
+      "required": ["kind", "callSites", "consequence"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"enum": ["authorization", "data-ownership", "data-correctness", "credential-leak", "core-flow-broken",
+                          "non-core-error", "contract-mismatch", "experience", "slow-response",
+                          "dependency-vulnerability"]},
+        "callSites": {"type": "array", "items": {"$ref": "#/$defs/location"}},
+        "consequence": {"type": "string", "minLength": 1}
+      }
+    },
+    "sourceOfPhenomenon": {
+      "type": "object",
+      "required": ["location", "explanation"],
+      "additionalProperties": false,
+      "properties": {
+        "location": {"anyOf": [{"$ref": "#/$defs/location"}, {"type": "null"}]},
+        "explanation": {"type": "string", "minLength": 1}
+      }
+    },
+    "rootCause": {
+      "type": "object",
+      "required": ["file", "line", "symbol"],
+      "additionalProperties": false,
+      "properties": {
+        "file": {"type": "string", "minLength": 1},
+        "line": {"type": "integer", "minimum": 1},
+        "symbol": {"type": ["string", "null"]}
+      }
+    },
+    "missingInfo": {
+      "type": "object",
+      "required": ["what", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "what": {"type": "string", "minLength": 1},
+        "source": {"enum": ["code", "user"]}
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+ "version": "1.178.0",
+ "results": [],
+ "errors": [
+  {
+   "code": 2,
+   "level": "error",
+   "type": "Rule parse error",
+   "rule_id": "bad",
+   "message": "Rule parse error in rule bad:\n invalid regex '(((': missing closing parenthesis at position 3"
+  }
+ ],
+ "paths": {
+  "scanned": [
+   "src/Services/OrderService.cs"
+  ]
+ },
+ "engine_requested": "OSS",
+ "skipped_rules": []
+}

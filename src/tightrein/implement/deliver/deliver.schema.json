@@ -1,0 +1,264 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "implement.deliver 交给发布的必填事实(44c；键名照 release/record.parse_delivery)",
+  "type": "object",
+  "required": [
+    "branch",
+    "worktree",
+    "commit",
+    "base",
+    "diffHash",
+    "changedFiles",
+    "checks",
+    "acceptedFindings",
+    "review",
+    "highRisk",
+    "highRiskPaths",
+    "release",
+    "patch",
+    "unverified",
+    "knowledgeSuggestions",
+    "skipped",
+    "rounds"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "branch": {
+      "type": "string",
+      "minLength": 1
+    },
+    "worktree": {
+      "type": "string",
+      "minLength": 1
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "base": {
+      "type": "string",
+      "minLength": 1
+    },
+    "diffHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "changedFiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "added",
+          "deleted",
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "added": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "deleted": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "status": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "passed",
+          "detail"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "acceptedFindings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "review": {
+      "type": "object",
+      "required": [
+        "round",
+        "conclusions"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "round": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "conclusions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "highRisk": {
+      "type": "boolean"
+    },
+    "highRiskPaths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "release": {
+      "type": "object",
+      "required": [
+        "title",
+        "scope",
+        "summary",
+        "why",
+        "problem",
+        "approach",
+        "limitations"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scope": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "summary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "why": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "problem": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "approach": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limitations": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "patch": {
+      "type": "string",
+      "minLength": 1
+    },
+    "unverified": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "knowledgeSuggestions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "skipped": {
+      "type": "null"
+    },
+    "rounds": {
+      "description": "全部轮次的汇总：每轮编码、自检、审查的结论与阻断项(按各轮落盘的交接)",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "round",
+          "steps"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "round": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "steps": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": [
+                "status",
+                "summary",
+                "blockers"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "status": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "blockers": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,1 @@
+{"type":"result","subtype":"success","is_error":false,"duration_ms":9000,"duration_api_ms":8000,"num_turns":1,"result":"{\"summary\": \"会话中生成了修复计划\"}","session_id":"0d9f8e7c-6b5a-4c3d-2e1f-0a9b8c7d6e5f","total_cost_usd":0.012,"usage":{"input_tokens":100,"cache_creation_input_tokens":0,"cache_read_input_tokens":7000,"output_tokens":30},"structured_output":{"summary":"会话中生成了修复计划"}}
