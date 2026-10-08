@@ -44,7 +44,6 @@
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `analysis` | 字符串 | 是 | 先写：读了什么、调用链怎么走、为什么这样判 |
 | `verdict` | `"confirmed"` \| `"conditional"` \| `"refuted"` \| `"insufficient"` | 是 | — |
 | `facts` | 数组(元素：对象) | 是 | — |
 | `facts[].location` | 字符串(`^[^:\s][^:]*:\d+(-\d+)?$`) | 是 | — |
@@ -559,7 +558,7 @@ knowledge.curate 的输出：一条建议沉淀与已有条目的关系，及要
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `analysis` | 字符串 | 是 | 先写：建议讲的是什么规律，与每条候选是不是同一件事 |
+| `analysis` | 字符串 | 是 | — |
 | `decision` | `"add"` \| `"update"` \| `"merge"` \| `"noop"` | 是 | — |
 | `targetIds` | 数组(元素：字符串) | 是 | update 恰好 1 条；merge 与 noop 至少 1 条；add 为空 |
 | `supersedes` | 数组(元素：字符串) | 是 | 只有 add 可填：被推翻的候选 |

@@ -447,7 +447,9 @@
     },
     "assess.refute": {
       "model": "flash-high",
-      "fallback": "opus-mid"
+      "fallback": "opus-mid",
+      "turns": 30,
+      "outputTokens": 32000
     },
     "assess.dedup": {
       "model": "flash",
@@ -472,6 +474,8 @@
     "implement.locate": {
       "model": "flash-high",
       "fallback": "opus-mid",
+      "turns": 30,
+      "outputTokens": 32000,
       "timeout": "10m"
     },
     "implement.design": {
@@ -499,6 +503,8 @@
     "implement.design.frontend": {
       "model": "flash-high",
       "fallback": "opus-mid",
+      "turns": 30,
+      "outputTokens": 32000,
       "timeout": "10m",
       "paths": [
         "*.vue",
@@ -610,6 +616,8 @@
     "implement.check.screenshots": {
       "model": "flash-mid",
       "fallback": "opus-mid",
+      "turns": 30,
+      "outputTokens": 32000,
       "timeout": "10m"
     },
     "implement.review": {
@@ -620,6 +628,8 @@
     "implement.review.deep": {
       "model": "flash-high",
       "fallback": "opus-mid",
+      "turns": 30,
+      "outputTokens": 32000,
       "timeout": "10m"
     },
     "release": {

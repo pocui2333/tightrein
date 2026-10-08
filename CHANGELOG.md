@@ -11,6 +11,12 @@
 - 评估的取证结论(`assess.triage`，证伪复核共用)去掉「先写」的 `analysis` 字段：Opus 把它判为导出推理(`reasoning_extraction`)，每次都拒答；Sonnet 先写长篇分析耗尽单次输出额度，后面的必填字段被截掉，反复格式不符直到轮数到限。提示词中「推理」「自由书写」的说法一并改掉，知识整理 schema 中「先写」的描述去掉。
 - 同一调用点在本次运行中被拒绝过一次后，之后的调用直接走备用模型，不再每次先被拒一遍；started 标记记下 `fallbackFrom`，复盘记为 `call-fallback-<状态>`。
 - 新建 worktree 前先 `git worktree prune`：目录被删或挪走、登记还在时，不再因「missing but already registered」停下等人处理。
+- agy 的工具说明要求 view_file 带 `StartLine`、`EndLine` 只看命中行附近，不读工作目录以外的文件：此前证伪复核不带范围把同一个大文件从头读七八遍、还去翻 `~/.gemini` 下自己的任务日志，耗尽工具调用。证伪复核的提示词要求先打开主张给出的 `文件:行号`，再沿调用链往外找。
+
+### 变更
+
+- agy 的调用点(`assess.refute`、`implement.locate`、`implement.design.frontend`、`implement.check.screenshots`、`implement.review.deep`)工具调用上限由 15 次放宽到 30 次，单次输出上限由 16000 放宽到 32000 token。
+- 重新生成 `docs/reference/`(上一项去掉 `analysis` 后的 handoff.md)。
 
 ## [0.2.0] - 2026-10-08
 

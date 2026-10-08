@@ -8,7 +8,7 @@ import pytest
 from tightrein.agents.params import Access, CallParams, Limits, Model
 from tightrein.agents.result import CallStatus, RateLimit
 from tightrein.agents.tools import Resume
-from tightrein.agents.tools.agy import NO_BROWSER_DIR, SHELL_NOTE, TURNS_NOTE, WEB_NOTE, AgyAdapter, allowed
+from tightrein.agents.tools.agy import NO_BROWSER_DIR, READ_NOTE, SHELL_NOTE, TURNS_NOTE, WEB_NOTE, AgyAdapter, allowed
 from tightrein.protocol.handoff import Tokens
 
 FIXTURES = Path(__file__).parent / "fixtures" / "agy"
@@ -53,7 +53,7 @@ def test_readonly_runs_in_the_sandbox_with_the_schema_file(adapter, tmp_path):
     assert command.argv == (
         "agy", "--sandbox", "--model", "gemini-3.8-flash-high", "--effort", "high", "--add-dir", "/shots",
         "--output-format", "stream-json", "--json-schema", str(tmp_path / "schema.json"),
-        "-p", PROMPT + SHELL_NOTE + TURNS_NOTE.format(turns=40),
+        "-p", PROMPT + SHELL_NOTE + READ_NOTE + TURNS_NOTE.format(turns=40),
     )
     assert json.loads((tmp_path / "schema.json").read_text(encoding="utf-8")) == SCHEMA
     assert "--dangerously-skip-permissions" not in command.argv
@@ -69,6 +69,7 @@ def test_allow_listed_read_commands_are_offered_with_the_tool_call_limit(allow_l
     assert "可以执行这些只读命令：`git grep`、`cat`。" in prompt
     assert "git push" not in prompt and "`rm`" not in prompt
     assert "先用 `git grep -n" in prompt and "工具调用最多 60 次" in prompt and "shell 命令会被自动拒绝" not in prompt
+    assert "StartLine、EndLine" in prompt and "~/.gemini" in prompt
 
 
 def test_each_command_must_run_on_its_own(allow_list, tmp_path):
@@ -82,7 +83,7 @@ def test_each_command_must_run_on_its_own(allow_list, tmp_path):
 def test_web_tasks_are_told_to_answer_from_search_results_only(adapter, tmp_path):
     command = adapter.build(params(network=True), FLASH, executable="agy", env=ENV, schema=None, scratch=tmp_path,
                             resume=None)
-    assert command.argv[-1] == PROMPT + SHELL_NOTE + TURNS_NOTE.format(turns=40) + WEB_NOTE
+    assert command.argv[-1] == PROMPT + SHELL_NOTE + READ_NOTE + TURNS_NOTE.format(turns=40) + WEB_NOTE
 
 
 def test_writable_tasks_accept_edits_and_retries_continue_the_conversation(adapter, tmp_path):

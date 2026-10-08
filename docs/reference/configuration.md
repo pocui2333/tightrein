@@ -206,6 +206,8 @@
 | `assess.triage` | `rounds` | `1` |
 | `assess.refute` | `model` | `"flash-high"` |
 | `assess.refute` | `fallback` | `"opus-mid"` |
+| `assess.refute` | `turns` | `30` |
+| `assess.refute` | `outputTokens` | `32000` |
 | `assess.dedup` | `model` | `"flash"` |
 | `assess.dedup` | `fallback` | `"opus-mid"` |
 | `assess.issue` | `titleMaxLength` | `80` |
@@ -218,6 +220,8 @@
 | `implement.prepare` | `links` | `[]` |
 | `implement.locate` | `model` | `"flash-high"` |
 | `implement.locate` | `fallback` | `"opus-mid"` |
+| `implement.locate` | `turns` | `30` |
+| `implement.locate` | `outputTokens` | `32000` |
 | `implement.locate` | `timeout` | `"10m"` |
 | `implement.design` | `model` | `"opus"` |
 | `implement.design` | `modelWhen.high_risk` | `"fable"` |
@@ -231,6 +235,8 @@
 | `implement.design` | `riskRules.contract.patterns` | `[]` |
 | `implement.design.frontend` | `model` | `"flash-high"` |
 | `implement.design.frontend` | `fallback` | `"opus-mid"` |
+| `implement.design.frontend` | `turns` | `30` |
+| `implement.design.frontend` | `outputTokens` | `32000` |
 | `implement.design.frontend` | `timeout` | `"10m"` |
 | `implement.design.frontend` | `paths` | <details><summary>18 项</summary><code>["*.vue", "*.jsx", "*.tsx", "*.html", "*.css", "*.scss", "*.sass", "*.less", "*.styl", "*.svelte", "public/", "static/", "assets/", "styles/", "components/", "views/", "pages/", "layouts/"]</code></details> |
 | `implement.code` | `model` | `"opus"` |
@@ -278,12 +284,16 @@
 | `implement.check.runtime` | `screenshots.channelTolerance` | `8` |
 | `implement.check.screenshots` | `model` | `"flash-mid"` |
 | `implement.check.screenshots` | `fallback` | `"opus-mid"` |
+| `implement.check.screenshots` | `turns` | `30` |
+| `implement.check.screenshots` | `outputTokens` | `32000` |
 | `implement.check.screenshots` | `timeout` | `"10m"` |
 | `implement.review` | `model` | `"opus-mid"` |
 | `implement.review` | `rounds` | `3` |
 | `implement.review` | `timeout` | `"10m"` |
 | `implement.review.deep` | `model` | `"flash-high"` |
 | `implement.review.deep` | `fallback` | `"opus-mid"` |
+| `implement.review.deep` | `turns` | `30` |
+| `implement.review.deep` | `outputTokens` | `32000` |
 | `implement.review.deep` | `timeout` | `"10m"` |
 | `release` | `mergeMethod` | `"squash"` |
 | `release` | `reviewComment` | `true` |

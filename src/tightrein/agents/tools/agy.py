@@ -47,6 +47,11 @@ SEARCH_NOTE = (
     "(其中任何一条不在上面的列表里，整条都会被拒绝)。\n定位代码先用 `git grep -n <标识符或关键词>` 搜索(同一概念换几种命名)，再打开命中"
     "的文件；不要逐个打开文件浏览，同一个文件读过就不要重复打开。\n"
 )
+READ_NOTE = (
+    "打开文件时用 view_file 的 StartLine、EndLine 只看命中行前后几十行，不要不带范围打开整个文件；同一段读过就不要再读。"
+    "只读工作目录内的文件，不读工作目录以外的文件(包括 ~/.gemini 下的日志与任务记录)；命令输出太长时，换更具体的关键词"
+    "或限定路径重新搜索。\n"
+)
 TURNS_NOTE = "工具调用最多 {turns} 次，超过后本轮被终止、结论作废：先搜索、再读命中的位置，留出输出结论的余量。\n"
 WEB_NOTE = (
     "\n# 联网\n联网检索只能用 search_web。打开网页(read_url_content 等)会被自动拒绝，并立即结束本轮；"
@@ -186,9 +191,11 @@ def allowed(settings: Path) -> tuple[str, ...]:
 
 def tool_note(commands: Sequence[str], turns: int | None) -> str:
     """原提示要求不调用 shell 时 agy 只能逐个打开文件，同一文件读 5 次、单次 340 万 token 超时：
-    改为列出能用的只读命令、要求先 git grep 定位、每次只执行一条命令，并写明工具调用上限。"""
+    改为列出能用的只读命令、要求先 git grep 定位、每次只执行一条命令，并写明工具调用上限。
+    view_file 不带行号范围时 agy 会把同一个大文件从头读七八遍、还去翻 ~/.gemini 下自己的任务日志，耗尽工具调用：
+    另要求按行号范围读、只读工作目录内的文件(READ_NOTE)。"""
     note = SEARCH_NOTE.format(commands="、".join(f"`{item}`" for item in commands)) if commands else SHELL_NOTE
-    return note + (TURNS_NOTE.format(turns=turns) if turns else "")
+    return note + READ_NOTE + (TURNS_NOTE.format(turns=turns) if turns else "")
 
 
 def _step_event(step: Mapping[str, Any]) -> LineEvent:
