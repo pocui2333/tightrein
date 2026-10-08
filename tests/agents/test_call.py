@@ -452,6 +452,19 @@ def test_refused_calls_switch_to_the_fallback_once(make_world):
     assert len(twice.runner.commands) == 2
 
 
+def test_a_refusal_routes_later_calls_at_that_point_to_the_fallback(make_world):
+    refusal = FakeRun(claude_error("Claude Code is unable to respond to this request, which appears to violate "
+                                   "our Usage Policy"), exit_code=1)
+    world = make_world(refusal, FakeRun(claude_lines(VALID)), FakeRun(claude_lines(VALID)))
+    assert call(world.params(), world.context).model == "sonnet"
+    started = json.loads(world.file("started", "json").read_text(encoding="utf-8"))
+    assert started["fallbackFrom"] == {"model": "opus", "status": "refused"}
+    later = call(world.params(subject="P-0043"), world.context)
+    assert (later.status, later.model, later.attempts) == (CallStatus.OK, "sonnet", 1)
+    assert len(world.runner.commands) == 3  # 第二次不再先问一遍被拒过的模型
+    assert any("被拒绝过，直接用备用模型 sonnet" in summary for summary in world.events.summaries("decision"))
+
+
 def test_a_missing_tool_switches_to_the_fallback(make_world, tmp_path):
     world = make_world(FakeRun(claude_lines(VALID)), tools={"agy": {"path": str(tmp_path / "missing-agy")}})
     result = call(world.params(model=world.settings.model("flash"), fallback=world.settings.model("sonnet")),

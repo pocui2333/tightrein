@@ -1,5 +1,4 @@
 {
-  "analysis": "探针报 average([]) 抛 ZeroDivisionError。读 calc.py：average 直接返回 total(values) / len(values)，没有处理空列表；values 为空时 len(values) 为 0，必然除以零。调用方没有在上游挡住空列表。",
   "verdict": "confirmed",
   "facts": [
     {

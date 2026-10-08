@@ -91,6 +91,7 @@ class CallMark:
     status: str | None  # None：没有结束(进程被杀)
     duration_ms: int | None
     model: str | None
+    fallback_from: dict[str, str] | None = None  # 换了备用模型时：原模型别名与它的结束状态
 
 
 @dataclass
@@ -178,6 +179,11 @@ def _call_findings(data: RunData, thresholds: Thresholds) -> list[Finding]:
     for call in data.calls:
         step = _step_of(call.point)
         where = f"{_subject_text(call.subject)}的 {call.point}({call.model or '未知模型'})"
+        if call.fallback_from is not None:
+            original, reason = call.fallback_from.get("model"), call.fallback_from.get("status", "")
+            found.append(Finding(Kind.FAILURE, step, call.point, f"call-fallback-{reason.replace('_', '-')}",
+                                 f"主模型 {original} 以 {reason} 结束，改用备用模型", Impact.MAJOR, call.subject,
+                                 f"{where}：主模型 {original} 以 {reason} 结束，这次由备用模型完成"))
         if call.status is None:
             found.append(Finding(Kind.FAILURE, step, call.point, "call-unfinished", "模型调用没有结束(进程被终止)",
                                  Impact.MAJOR, call.subject, f"{where}没有结束"))
@@ -298,7 +304,7 @@ def _call_mark(path: Path) -> tuple[str, CallMark]:
     data = json.loads(path.read_text(encoding="utf-8"))
     ended = data.get("endedAt") is not None
     return data["run"], CallMark(data["point"], data.get("subject"), data.get("status") if ended else None,
-                                 data.get("durationMs"), data.get("model"))
+                                 data.get("durationMs"), data.get("model"), data.get("fallbackFrom"))
 
 
 def _weighted(handoff: Handoff, cache_read_weight: float) -> int:

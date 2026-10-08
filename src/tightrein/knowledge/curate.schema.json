@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["analysis", "decision", "targetIds", "supersedes", "entry", "reason"],
   "properties": {
-    "analysis": {"type": "string", "minLength": 1, "description": "先写：建议讲的是什么规律，与每条候选是不是同一件事"},
+    "analysis": {"type": "string", "minLength": 1},
     "decision": {"enum": ["add", "update", "merge", "noop"]},
     "targetIds": {"type": "array", "items": {"type": "string"}, "description": "update 恰好 1 条；merge 与 noop 至少 1 条；add 为空"},
     "supersedes": {"type": "array", "items": {"type": "string"}, "description": "只有 add 可填：被推翻的候选"},

@@ -107,6 +107,16 @@ def test_failures_waste_and_interruptions_are_found(layout: WorkspaceLayout) -> 
     assert crossed.impact is Impact.MAJOR and crossed.tokens == 1_400_000
 
 
+def test_calls_finished_by_the_fallback_are_recorded(layout: WorkspaceLayout) -> None:
+    data = RunData(RUN, "succeeded")
+    data.calls = [detect_module.CallMark("assess.triage", "P-0019", "ok", 1000, "sonnet",
+                                         {"model": "opus", "status": "refused"})]
+    found = {(item.kind, item.point, item.phenomenon): item for item in detect(data, THRESHOLDS, blamed=set()).findings}
+    fallback = found[(Kind.FAILURE, "assess.triage", "call-fallback-refused")]
+    assert fallback.impact is Impact.MAJOR and fallback.call_point == "assess.triage"
+    assert "主模型 opus 以 refused 结束" in fallback.detail
+
+
 def test_issue_tokens_are_recorded_only_in_the_run_that_crosses(layout: WorkspaceLayout) -> None:
     data = RunData(RUN, "done", issue_tokens_before={"0018": 1_200_000})
     data.handoffs = [handoff("implement.code", "0018", tokens=200_000)]

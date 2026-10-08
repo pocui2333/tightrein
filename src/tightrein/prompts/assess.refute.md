@@ -22,7 +22,7 @@
 
 # 输出
 
-字段与取证相同：先写 `analysis`(自由书写你的推理)，再写 `verdict`、`facts`、`trigger`、`counterEvidence`、`impact`、`sourceOfPhenomenon`、`rootCauses`、`fixedOnMain`、`tradeoffHit`、`missingInfo`、`incidental`、`report`、`assessment`、`notes`、`knowledgeSuggestions`。
+字段与取证相同：`verdict`、`facts`、`trigger`、`counterEvidence`、`impact`、`sourceOfPhenomenon`、`rootCauses`、`fixedOnMain`、`tradeoffHit`、`missingInfo`、`incidental`、`report`、`assessment`、`notes`、`knowledgeSuggestions`。
 
 - 判成立时 `report` 写给维护者：标题「[模块] 一句话说清现象与后果」，不超过「本次输入」给出的字数上限；严重度按「不修会怎样」定(P0 线上不可用、数据丢失泄露、可利用的安全漏洞；P1 核心功能错误；P2 非核心或偶发；P3 轻微)，项目说明与之冲突时以项目说明为准；验收标准只写这个问题特有的、可以验证的条件。
 - 判成立时 `assessment` 给出价值判断、任务类型、粗规模档(`small`、`medium`、`large`)与要改的文件、修复方向、需用户定夺的标记、明确不做与必须保持不变的部分。

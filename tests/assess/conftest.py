@@ -243,7 +243,6 @@ def make_issue(runtime: SimpleNamespace) -> Callable[..., Issue]:
 def confirmed_output(**changes: Any) -> dict[str, Any]:
     """一份通过全部证据检查的取证输出(位置都在 repo 夹具里)。"""
     output: dict[str, Any] = {
-        "analysis": "读了 services/orders.py:3 与 routes/orders.py:5，调用链从路由直达服务，没有归属过滤。",
         "verdict": "confirmed",
         "facts": [{"location": "services/orders.py:3", "observation": "按编号查询订单，没有按用户过滤"}],
         "trigger": "登录用户请求他人的订单编号",

@@ -35,7 +35,7 @@ def test_the_verifier_walks_the_four_steps_and_traces_to_the_entry():
     found = text("assess.triage")
     assert "四步" in found and "沿调用链追到入口" in found
     assert "不确定时选 `insufficient`" in found and "`source` 标 `user`" in found and "不会向任何人提问" in found
-    assert "`analysis`：先写" in found
+    assert "`analysis`" not in found  # 先写长篇分析会挤掉结构化字段，且被判为导出推理而拒答
     assert "{{severity_guide}}" in found and "{{title_limit}}" in found and "以项目说明为准" in found
     assert "不按类别套用" in found and "能绕开的降一级" in found
     assert "不写「现有测试全部通过」" in found  # 验收标准只写这个问题特有的
@@ -54,7 +54,8 @@ def test_dedup_prefers_different_when_unsure():
     assert "现象相似不等于同一根因" in found and "拿不准时判为不同" in found
 
 
-def test_the_output_schema_requires_the_free_analysis_first():
+def test_the_output_schema_has_no_free_analysis():
     schema = json.loads((ASSESS_DIR / "assess.triage.schema.json").read_text(encoding="utf-8"))
-    assert schema["required"][0] == "analysis" and "knowledgeSuggestions" in schema["required"]
+    assert schema["required"][0] == "verdict" and "knowledgeSuggestions" in schema["required"]
+    assert "analysis" not in schema["properties"]
     assert Path(ASSESS_DIR / "assess.dedup.schema.json").is_file()

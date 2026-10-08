@@ -4,7 +4,6 @@
   "title": "评估的取证结论(assess.triage；证伪复核 assess.refute 用同一格式)",
   "type": "object",
   "required": [
-    "analysis",
     "verdict",
     "facts",
     "trigger",
@@ -23,11 +22,6 @@
   ],
   "additionalProperties": false,
   "properties": {
-    "analysis": {
-      "type": "string",
-      "minLength": 1,
-      "description": "先写：读了什么、调用链怎么走、为什么这样判"
-    },
     "verdict": {
       "enum": [
         "confirmed",

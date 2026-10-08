@@ -494,7 +494,8 @@ class Git:
 
     def worktree_add(self, path: Path, *, branch: str | None, base: str, scope: WriteScope) -> str:
         """从 base 新建 worktree：给出 branch 时 `-b` 建分支，否则为游离 HEAD(只读 worktree)。目录已存在且分支对应时
-        直接复用：中断后重来不报错。"""
+        直接复用：中断后重来不报错。新建前先 `worktree prune`：目录被删或挪走、登记还在时，git 会拒绝在同一路径新建；
+        prune 只清目录已不在的登记，不动现存的 worktree 与分支。"""
         def matching() -> str | None:
             if not path.exists():
                 return None
@@ -506,6 +507,7 @@ class Git:
             if found is not None:
                 return found
             target = ("-b", branch) if branch is not None else ("--detach",)
+            self._run("worktree", "prune", read=False)
             self._run("worktree", "add", *target, str(path), base, read=False)
             return str(path)
 

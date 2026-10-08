@@ -46,6 +46,15 @@ def test_an_existing_matching_worktree_is_reused_without_a_record(clone, conn, c
     assert git.at(path).head().branch == "cty/fix-order"
 
 
+def test_a_worktree_whose_directory_vanished_is_created_again(readonly, scope):
+    """目录被挪走、git 里还留着登记(例如整个工作区被移走)：同一路径重新建，不要求人工 prune。"""
+    _, git, path, _, _, _ = readonly
+    path.rename(path.with_name("moved-away"))
+    worktrees.create_readonly(git, path, scope=scope)
+    assert git.at(path).head().branch is None
+    assert [Path(item.path).name for item in git.worktree_list()].count("moved-away") == 0
+
+
 def test_sync_moves_the_detached_head(readonly):
     _, git, path, marker, first, second = readonly
     result = worktrees.sync_readonly(git, path, marker=marker)

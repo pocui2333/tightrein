@@ -111,6 +111,8 @@ class AgentContext:
     sleep: Callable[[float], None] = time.sleep
     random: Callable[[], float] = random.random
     tool: ToolLayout = field(default_factory=ToolLayout.discover)  # tightrein 自身：可写步骤前后比对它的代码与配置
+    # 本次运行中被拒绝过的(调用点、模型别名)：之后同一调用点直接走备用模型，不再每次先被拒一遍
+    refused: set[tuple[str, str]] = field(default_factory=set)
 
 
 def params_for(point: str, *, settings: Settings, run: str, subject: str | None, prompt: str,
@@ -141,6 +143,8 @@ def call(params: CallParams, context: AgentContext) -> CallResult:
     started = format_iso(context.clock.now())
     _mark(marker, params, model, started, None, context.clock)
     run = _Run(model, progress=_progress(marker, params, model, started, context.clock))
+    if fallback_used and (params.point, params.model.alias) in context.refused:
+        run.fallback_from = {"model": params.model.alias, "status": CallStatus.REFUSED.value}
     blocked = _blocked(params, model, context, breaker_open)
     if blocked is not None:
         return _finish(params, context, blocked, marker, started, run)
@@ -182,9 +186,15 @@ def _choose(params: CallParams, context: AgentContext) -> tuple[Model, bool, boo
     """返回(模型、是否已换备用、是否熔断中且无备用)。依赖熔断期间改走备用模型(备用模型的工具未熔断时)。
     breaker.allow 在半开时会放出唯一一次试探，所以每个工具只问一次。"""
     model = params.model
-    if context.replay is not None or context.breaker.allow(model.tool):
+    if context.replay is not None:
         return model, False, False
     fallback = params.fallback
+    if (params.point, model.alias) in context.refused and fallback is not None \
+            and context.breaker.allow(fallback.tool):
+        _emit(context, params, "decision", f"{model.alias} 本次运行在这个调用点被拒绝过，直接用备用模型 {fallback.alias}")
+        return fallback, True, False
+    if context.breaker.allow(model.tool):
+        return model, False, False
     if fallback is not None and fallback.tool != model.tool and context.breaker.allow(fallback.tool):
         _emit(context, params, "decision", f"{model.tool} 依赖熔断中，改用备用模型 {fallback.alias}")
         return fallback, True, False
@@ -251,6 +261,7 @@ class _Run:
     rate_limits: list[RateLimit] = field(default_factory=list)
     raw: list[str] = field(default_factory=list)
     progress: Callable[[int, Tokens], None] | None = None  # 调用进行中更新 started 标记(watch 显示实时轮数与 token)
+    fallback_from: dict[str, str] | None = None  # 换了备用模型时：原模型别名与它的结束状态(复盘据此记录)
 
     def add(self, attempt: _Attempt, model: Model) -> None:
         parsed = attempt.parsed
@@ -329,6 +340,9 @@ def _attempts(params: CallParams, context: AgentContext, adapter: Adapter, model
             continue
         if action is Action.FALLBACK and params.fallback is not None and params.fallback != model:
             _emit(context, params, "decision", f"{model.alias} {status.value}，换备用模型 {params.fallback.alias}")
+            if status is CallStatus.REFUSED:
+                context.refused.add((params.point, model.alias))
+            run.fallback_from = {"model": model.alias, "status": status.value}
             model, fallback_used = params.fallback, True
             adapter = _adapter(model, context)
             resume, current, finalizing = None, params, False
@@ -623,7 +637,7 @@ def _finish(params: CallParams, context: AgentContext, result: CallResult, marke
             run: _Run) -> CallResult:
     if not result.ok or context.debug:
         result.raw_path = _save(params, context, run)
-    _mark(marker, params, run.model, started, result, context.clock)
+    _mark(marker, params, run.model, started, result, context.clock, fallback_from=run.fallback_from)
     summary = f"{result.tool}/{result.model}：{result.status.value}"
     if result.error:
         summary += f"，{result.error[:200]}"
@@ -675,7 +689,8 @@ def _separator(number: int, model: Model, outcome: Outcome) -> str:
 
 
 def _mark(path: Path, params: CallParams, model: Model, started: str, result: CallResult | None,
-          clock: Clock, *, turns: int | None = None, tokens: Tokens | None = None) -> None:
+          clock: Clock, *, turns: int | None = None, tokens: Tokens | None = None,
+          fallback_from: Mapping[str, str] | None = None) -> None:
     """started 标记：endedAt 为空即表示调用正在进行，模型重试或等待时 watch 不会显示成卡死。"""
     if result is not None:
         turns, tokens = result.turns, result.tokens
@@ -688,6 +703,7 @@ def _mark(path: Path, params: CallParams, model: Model, started: str, result: Ca
         "turns": turns,
         "tokens": None if tokens is None else {"input": tokens.input, "output": tokens.output,
                                                 "cacheRead": tokens.cache_read, "cacheWrite": tokens.cache_write},
+        "fallbackFrom": None if fallback_from is None else dict(fallback_from),
     })
 
 
