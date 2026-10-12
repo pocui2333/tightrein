@@ -108,7 +108,7 @@ def claim(file: str = "src/orders.py", line: int = 3, *, rule: str = "unbounded-
 
 def verdict(value: str = "confirmed", *, file: str = "src/orders.py", line: int = 3,
             symbol: str | None = "list_orders") -> dict[str, Any]:
-    return {"analysis": "读了 list_orders", "verdict": value,
+    return {"analysis": "读了 list_orders", "verdict": value, "confidence": "high",
             "facts": [{"location": f"{file}:{line}", "observation": "没有校验 page"}],
             "trigger": "page=-1" if value in ("confirmed", "conditional") else None,
             "counterEvidence": [{"check": "上游校验", "entry": f"{file}:1",

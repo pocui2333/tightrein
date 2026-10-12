@@ -15,7 +15,7 @@ from tightrein.protocol.handoff import Status
 from tightrein.store.files.json import read_json
 from tightrein.store.tables import issues, problems
 
-TRIAGE, REFUTE = "assess.triage", "assess.refute"
+TRIAGE, CONFIRM, REFUTE = "assess.triage", "assess.confirm", "assess.refute"
 
 
 def handoff(layout, subject: str) -> dict:
@@ -45,6 +45,50 @@ def test_a_confirmed_low_risk_problem_becomes_an_approved_issue(runtime, make_pr
     notes = read_json(layout.subject_dir("P-0001") / "00-problem-notes.json")
     assert {entry["location"] for entry in notes["entries"]} == {"routes/orders.py:4", "services/orders.py:3"}
     assert (layout.subject_dir("P-0001") / "00-problem-assess.json").is_file()  # 重建用的快照
+
+
+def collected(outputs, **changes):
+    """静态巡检取证的输出：只有结论，没有报告与评估。"""
+    output = {key: value for key, value in outputs.confirmed().items()
+              if key in ("verdict", "facts", "trigger", "counterEvidence", "impact", "rootCauses", "missingInfo")}
+    return {"analysis": "沿路由读到服务，没有按用户过滤", "sourceOfPhenomenon": None, **output, **changes}
+
+
+def test_a_verified_static_problem_is_confirmed_with_the_evidence_pack_instead_of_investigated_again(
+        runtime, make_problem, agent, readonly, outputs, layout):
+    make_problem(source="collect.static", check_type="static", flags={"verified": True, "deterministic": True},
+                 evidence={"verification": collected(outputs)})
+    agent.queue(CONFIRM, outputs.confirmed())
+    outcome = assessing.assess(runtime, "P-0001")
+    assert agent.points() == [CONFIRM] and outcome.verdict == "confirmed" and outcome.issue == "0001"
+    given = agent.calls[0].prompt.split("# 本次输入\n")[1]
+    assert "### 采集时的取证(版本 abc1234)" in given and "1. `services/orders.py:3`：按编号查询订单" in given
+    assert "    3          order = self.repo.find(order_id)" in given  # 程序截取的原文，带行号
+    assert "沿路由读到服务" not in given  # 只给结论与原文锚点，不给分析过程
+    assert agent.calls[0].limits.turns == 8
+    assert handoff(layout, "P-0001")["facts"]["case"] == "verified"
+
+
+def test_a_verified_problem_that_fails_the_checks_is_not_investigated_from_scratch(
+        runtime, make_problem, agent, readonly, outputs):
+    make_problem(source="collect.static", check_type="static", flags={"verified": True, "deterministic": True},
+                 evidence={"verification": collected(outputs)})
+    agent.queue(CONFIRM, outputs.confirmed(trigger="可能是并发"), CallStatus.TIMEOUT)
+    outcome = assessing.assess(runtime, "P-0001")
+    assert agent.points() == [CONFIRM, CONFIRM] and outcome.destination == "manual"
+
+
+def test_the_refuter_of_a_verified_problem_does_not_see_the_collected_evidence(
+        runtime, make_problem, agent, readonly, outputs):
+    make_problem(source="collect.static", check_type="static", flags={"verified": True, "deterministic": True},
+                 evidence={"verification": collected(outputs)})
+    confirmed = outputs.confirmed()
+    confirmed["report"]["severity"] = "P1"
+    agent.queue(CONFIRM, confirmed)
+    agent.queue(REFUTE, outputs.confirmed())
+    assessing.assess(runtime, "P-0001")
+    assert agent.points() == [CONFIRM, REFUTE]
+    assert "采集时的取证" not in agent.calls[1].prompt
 
 
 def test_a_risky_issue_waits_for_approval(runtime, make_problem, agent, readonly, outputs, layout):

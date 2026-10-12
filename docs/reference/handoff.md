@@ -251,6 +251,7 @@ assess.triage 交接的必填事实
 |---|---|---|---|
 | `analysis` | 字符串 | 是 | — |
 | `verdict` | `"confirmed"` \| `"conditional"` \| `"refuted"` \| `"insufficient"` | 是 | — |
+| `confidence` | `"high"` \| `"low"` | 是 | — |
 | `facts` | 数组(元素：对象) | 是 | — |
 | `facts[].location` | 字符串(`^[^\s:][^:]*:\d+(-\d+)?$`) | 是 | — |
 | `facts[].observation` | 字符串 | 是 | — |

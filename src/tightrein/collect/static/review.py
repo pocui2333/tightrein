@@ -1,7 +1,7 @@
 """审查的模型调用：增量审查(collect.static.review)与变体扫描(collect.static.variant)，以及各调用点共用的调用方式。
 
 - 提示一律由 prompts/<调用点>.md 模板拼成，输出按本文件夹的 schema 校验(审查、基线、变体共用 claims.schema.json，
-  取证用 verify.schema.json)，调用一律经 agents.call；
+  取证的两档共用 verify.schema.json)，调用一律经 agents.call；
 - 用到的外部 skill 按名字在调用点加载：加载前用 protocol.vendor 逐文件核对哈希，不符即不调用(抛出，整次巡检失败，
   要人来看是不是被改过)；核对通过的 skill 目录作为可读路径交给 agent，提示里只列 SKILL.md 的路径，按需去读；
 - 调用结果归成三类：环境级越界(只读 worktree 被改、碰了禁改路径：整次作废)、预算用尽(额度或用量到限：其余调用不再
@@ -32,13 +32,15 @@ REVIEW = "collect.static.review"
 VARIANT = "collect.static.variant"
 BASELINE = "collect.static.baseline"
 VERIFY = "collect.static.verify"
+VERIFY_DEEP = "collect.static.verify.deep"
 SCHEMA_FILES = {REVIEW: "claims.schema.json", VARIANT: "claims.schema.json", BASELINE: "claims.schema.json",
-                VERIFY: "verify.schema.json"}
+                VERIFY: "verify.schema.json", VERIFY_DEEP: "verify.schema.json"}
 SKILLS: dict[str, tuple[str, ...]] = {
     REVIEW: ("differential-review", "sharp-edges"),
     BASELINE: ("sharp-edges",),
     VARIANT: ("variant-analysis",),
     VERIFY: (),
+    VERIFY_DEEP: (),
 }
 EXHAUSTED = frozenset({CallStatus.BUDGET_LIMIT, CallStatus.QUOTA_EXHAUSTED})
 TASK_VIOLATIONS = frozenset({COMMAND})  # 只作废那一次调用的越界；其余(只读被改、碰了禁改路径)作废整次巡检

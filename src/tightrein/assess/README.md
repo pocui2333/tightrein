@@ -12,9 +12,9 @@
 2. **只读 worktree**(`assess.readonly`)：切到 origin/主干最新 commit，切换失败整次停下(`AssessBlocked`)；评估期间去掉写权限，结束后恢复。
 3. **并行**：位置或文件相同的问题归一组(`select.related_groups`)，组与组之间并行(并行数 `resources.concurrency.modelCalls`，每组自己的数据库连接)。每个问题先拿对象锁，锁被占就跳过；额度到了给用户留的余量就不再开始新的问题。
 4. **主张**(`claims.py`)：只放观察到的事实，事实带序号；信号样本按(角色, 位置)去重；附「主干差异」(`main_diff.py`)。
-5. **分情况**(`cases.py`)：已取证(复用采集时的取证)、能复现(只找出错位置)、完整取证、轻量推测(只推测触发条件)。
+5. **分情况**(`cases.py`)：已取证(复用采集时的取证，不再从零调查)、能复现(只找出错位置)、完整取证、轻量推测(只推测触发条件)。
 6. **查重**(`dedup.py`)：程序先比(位置、文件、标题相似度)，明显重复的直接并入、明显不相关的不算候选，拿不准才调 `assess.dedup`；模型的判断由程序核对。
-7. **取证**(`evidence.py`)：调 `assess.triage`，输出先补全位置，再做证据检查(`checks.py`，全部程序判定)，不过就带逐项原因重做，仍不过判证据不足并转人工。
+7. **取证**(`evidence.py`)：已取证的调 `assess.confirm`(带证据包，`reuse.py`：采集时的取证结论加程序按行号截取的当前代码原文，只补报告与评估)，其余调 `assess.triage`；输出先补全位置，再做证据检查(`checks.py`，全部程序判定)，不过就带逐项原因重做，仍不过判证据不足并转人工(不退回从零调查)。
 8. **证伪复核**(`refute.py`)：只在 P0、P1 或安全、数据类(配置)时调 `assess.refute`，盲审、模型与取证不同；两次结论按合并表定。
 9. **归因**(`attribution.py`)与**取舍核对**(`tradeoff.py`)。
 10. **评级**(`rating.py`)：严重度以取证报告为准；粗规模档取模型的档与按文件数算的档中较大的。
@@ -48,6 +48,7 @@ problems 先由采集重放去重的变更日志(`collect/dedup/output.py` 登�
 | 调用点 | 提示 | 输出格式 |
 |---|---|---|
 | `assess.triage` | `prompts/assess.triage.md` | `assess.triage.schema.json` |
+| `assess.confirm` | `prompts/assess.confirm.md` | 同上(已取证的问题：核对证据、补报告与评估) |
 | `assess.refute` | `prompts/assess.refute.md` | 同上(盲审，输出与取证相同) |
 | `assess.dedup` | `prompts/assess.dedup.md` | `assess.dedup.schema.json` |
 
@@ -70,14 +71,15 @@ problems 先由采集重放去重的变更日志(`collect/dedup/output.py` 登�
 | `assess.sizes` | small ≤ 3 个文件、medium ≤ 10 个 | 粗规模档的文件数门槛 |
 | `assess.treatment` | 七条规则 | 处理方式的决策树，最后一条不带条件 |
 | `assess.vagueWords` | 中英日的含糊词 | 结论中不许出现的词 |
-| `assess.triage.rounds`、`assess.dedup.rounds` | 1 | 检查不过时交回重做的次数 |
+| `assess.triage.rounds`、`assess.confirm.rounds`、`assess.dedup.rounds` | 1 | 检查不过时交回重做的次数 |
 | `knowledge.matchEntries`、`knowledge.matchTokens` | 8、3000 | 放进提示的知识条目上限 |
 
-模型与独立性：`assess.triage`(opus)、`assess.refute`(flash-high，`independence` 要求与取证不同)、`assess.dedup`(flash)。
+模型与独立性：`assess.triage`(opus)、`assess.confirm`(sonnet，8 轮)、`assess.refute`(flash-high，`independence` 要求与取证、确认都不同)、`assess.dedup`(flash)。
 
 ## 设计依据
 
 - **三种情况分别处理**：已取证的复用、能复现的不再证明存在、没法复现的只轻量推测，按已知信息决定花多少 token(44 号计划「分情况判断」)。
+- **每个问题只调查一次**：静态巡检的取证不写报告与评估，以前复用的条件要求这两项，结果一次也没复用上，同一个问题在采集取证、评估取证、证伪复核里被从零调查三遍(2026-10-08 评估取证占全天 token 的 58%)。现在已取证的只交给 `assess.confirm` 补报告与评估：证据包只放结论与原文锚点、不放分析过程，代码由程序按行号截取原文(改写过的锚点会让修复对不上行)；核对不过就判证据不足，不退回从零调查(`reports/AI 缺陷修复流水线 token 效率.md` 第 1 项)。
 - **证伪复核只用于高风险**：P2、P3 取证一次即定，复核的结论分歧才转人工；复核是盲审且模型不同，避免同一个模型的同一个盲点(旧 `pipeline/triage/steps/refute.py`、`prompts/claim_verifier.py`)。
 - **查重先用程序**：明显重复或明显不重复的不调模型；错误合并会吞掉真问题，所以拿不准与模型输出不合格时都按不同根因(旧 `pipeline/triage/steps/dedup.py`)。
 - **证据检查全由程序判定**：位置真实、反证追到入口、不成立指出来源、无含糊措辞，都是可以机器核对的；不另设模型评审(旧 `evaluation/rubrics/triage.json`、`scorers/code.py`)。位置补全只认唯一后缀、只去开头的 `./`(2ef30cc 修复)。

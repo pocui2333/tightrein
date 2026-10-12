@@ -19,6 +19,7 @@
 
 - `analysis`：先写。读了哪些代码、调用链怎么走、为什么得出这个判定。
 - `verdict`：四档之一。
+- `confidence`：`high` 表示读到了决定判定的那段代码路径，反证也追到了入口；做不到这两点就写 `low`。判不成立时只有 `high` 才算数，`low` 的会交给更强的模型重新取证。
 - `facts`：代码事实，每条 `location`(`文件路径:行号` 或 `文件路径:起-止`)与 `observation`(那里实际做了什么)。
 - `trigger`：触发条件；判不成立时为 null。
 - `counterEvidence`：反证检查，至少一条：`check` 查了什么，`entry` 追到的入口位置，`upstreamValidation`(`status` 为 `present` 时 `location` 写校验所在位置，`absent` 时为 null)，`result` 结论。

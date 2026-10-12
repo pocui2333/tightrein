@@ -51,7 +51,13 @@
 | `collect` | `sourceTimeout` | `"30m"` |
 | `collect.static.review` | `model` | `"opus-mid"` |
 | `collect.static.review` | `maxClaims` | `10` |
-| `collect.static.verify` | `model` | `"opus-mid"` |
+| `collect.static.verify` | `model` | `"sonnet"` |
+| `collect.static.verify` | `fallback` | `"opus-mid"` |
+| `collect.static.verify` | `turns` | `10` |
+| `collect.static.verify` | `escalateSeverities` | `["high"]` |
+| `collect.static.verify.deep` | `model` | `"opus-mid"` |
+| `collect.static.verify.deep` | `fallback` | `"sonnet"` |
+| `collect.static.verify.deep` | `turns` | `15` |
 | `collect.static.baseline` | `model` | `"opus-mid"` |
 | `collect.static.variant` | `model` | `"opus-mid"` |
 | `collect.dedup` | `normalize` | `[]` |
@@ -204,6 +210,10 @@
 | `assess` | `vagueWords` | `["可能", "大概", "也许", "似乎", "建议进一步排查", "probably", "perhaps", "maybe", "おそらく", "たぶん", "かもしれ"]` |
 | `assess.triage` | `model` | `"opus"` |
 | `assess.triage` | `rounds` | `1` |
+| `assess.confirm` | `model` | `"sonnet"` |
+| `assess.confirm` | `fallback` | `"opus-mid"` |
+| `assess.confirm` | `turns` | `8` |
+| `assess.confirm` | `rounds` | `1` |
 | `assess.refute` | `model` | `"flash-high"` |
 | `assess.refute` | `fallback` | `"opus-mid"` |
 | `assess.refute` | `turns` | `30` |
@@ -341,7 +351,7 @@
 
 ## independence
 
-`[["assess.refute", "assess.triage"], ["implement.review.deep", "implement.code"]]`
+<details><summary>3 项</summary><code>[["assess.refute", "assess.triage"], ["assess.refute", "assess.confirm"], ["implement.review.deep", "implement.code"]]</code></details>
 
 ## limits
 

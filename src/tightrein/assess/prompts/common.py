@@ -1,6 +1,6 @@
 """评估各调用点共用的部分：拼提示(prompts/<控制键>.md)、按调用点取参数、调用模型、累计量化数据。
 
-提示文字全在模板里；这里只给变量的值。输出格式(schema)放在评估的文件夹：取证与证伪复核共用
+提示文字全在模板里；这里只给变量的值。输出格式(schema)放在评估的文件夹：取证、确认与证伪复核共用
 `assess.triage.schema.json`(复核是盲审，输出与取证完全相同)，查重用 `assess.dedup.schema.json`。
 """
 
@@ -21,8 +21,8 @@ if TYPE_CHECKING:
     from tightrein.protocol.runtime import Runtime
 
 ASSESS_DIR = Path(__file__).resolve().parents[1]
-SCHEMAS = {"assess.triage": "assess.triage.schema.json", "assess.refute": "assess.triage.schema.json",
-           "assess.dedup": "assess.dedup.schema.json"}
+SCHEMAS = {"assess.triage": "assess.triage.schema.json", "assess.confirm": "assess.triage.schema.json",
+           "assess.refute": "assess.triage.schema.json", "assess.dedup": "assess.dedup.schema.json"}
 NONE = "无"
 
 

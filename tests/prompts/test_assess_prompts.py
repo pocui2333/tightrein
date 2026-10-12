@@ -14,7 +14,7 @@ def text(point: str) -> str:
     return (PROMPTS_DIR / f"{point}.md").read_text(encoding="utf-8")
 
 
-@pytest.mark.parametrize("point", ["assess.triage", "assess.refute", "assess.dedup"])
+@pytest.mark.parametrize("point", ["assess.triage", "assess.confirm", "assess.refute", "assess.dedup"])
 def test_the_templates_follow_the_template_rules(point):
     assert check_template(PROMPTS_DIR / f"{point}.md") == []
     assert "{{feedback}}" in text(point)  # 重做时把上一次没通过的逐项原因列在「需要处理的问题」下
@@ -23,7 +23,8 @@ def test_the_templates_follow_the_template_rules(point):
 SCORING_WORDS = ("分数", "得分", "打分", "评分标准", "score", "rubric")
 
 
-@pytest.mark.parametrize("point", ["assess.triage", "assess.refute", "assess.dedup", "implement.design",
+@pytest.mark.parametrize("point", ["assess.triage", "assess.confirm", "assess.refute", "assess.dedup",
+                                   "implement.design",
                                    "implement.design.frontend", "implement.code", "implement.code.continue"])
 def test_generators_see_criteria_as_items_without_any_scoring(point):
     """验收标准给生成者看的是条目文字，不出现评分、分数的说法(只有对错，没有分数可凑)。"""
@@ -39,6 +40,14 @@ def test_the_verifier_walks_the_four_steps_and_traces_to_the_entry():
     assert "{{severity_guide}}" in found and "{{title_limit}}" in found and "以项目说明为准" in found
     assert "不按类别套用" in found and "能绕开的降一级" in found
     assert "不写「现有测试全部通过」" in found  # 验收标准只写这个问题特有的
+
+
+def test_the_confirmer_reuses_the_evidence_instead_of_investigating_again():
+    found = text("assess.confirm")
+    assert "不再从头调查" in found and "按行号范围读" in found and "{{verification}}" in found
+    assert "不为保住原判定而找理由" in found and "不确定时选 `insufficient`" in found
+    assert "{{severity_guide}}" in found and "{{title_limit}}" in found and "{{case}}" not in found
+    assert "`analysis`" not in found
 
 
 def test_the_refuter_tries_to_refute_and_admits_what_it_cannot():

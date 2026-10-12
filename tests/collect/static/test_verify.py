@@ -70,11 +70,42 @@ def test_the_verifier_gives_the_claim_and_the_cut_code(static_runtime, fake_call
     runtime = static_runtime()
     caller = fake_caller({"collect.static.verify": make_verdict()})
     verify_one = verify.verifier(runtime, workdir=repos.repo, caller=caller, isolate=same)
-    found = verify_one(make("src/orders.py", 3), 7)
+    found = verify_one(replace(make("src/orders.py", 3), severity="medium"), 7)
     params = caller.calls[0]
     assert found.verdict == "confirmed" and params.round == 7 and params.workdir == repos.repo
-    assert "`src/orders.py:3` 存在以下问题(r1，严重度 high)" in params.prompt
+    assert "`src/orders.py:3` 存在以下问题(r1，严重度 medium)" in params.prompt
     assert "    3      rows = query(page * size)" in params.prompt and "delete_order" not in params.prompt
+    assert caller.points() == ["collect.static.verify"] and found.escalated is None and len(found.calls) == 1
+
+
+def test_claims_the_first_tier_is_unsure_about_go_to_the_second_tier(static_runtime, fake_caller, make_verdict,
+                                                                     repos):
+    runtime = static_runtime()
+    unsure = {**make_verdict("refuted"), "confidence": "low"}
+    caller = fake_caller({"collect.static.verify": unsure, "collect.static.verify.deep": make_verdict()})
+    verify_one = verify.verifier(runtime, workdir=repos.repo, caller=caller, isolate=same)
+    found = verify_one(replace(make("src/orders.py", 3), severity="medium"), 2)
+    assert caller.points() == ["collect.static.verify", "collect.static.verify.deep"]
+    assert found.verdict == "confirmed" and found.escalated == "初判不成立但把握不高" and len(found.calls) == 2
+    deep = caller.calls[1]
+    assert deep.round == 2 and "- `src/orders.py:3`：没有校验 page" in deep.prompt  # 初判的代码事实作线索
+    assert "refuted" not in deep.prompt.split("# 本次输入\n")[1] and "读了 list_orders" not in deep.prompt
+
+
+def test_the_escalation_rule():
+    def result(output, status=CallStatus.OK):
+        return CallResult(status, "claude", "sonnet", output=output)
+
+    medium, high = replace(make("a.py", 1), severity="medium"), make("a.py", 1)
+    sure = {"verdict": "refuted", "confidence": "high"}
+    levels = frozenset({"high"})
+    assert verify.escalation(medium, result(sure), levels) is None
+    assert verify.escalation(medium, result({"verdict": "confirmed", "confidence": "low"}), levels) is None
+    assert verify.escalation(high, result({"verdict": "confirmed", "confidence": "high"}), levels) == "主张严重度为 high"
+    assert verify.escalation(medium, result({"verdict": "insufficient", "confidence": "high"}), levels) == "初判证据不足"
+    assert verify.escalation(medium, result(None, CallStatus.SCHEMA_INVALID), levels) == "初判没有完成(schema_invalid)"
+    for status in (CallStatus.QUOTA_EXHAUSTED, CallStatus.BUDGET_LIMIT, CallStatus.BOUNDARY):
+        assert verify.escalation(high, result(None, status), levels) is None  # 照原样处理
 
 
 def test_each_verification_calls_the_model_with_its_own_threads_connection(static_runtime, fake_caller, make_verdict,
@@ -96,7 +127,7 @@ def test_each_verification_calls_the_model_with_its_own_threads_connection(stati
     def answer(params):
         return make_verdict()
 
-    caller = fake_caller({"collect.static.verify": answer})
+    caller = fake_caller({"collect.static.verify": answer, "collect.static.verify.deep": answer})
 
     def recording(params, context):
         seen.append((threading.get_ident(), context.thread))

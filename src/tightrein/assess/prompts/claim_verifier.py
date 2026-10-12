@@ -1,7 +1,8 @@
-"""取证(assess.triage)与证伪复核(assess.refute)的变量。
+"""取证(assess.triage)、已取证问题的确认(assess.confirm)与证伪复核(assess.refute)的变量。
 
-复核是盲审：拿到与取证完全相同的主张、事实、代码笔记与知识，看不到第一次的判定与输出；它的模型按调用点
-assess.refute 的路由，加载配置时检查与 assess.triage 不同(settings 的 independence)。
+确认另拿采集时的取证结论与程序截取的当前代码(verification)，不再从零调查。
+复核是盲审：拿到与取证完全相同的主张、事实、代码笔记与知识，看不到第一次的判定与输出(也看不到采集时的取证)；
+它的模型按调用点 assess.refute 的路由，加载配置时检查与 assess.triage、assess.confirm 不同(settings 的 independence)。
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from tightrein.assess.claims import Claim
 from tightrein.assess.prompts.common import feedback_text, text_or_none
 
 TRIAGE = "assess.triage"
+CONFIRM = "assess.confirm"
 REFUTE = "assess.refute"
 
 
@@ -25,6 +27,7 @@ class Inputs:
     knowledge: str
     severity_guide: str | None
     title_limit: int
+    verification: str | None = None  # 已取证的问题：采集时的取证与当前代码(reuse.render)，只交给确认
 
 
 def variables(point: str, inputs: Inputs, feedback: list[str]) -> dict[str, str]:
@@ -38,4 +41,6 @@ def variables(point: str, inputs: Inputs, feedback: list[str]) -> dict[str, str]
     }
     if point == TRIAGE:
         found["case"] = inputs.case
+    if point == CONFIRM:
+        found["verification"] = text_or_none(inputs.verification)
     return found

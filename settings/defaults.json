@@ -99,7 +99,17 @@
       "maxClaims": 10
     },
     "collect.static.verify": {
-      "model": "opus-mid"
+      "model": "sonnet",
+      "fallback": "opus-mid",
+      "turns": 10,
+      "escalateSeverities": [
+        "high"
+      ]
+    },
+    "collect.static.verify.deep": {
+      "model": "opus-mid",
+      "fallback": "sonnet",
+      "turns": 15
     },
     "collect.static.baseline": {
       "model": "opus-mid"
@@ -445,6 +455,12 @@
       "model": "opus",
       "rounds": 1
     },
+    "assess.confirm": {
+      "model": "sonnet",
+      "fallback": "opus-mid",
+      "turns": 8,
+      "rounds": 1
+    },
     "assess.refute": {
       "model": "flash-high",
       "fallback": "opus-mid",
@@ -706,6 +722,10 @@
     [
       "assess.refute",
       "assess.triage"
+    ],
+    [
+      "assess.refute",
+      "assess.confirm"
     ],
     [
       "implement.review.deep",

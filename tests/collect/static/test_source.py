@@ -31,11 +31,14 @@ def test_the_first_run_is_a_baseline_and_confirmed_claims_become_signals(static_
                                                make_claim(line=8, rule="r-low", severity="low", layer="baseline")],
                                     "excluded": []},
         "collect.static.verify": make_verdict(),
+        "collect.static.verify.deep": make_verdict(),
     })
     result = source.collect(runtime, caller=caller)
     head = repos.git(repos.repo, "rev-parse", "HEAD").strip()
+    # 高危主张初判之后升级到第二档
     assert result.status is SourceStatus.DONE and caller.points() == ["collect.static.baseline",
-                                                                      "collect.static.verify"]
+                                                                      "collect.static.verify",
+                                                                      "collect.static.verify.deep"]
     assert [(item.location, item.symbol, item.verified, item.deterministic) for item in result.signals] == [
         ("src/orders.py:3", "list_orders", True, True)]
     assert result.signals[0].evidence["introducedBy"]["commit"] == head
@@ -43,7 +46,8 @@ def test_the_first_run_is_a_baseline_and_confirmed_claims_become_signals(static_
     assert set(result.state[source.REVIEWED_KEY]) == {"README.md", "src/orders.py", "tests/test_orders.py"}
     assert [(item["claim"]["line"], item["reason"]) for item in result.state[source.PENDING_KEY]] == [(8, "low")]
     assert result.coverage == ["README.md", "src/orders.py", "tests/test_orders.py"] and result.read == 3
-    assert result.metrics.produced["signals"] == 1 and result.metrics.calls == 2
+    assert result.metrics.produced["signals"] == 1 and result.metrics.calls == 3
+    assert result.metrics.produced["escalatedClaims"] == 1
     assert any("第一次巡检" in note for note in result.notes)
     # 审查期间去掉的写权限已恢复，标记已删
     assert os.access(worktree_of(runtime) / "src" / "orders.py", os.W_OK)
@@ -69,13 +73,15 @@ def test_increments_review_only_code_changes_with_the_prepared_function(static_r
                                              make_claim(file="src/none.py", rule="r-x", severity="low")],
                                   "excluded": []},
         "collect.static.verify": make_verdict("refuted"),
+        "collect.static.verify.deep": make_verdict("refuted"),
     })
     result = source.collect(runtime, caller=caller)
     review = caller.calls[0]
     assert review.point == "collect.static.review" and "+    size = 50" in review.prompt
     assert "    1  def list_orders(page):" in review.prompt and "## 主张条数上限\n\n2" in review.prompt
-    # 按严重度只留前 2 条：高、中；refuted 的不产出信号
-    assert [params.point for params in caller.calls] == ["collect.static.review"] + ["collect.static.verify"] * 2
+    # 按严重度只留前 2 条：高、中；高的升级到第二档，中的初判有把握地判不成立即定；refuted 的不产出信号
+    assert [params.point for params in caller.calls] == ["collect.static.review", "collect.static.verify",
+                                                         "collect.static.verify.deep", "collect.static.verify"]
     assert result.signals == [] and result.metrics.produced["refutedClaims"] == 2
     assert any("截掉 2 条" in note for note in result.notes)
     assert result.state[source.STATE_KEY]["level"] == "incremental" and result.coverage == ["src/orders.py"]

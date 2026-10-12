@@ -22,7 +22,7 @@
 4. 记 git 状态与工作树哈希，去掉 worktree 的写权限；
 5. 审查：增量与全量由 `context.py` 准备 diff 与改动所在的函数，交给 `review.py`(collect.static.review)；只改文档、测试、配置、锁文件的跳过；内容哈希已审过的跳过(state 表 `collect.static.reviewed`)；基线由 `baseline.py` 分批(collect.static.baseline)；全量与基线另按知识库的缺陷模式做变体扫描(collect.static.variant)；
 6. 筛主张(`claims.py`)：没有位置或触发条件、与未关闭问题重复、命中抑制规则的丢掉；增量审查最多 N 条，按严重度取前 N；
-7. 取证(`verify.py`，collect.static.verify)：先取证上次遗留的，再按严重度取证本次高、中级的，合计不超过上限；不同文件并行；低级与超出上限的留在待取证清单(state 表 `collect.static.pending`)；
+7. 取证(`verify.py`)：先取证上次遗留的，再按严重度取证本次高、中级的，合计不超过上限；不同文件并行；低级与超出上限的留在待取证清单(state 表 `collect.static.pending`)。分两档：便宜的模型先初判(collect.static.verify)，没完成、证据不足、判不成立但把握不高(`confidence` 为 low)、主张严重度在 `escalateSeverities` 中的，再交给强模型(collect.static.verify.deep，只多拿初判的代码事实作线索，看不到初判的判定)；
 8. 恢复写权限，再比一次 git 状态，有变化整次作废；
 9. 成立的主张转信号(`mapping.py`)。
 
@@ -40,7 +40,7 @@
 
 ## 配置
 
-`settings/defaults.json` 的 `controls."collect.static"`：`sourceTimeout`(整个来源的时限，与模型调用的 `timeout` 分开)、`semgrep`(`configs`；整体时限取 `limits.timeouts.semgrep`)、`extension`、`nonCode`(不交给模型审查的路径模式，另加项目的测试路径模式)、`maxVerify`(每次取证上限，含遗留的)、`pendingLimit`、`duplicateLines`(与未关闭问题算重复的行距)、`contextLines`、`functionLines`、`changesChars`(交给审查的改动文本上限)、`knowledge`(`entries`、`tokens`)、`baseline`(`maxClaims`、`batchFiles`、`batchLines`、`exclude`)。`controls."collect.static.review".maxClaims` 为增量审查的主张条数上限。四个调用点的模型与上限在 `controls."collect.static.review|verify|baseline|variant"`。
+`settings/defaults.json` 的 `controls."collect.static"`：`sourceTimeout`(整个来源的时限，与模型调用的 `timeout` 分开)、`semgrep`(`configs`；整体时限取 `limits.timeouts.semgrep`)、`extension`、`nonCode`(不交给模型审查的路径模式，另加项目的测试路径模式)、`maxVerify`(每次取证上限，含遗留的)、`pendingLimit`、`duplicateLines`(与未关闭问题算重复的行距)、`contextLines`、`functionLines`、`changesChars`(交给审查的改动文本上限)、`knowledge`(`entries`、`tokens`)、`baseline`(`maxClaims`、`batchFiles`、`batchLines`、`exclude`)。`controls."collect.static.review".maxClaims` 为增量审查的主张条数上限。五个调用点的模型与上限在 `controls."collect.static.review|verify|verify.deep|baseline|variant"`；`controls."collect.static.verify".escalateSeverities`(缺省 `["high"]`)为直接升级到第二档的主张严重度。
 
 外部 skill：审查用 differential-review、sharp-edges，基线用 sharp-edges，变体扫描用 variant-analysis；调用前逐文件核对 `vendor/lock.json` 的哈希，不符即整次失败。
 
@@ -52,6 +52,7 @@
 | 取证前程序筛主张(无位置、无触发条件、重复、命中抑制) | 每条主张单独一次取证，挡掉一条就省一次调用 | 44 号计划 1.6 |
 | 只改文档、测试、配置、锁文件的不审；内容哈希审过的不审 | 不审非代码改动，不重复审同一份内容 | 44 号计划 1.6 |
 | 取证按文件并发 | 不同文件的取证互不依赖 | 44 号计划 1.6 |
+| 取证两档：便宜模型先判，拿不准或高危的才升级；便宜模型只在有把握时才能单独判不成立 | 用切好的代码判定，小模型就够用，强模型只花在难的上；单边过滤宁可多花一次也不漏真问题 | `reports/AI 缺陷修复流水线 token 效率.md` 第 2 项(RouteLLM、ZeroFalse、Semgrep Assistant) |
 | 增量最多 N 条，按严重度取前 N | 迫使只报最重要的 | 44 号计划 1.6 |
 | 增量范围只含 HEAD 中仍存在的改动文件；base 与 HEAD 按前缀比较 | 删除的文件不用审；记下的 commit 可能是缩写 | 旧 scope.py |
 | 起点只在审查成功时前进 | 失败的运行没审到的改动下次还要审(审过的按内容哈希跳过) | 旧 run_probe.base_commit |

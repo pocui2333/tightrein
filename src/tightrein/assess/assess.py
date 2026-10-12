@@ -32,6 +32,7 @@ from tightrein.assess import (
     persist,
     rating,
     refute,
+    reuse,
     select,
     tradeoff,
 )
@@ -41,7 +42,7 @@ from tightrein.assess.checks import Snapshot
 from tightrein.assess.disposition import Decision, Destination
 from tightrein.assess.evidence import Evidence
 from tightrein.assess.issue import create, github
-from tightrein.assess.prompts.claim_verifier import REFUTE, TRIAGE, Inputs
+from tightrein.assess.prompts.claim_verifier import CONFIRM, REFUTE, TRIAGE, Inputs
 from tightrein.assess.prompts.common import Tally
 from tightrein.assess.rating import Rating
 from tightrein.protocol import boundaries
@@ -324,11 +325,11 @@ def _examine(runtime: Runtime, problem: Problem, git: Git, commit: str) -> tuple
 
 def _judge(runtime: Runtime, work: Work, snapshot: Snapshot, commit: str, git: Git) -> None:
     section = runtime.settings.section("assess")
-    retries = int(runtime.settings.control(TRIAGE, "rounds"))
     words = list(section["vagueWords"])
-    prepared = cases.prepared(cases.latest(work.found)) if work.case is Case.VERIFIED else None
+    point, prepared = _first_point(work, snapshot)
+    retries = int(runtime.settings.control(point, "rounds"))
     case = Case.FULL if work.case is Case.VERIFIED else work.case
-    work.evidence = evidence.gather(runtime, TRIAGE, work.problem.id, work.inputs, snapshot, case=case,
+    work.evidence = evidence.gather(runtime, point, work.problem.id, work.inputs, snapshot, case=case,
                                     retries=retries, vague_words=words, prepared=prepared)
     _count(work, work.evidence)
     sizes = section["sizes"]
@@ -366,6 +367,20 @@ def _judge(runtime: Runtime, work: Work, snapshot: Snapshot, commit: str, git: G
         elif hit:
             work.notes.append(f"取证给出的取舍 {hit} 不在给出的知识中或不是有效的取舍，未采纳")
     _save_notes(runtime, work, output, commit, snapshot.root)
+
+
+def _first_point(work: Work, snapshot: Snapshot) -> tuple[str, dict[str, Any] | None]:
+    """已取证的不再从零调查：输出已带报告与评估的直接复用；只有取证结论的交给确认，带上证据包(reuse.render)。"""
+    if work.case is not Case.VERIFIED:
+        return TRIAGE, None
+    latest = cases.latest(work.found)
+    found = cases.prepared(latest)
+    if found is None:
+        return TRIAGE, None
+    if cases.complete(found):
+        return TRIAGE, dict(found)
+    work.inputs = replace(work.inputs, verification=reuse.render(found, snapshot.root, latest.commit))
+    return CONFIRM, None
 
 
 def _decide(runtime: Runtime, work: Work) -> None:
@@ -532,7 +547,7 @@ def _write_handoff(runtime: Runtime, subject: str, outcome: AssessOutcome, facts
         summary=outcome.reason or f"{outcome.verdict}，去向 {outcome.destination}", facts=facts,
         metrics=tally.metrics(duration_ms), notes="\n".join(work.notes) if work and work.notes else None,
         created_at=format_iso(runtime.clock.now()),
-        versions=versions(runtime.tool.root, runtime.settings.hash, prompt_hash=tally.prompt_hashes.get(TRIAGE),
+        versions=versions(runtime.tool.root, runtime.settings.hash, prompt_hash=tally.prompt_hashes.get(TRIAGE) or tally.prompt_hashes.get(CONFIRM),
                           tool=None, tool_version=None, model=model)))
 
 

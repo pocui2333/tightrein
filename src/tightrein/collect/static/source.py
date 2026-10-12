@@ -294,7 +294,8 @@ def _result(runtime: Runtime, section: Mapping[str, Any], found: Scope, git: Git
                       cost_usd=sum(item.cost_usd or 0.0 for item in calls) if calls else None,
                       produced={"signals": len(signals), "toolFindings": len(tools.findings),
                                 "claims": len(reviewed.claims), "excludedClaims": reviewed.excluded,
-                                "verifiedClaims": len(verified.done), "refutedClaims": verdicts.count(verify.REFUTED),
+                                "verifiedClaims": len(verified.done), "escalatedClaims": verified.escalated,
+                                "refutedClaims": verdicts.count(verify.REFUTED),
                                 "insufficientClaims": verdicts.count(verify.INSUFFICIENT),
                                 "ruleHits": len(tools.library), "pendingClaims": len(pending)})
     status = SourceStatus.PARTIAL if problems else SourceStatus.DONE
