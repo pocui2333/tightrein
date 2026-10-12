@@ -59,6 +59,9 @@ SENSITIVE_TASKS = frozenset({"security", "data"})
 SENSITIVE_IMPACTS = frozenset({"authorization", "data-ownership", "data-correctness", "credential-leak"})
 REQUIRED = {"problem": ("problem", "cause", "acceptance"), USER: ("problem",)}
 RELATIVE_DATES = ("今天", "昨天", "明天", "前天", "today", "yesterday", "tomorrow", "今日", "昨日", "明日")
+# 相对日期只查给人读的叙述：引用(代码事实)与历史在描述代码行为或带绝对时间，行内代码里的是标识符(如变量 today)
+QUOTED_SECTIONS = frozenset({"references", "history"})
+INLINE_CODE = re.compile(r"`[^`\n]*`")
 NOT_WORD = re.compile(r"[^a-z0-9]+")
 PARAMETER = re.compile(r"^[{:<].*")
 
@@ -193,14 +196,15 @@ def low_risk(finding: Finding) -> bool:
 
 
 def check_body(text: str, origin: str, snapshot: Snapshot) -> list[str]:
-    """建好后的检查：必需小节、正文中的代码位置真实、日期为绝对日期。"""
+    """建好后的检查：必需小节、正文中的代码位置真实、叙述中的日期为绝对日期。"""
     sections = body.split(text)
     reasons = [f"缺少小节 {body.HEADINGS[key]['zh']}" for key in REQUIRED[origin] if not sections.get(key)]
     for match in IN_TEXT.finditer(text):
         problem = snapshot.problem(match.group(0))
         if problem is not None:
             reasons.append(f"位置 {match.group(0)}：{problem}")
-    reasons += [f"用了相对日期「{word}」" for word in RELATIVE_DATES if word in text]
+    prose = INLINE_CODE.sub("", "\n".join(value for key, value in sections.items() if key not in QUOTED_SECTIONS))
+    reasons += [f"用了相对日期「{word}」" for word in RELATIVE_DATES if word in prose]
     return reasons
 
 

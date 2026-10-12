@@ -62,6 +62,7 @@ def test_a_document_that_fails_the_checks_is_kept_and_the_handoff_fails(runtime,
     assert any("相对日期「昨天」" in item for item in made.failures)
     assert any("services/orders.py:99" in item for item in made.failures)
     assert files.body_path(layout, "0001").is_file()  # 文件保留
+
     create.write_handoff(runtime, found, made, None)
     handoff = read_json(layout.issue_dir("0001") / "22-assess.issue-handoff.json")
     assert handoff["status"] == "failed" and handoff["facts"]["failures"]
@@ -173,3 +174,12 @@ def test_a_failed_split_leaves_no_new_issue_files(runtime, repo, finding, layout
         create.split_back(runtime, "0001", ["先改查询", "再改导出"])
     assert not files.record_path(layout, "0002").exists() and not files.body_path(layout, "0003").exists()
     assert issues.get(runtime.conn, "0002") is None and issues.get(runtime.conn, "0001").status == "todo"
+
+
+def test_relative_dates_are_checked_only_in_the_prose(runtime, repo, finding, good_output):
+    """代码里的标识符(`today`)与「引用」中描述代码行为的文字不算相对日期。"""
+    output = good_output()
+    output["report"]["summary"] = "按 `today` 取当天的记录时没有按用户过滤。"
+    output["facts"] = [{"location": "services/orders.py:3", "observation": "删掉今天 id 最大的一条记录"}]
+    made = write(runtime, repo, finding(output=output))
+    assert not any("相对日期" in item for item in made.failures)

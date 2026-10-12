@@ -86,6 +86,9 @@ def test_counter_check_traces_an_entry_and_the_upstream_validation(
     quoted = good_output(counterEvidence=[{"check": "c", "entry": "GET /orders/{id}", "result": "r",
                                            "upstreamValidation": {"status": "absent", "location": None}}])
     assert run(quoted, repo) == []  # 原样引用主张中的入口
+    annotated = good_output(counterEvidence=[{"check": "c", "entry": "routes/orders.py:4（订单详情的路由）", "result": "r",
+                                              "upstreamValidation": {"status": "absent", "location": None}}])
+    assert run(annotated, repo) == []  # 位置后面带说明：只核对开头的位置
     unknown = good_output(counterEvidence=[{"check": "c", "entry": "somewhere", "result": "r",
                                             "upstreamValidation": {"status": "present", "location": None}}])
     reasons = run(unknown, repo)

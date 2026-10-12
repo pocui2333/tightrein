@@ -24,6 +24,7 @@ CONFIRMING = frozenset({"confirmed", "conditional"})
 # 文字中引用的 `文件:行号`：文件名带扩展名，前面不是路径字符
 IN_TEXT = re.compile(r"(?<![\w/.-])([\w./-]+\.[A-Za-z0-9]+):(\d+)(?:-(\d+))?")
 WHOLE = re.compile(r"([^:\s][^:]*):(\d+)(?:-(\d+))?")
+LEADING = re.compile(r"([^:\s（(][^:\s（(]*:\d+(?:-\d+)?)`?(?:\s|（|\(|$)")
 SKIPPED_DIRECTORIES = frozenset({".git", "node_modules"})
 FILE_KEY = "file"
 LINE_KEY = "line"
@@ -187,13 +188,21 @@ def counter_check(output: Mapping[str, Any], claim: Mapping[str, Any], snapshot:
     for number, item in enumerate(items, start=1):
         entry = item.get("entry")
         if entry not in entries:
-            problem = snapshot.problem(entry)
+            problem = snapshot.problem(_leading_location(entry))
             if problem is not None:
                 reasons.append(f"[counter-check] 第 {number} 条的入口既不是主张中的入口，也不是真实存在的位置：{problem}")
         upstream = item.get("upstreamValidation") or {}
         if upstream.get("status") == "present" and upstream.get("location") is None:
             reasons.append(f"[counter-check] 第 {number} 条写明上游有校验，但没有给出校验的位置")
     return reasons
+
+
+def _leading_location(entry: Any) -> Any:
+    """入口开头的「文件:行号」：后面跟着括号或空格写的说明(`a.py:30（某某调用）`)时只取位置，说明不算错。"""
+    if not isinstance(entry, str):
+        return entry
+    found = LEADING.match(entry.strip().strip("`"))
+    return found.group(1) if found is not None else entry
 
 
 def vague_wording(output: Mapping[str, Any], words: Sequence[str]) -> list[str]:
