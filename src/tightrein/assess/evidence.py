@@ -4,6 +4,8 @@
 执行返回非 ok(格式不符、超限、失败)也算一次没通过；重做后仍不过就判证据不足，不硬采纳。
 已取证的情况先检查采集时的输出，通过就直接用，不调用模型。
 能复现与轻量推测不要求反证追到入口(前者已确定存在，后者只推测触发条件)。
+轻量推测只看报错指向的那段代码，按取证调用点的 modelWhen.light 换便宜的模型，轮数收紧到 lightTurns：
+以前它与完整取证同一个模型、同样的轮数，一次就读掉几十万 token。
 """
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from tightrein.agents.params import LIGHT
 from tightrein.assess import checks
 from tightrein.assess.cases import Case
 from tightrein.assess.checks import Snapshot
@@ -62,9 +65,10 @@ def gather(runtime: Runtime, point: str, subject: str, inputs: Inputs, snapshot:
             return Evidence(point, value, passed=True, reused=True)
     evidence = Evidence(point)
     feedback = list(extra_feedback)
+    conditions, turns = _light(runtime, point, case)
     for attempt in range(1, retries + 2):
         asked = ask(runtime, point, claim_verifier.variables(point, inputs, feedback), subject=subject,
-                    workdir=snapshot.root, round=attempt)
+                    workdir=snapshot.root, round=attempt, conditions=conditions, turns=turns)
         evidence.asked.append(asked)
         if not asked.ok or asked.output is None:
             evidence.failures = [f"上一次{asked.failure}"]
@@ -77,3 +81,10 @@ def gather(runtime: Runtime, point: str, subject: str, inputs: Inputs, snapshot:
             break
         feedback = [*extra_feedback, *evidence.failures]
     return evidence
+
+
+def _light(runtime: Runtime, point: str, case: Case) -> tuple[tuple[str, ...], int | None]:
+    """轻量推测的模型条件与轮数上限；其余情况不变。"""
+    if case is not Case.LIGHT or point != claim_verifier.TRIAGE:
+        return (), None
+    return (LIGHT,), int(runtime.settings.control(point, "lightTurns"))

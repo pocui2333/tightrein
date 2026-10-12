@@ -294,7 +294,14 @@
     "arg_key": "配置键，如 language 或 controls.implement.code.turns；缺省输出全部",
     "arg_workspace": "要删除的工作区名",
     "arg_text": "需求描述",
-    "problem_status": "只列这个状态的问题"
+    "problem_status": "只列这个状态的问题",
+    "problem_retriage": "请求重新评估(去掉转人工标记)，下一次运行评估",
+    "retriage_note": "补充的信息；带了就重新取证，不复用采集时的取证",
+    "problem_override": "改判：不调用模型，按给出的判定定去向",
+    "override_verdict": "判定",
+    "override_reason": "改判的理由",
+    "override_severity": "严重度；缺省沿用上一次评估的",
+    "override_destination": "去向；缺省按判定定(成立写成 Issue、不成立关闭并抑制、证据不足转人工)"
   },
   "cli": {
     "close_failed": "收尾本进程的运行失败({kind})：{message}；下次运行开始时由启动恢复兜底",
@@ -401,6 +408,10 @@
     "trial_failed": "不通过",
     "trial_skipped": "跳过",
     "uninstall_timer": "卸下定时器 {path}",
-    "unmute_action": "取消抑制 {subject}，回到待评估"
+    "unmute_action": "取消抑制 {subject}，回到待评估",
+    "retriage_action": "请求重新评估 {subject}，下一次运行评估",
+    "retriage_requested": "{subject} 已登记重新评估，下一次运行评估",
+    "override_action": "把 {subject} 改判为 {verdict}",
+    "override_done": "{subject} 已改判为 {verdict}，去向 {destination}"
   }
 }

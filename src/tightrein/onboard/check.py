@@ -4,7 +4,8 @@
   退出码非 0 但标准输出是合法响应时以响应为准；标准输出不是单个 JSON 对象为协议错误；按方法文档旁的
   `<文档名>.schema.json` 校验，列出每条错误的路径；
 - 启用：调用该模块的取数程序(`collect.<模块>.source.collect`)一次，结果不交给去重、读取位置不前进；
-  会调用模型的模块(MODEL_MODULES)与没有取数程序的模块记为跳过，不算不通过；
+  会调用模型的模块(MODEL_MODULES)与没有取数程序的模块记为跳过，不算不通过；静态巡检另确认 Semgrep 找得到(配了规则集
+  或工作区有规则库时)，找不到判不通过：缺了它，每次巡检都只剩模型审查，确定性检测这一层整个是空的；
 - 基线：只读 worktree 切到主分支，把 settings.json 中的检查命令全量跑一次，确认基线可用(接入期只做只读的事：
   不采集入库、不改代码、不提 PR)；
 - 结果存 store 的 state 表(`onboard.check`，带 setup.json 的哈希)，`project ready` 据此判断；setup.md 据此渲染。
@@ -16,6 +17,7 @@ import hashlib
 import importlib
 import json
 import shlex
+import shutil
 import sqlite3
 import sys
 import tempfile
@@ -125,7 +127,7 @@ def trial_module(runtime: Runtime, module: ModuleSetup) -> Trial:
 def trial_program(runtime: Runtime, module: ModuleSetup) -> Trial:
     """启用的模块：调用它的取数程序一次。"""
     if module.key in MODEL_MODULES:
-        return Trial(module.key, SKIPPED, "取数即要调用模型，试跑不做")
+        return _static_tools(runtime, module)
     stage, _, name = module.key.partition(".")
     if stage != "collect":
         return Trial(module.key, SKIPPED, "没有可单独试跑的取数程序，在第一次运行时检查")
@@ -140,6 +142,22 @@ def trial_program(runtime: Runtime, module: ModuleSetup) -> Trial:
     if status == "skipped":
         return Trial(module.key, SKIPPED, result.reason or "")
     return Trial(module.key, FAILED, result.reason or status)
+
+
+def _static_tools(runtime: Runtime, module: ModuleSetup) -> Trial:
+    """静态巡检：取数即要调用模型，试跑不做；只确认要用的 Semgrep 找得到。"""
+    from tightrein.collect.static.source import RULES_DIR
+    from tightrein.collect.static.tools import semgrep
+
+    configs = runtime.settings.section("collect.static")["semgrep"]["configs"]
+    library = runtime.workspace.root / RULES_DIR
+    if not configs and not (library.is_dir() and any(library.glob("*.yaml"))):
+        return Trial(module.key, SKIPPED, "取数即要调用模型，试跑不做；没有配置 Semgrep 规则集")
+    command = semgrep.resolve_command(runtime.settings.get("tools.semgrep.path"), runtime.tool.root)
+    if shutil.which(command, path=runtime.environ.get("PATH")) is None:
+        return Trial(module.key, FAILED, f"找不到 Semgrep({command})：安装后再试(如 brew install semgrep)，"
+                                         "或在 tools.semgrep.path 写明路径")
+    return Trial(module.key, SKIPPED, "取数即要调用模型，试跑不做；Semgrep 找得到")
 
 
 def trial_script(runtime: Runtime, module: ModuleSetup) -> Trial:

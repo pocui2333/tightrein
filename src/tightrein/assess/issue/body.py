@@ -4,8 +4,9 @@
   没有内容的小节不写(不再写「—」)，每个实施角色少读一些；
 - 不再加三条固定的通用验收项(复现测试先败后过、现有测试全部通过、其余行为不变)：实施的通用交付检查已有。只留
   这个 Issue 真正的要求：取证给的验收标准，其后是按来源能由采集复查的条件；
-- 观察类来源的条件(部署后的观察期内不再出现某指纹的问题)只能在部署后确认，是验收阶段的标准(`post_deploy`)：
-  实施的方案不对应它、审查不判断它，由发布的验收按关联问题的出现确认(44 号计划 6「验收：只做实施阶段做不到的」)；
+- 按来源生成、由采集复查的条件(观察期内不再出现某指纹的问题、静态巡检不再命中、API 模糊测试通过、重新取证不成立)
+  在修复分支上都核对不了(要重跑采集或等线上)，是验收阶段的标准(`post_deploy`)：实施的方案不对应它、审查不判断它，
+  由发布的验收按关联问题合并部署后有没有再出现确认(44 号计划 6「验收：只做实施阶段做不到的」)；
 - 取证给出的「明确不做」写进范围，「必须保持不变」写进注意事项；三类需用户定夺的标记(根因在设计、要动数据结构、
   改公共契约)带理由与位置单独标出；
 - 代码位置一律写成反引号中的 `路径:行号`，GitHub 镜像据此换成取证 commit 的永久链接；
@@ -86,9 +87,19 @@ _HEADING = re.compile(r"^(#{1,6}) +(.+?)\s*#*\s*$")
 _ANY_HEADING = re.compile(r"^#{1,6} +(.+?)\s*$", re.MULTILINE)
 _ALIASES = {title: key for key, titles in HEADINGS.items() for title in titles.values()}
 _CHECKBOX = re.compile(r"^\[[ xX]\]\s*")
-POST_DEPLOY_KEYS = ("accept.observed",)  # 只能在部署后确认的验收条件(各语言的原文都认)
-_POST_DEPLOY = [re.compile("^" + re.escape(template).replace(re.escape("{fingerprint}"), "(?P<fingerprint>.+)") + "$")
-                for key in POST_DEPLOY_KEYS for template in TEXTS[key].values()]
+# 只能在部署后确认的验收条件(按来源生成、由采集复查的；各语言的原文都认)
+POST_DEPLOY_KEYS = ("accept.observed", "accept.static", "accept.apiFuzz", "accept.refuted")
+_PLACEHOLDER = re.compile(r"\{(\w+)\}")
+
+
+def _template_pattern(template: str) -> re.Pattern[str]:
+    """模板原文 → 正则：占位符换成同名的组，其余照字面匹配。"""
+    parts = _PLACEHOLDER.split(template)
+    return re.compile("^" + "".join(re.escape(part) if index % 2 == 0 else f"(?P<{part}>.+)"
+                                    for index, part in enumerate(parts)) + "$")
+
+
+_POST_DEPLOY = [_template_pattern(template) for key in POST_DEPLOY_KEYS for template in TEXTS[key].values()]
 
 
 @dataclass(frozen=True)
@@ -212,15 +223,19 @@ def acceptance_items(body: str) -> list[str]:
 
 
 def post_deploy(item: str) -> bool:
-    """这条验收标准是不是只能在部署后确认(观察类来源的「观察期内不再出现」)：属于验收阶段，不在实施中对应与判断。"""
-    return post_deploy_fingerprint(item) is not None
+    """这条验收标准是不是只能在部署后确认(按来源生成、由采集复查的)：属于验收阶段，不在实施中对应与判断。"""
+    return _post_deploy_match(item) is not None
 
 
 def post_deploy_fingerprint(item: str) -> str | None:
-    """部署后才能确认的验收标准所指的问题指纹；不是这类标准时为 None。"""
+    """部署后才能确认的验收标准所指的问题指纹；不是这类标准、或标准里不带指纹(静态巡检等)时为 None。"""
+    found = _post_deploy_match(item)
+    return found.groupdict().get("fingerprint") if found is not None else None
+
+
+def _post_deploy_match(item: str) -> re.Match[str] | None:
     text_ = _CHECKBOX.sub("", item.strip())
-    found = next((match for pattern in _POST_DEPLOY if (match := pattern.match(text_)) is not None), None)
-    return found.group("fingerprint") if found is not None else None
+    return next((match for pattern in _POST_DEPLOY if (match := pattern.match(text_)) is not None), None)
 
 
 def post_deploy_items(body: str) -> list[str]:

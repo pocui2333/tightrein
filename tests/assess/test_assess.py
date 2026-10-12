@@ -91,6 +91,28 @@ def test_the_refuter_of_a_verified_problem_does_not_see_the_collected_evidence(
     assert "采集时的取证" not in agent.calls[1].prompt
 
 
+def test_a_retriage_without_a_note_still_reuses_the_collected_verification(
+        runtime, make_problem, agent, readonly, outputs):
+    make_problem(source="collect.static", check_type="static", flags={"verified": True, "deterministic": True},
+                 evidence={"verification": collected(outputs)}, extra={"assess": {"manual": True, "attempt": 1}})
+    assert assessing.assess_pending(runtime) == []  # 转人工的不再自动评估
+    assessing.request_retriage(runtime, "P-0001")
+    agent.queue(CONFIRM, outputs.confirmed())
+    outcomes = assessing.assess_pending(runtime)
+    assert [item.problem for item in outcomes] == ["P-0001"] and agent.points() == [CONFIRM]
+    make_problem("P-0002", status="closed", location="routes/orders.py:4")
+    with pytest.raises(ValueError):
+        assessing.request_retriage(runtime, "P-0002")
+
+
+def test_a_light_case_uses_the_cheaper_model_with_fewer_turns(runtime, make_problem, agent, readonly, outputs):
+    make_problem()
+    agent.queue(TRIAGE, outputs.confirmed())
+    assessing.assess(runtime, "P-0001")
+    params = agent.calls[0]
+    assert params.model.alias == "sonnet" and params.limits.turns == 10
+
+
 def test_a_risky_issue_waits_for_approval(runtime, make_problem, agent, readonly, outputs, layout):
     make_problem()
     output = outputs.confirmed()
@@ -230,7 +252,7 @@ def test_retriage_with_a_note_and_a_user_override(runtime, make_problem, agent, 
     assessing.assess(runtime, "P-0001")
     outcome = assessing.retriage(runtime, "P-0001", "只在月底出现")
     assert "只在月底出现(用户提供)" in agent.calls[1].prompt
-    assert "full" in agent.calls[1].prompt.split("## 情况")[1].split("##")[0]  # 重新评估一律完整取证
+    assert "full" in agent.calls[1].prompt.split("## 情况")[1].split("##")[0]  # 带补充信息的重新评估完整取证
     assert outcome.destination == "false_positive"
     record = problems.get(runtime.conn, "P-0001").extra["assess"]
     assert record["attempt"] == 2 and record["userNotes"] == ["只在月底出现"]

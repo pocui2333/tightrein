@@ -11,7 +11,9 @@ from typing import Any
 # 配置校验据此核对 modelWhen 的写法(settings/load.py)
 HIGH_RISK = "high_risk"  # 方案或改动判为高风险(implement/design/risk.py)
 FRONTEND = "frontend"  # 根因位置含前端文件(implement/prompts/locate.py)
+LIGHT = "light"  # 评估的轻量推测：偶发、没法复现的报错，只推测触发条件(assess/cases.py)
 CONDITIONS: dict[str, tuple[str, ...]] = {
+    "assess.triage": (LIGHT,),
     "implement.locate": (FRONTEND,),
     "implement.design": (HIGH_RISK,),
     "implement.code": (HIGH_RISK,),

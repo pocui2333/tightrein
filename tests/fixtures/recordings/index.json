@@ -8,7 +8,7 @@
       "dir": "01-assess.triage-r1",
       "tool": "claude",
       "exitCode": 0,
-      "sha256": "8fc8d848edd0492a8d39e75cdd35832d1c35fd4de0bb3a7a27b0aa2815cc5ca0"
+      "sha256": "a1e49aaee7e3abaed9c94601a63003febcb13218a8657ba2dccbf1f46b442929"
     },
     {
       "point": "implement.design",
@@ -18,7 +18,7 @@
       "dir": "02-implement.design",
       "tool": "claude",
       "exitCode": 0,
-      "sha256": "db8919501ee9df3443f6245a905fc79c91f1a5063be99006a3c18be9255ed09a"
+      "sha256": "e1f185d8ac6ff94abbf5dd3bb9b04ea1fddc430d2204aea0a0c6785d133ce3a6"
     },
     {
       "point": "implement.code",
@@ -38,7 +38,7 @@
       "dir": "04-implement.review-r1",
       "tool": "claude",
       "exitCode": 0,
-      "sha256": "f9708cf9a8c8591a7799ecfc31948ee7afea4199c068d0c8148de783adb28987"
+      "sha256": "5d5df944fb08db4b04eef9707a37dfcad2e03877c2312f25eb59c3122eca212f"
     }
   ]
 }

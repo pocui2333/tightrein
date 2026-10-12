@@ -18,8 +18,9 @@ def test_static_problems_use_the_collected_verification_first():
     verified = occurrence(verified=True, deterministic=True, evidence={"verification": VERIFICATION})
     assert classify([verified], retriage=False) is Case.VERIFIED
     assert prepared(verified) == VERIFICATION
-    # 用户请求的重新评估一律不复用，重新取证
-    assert classify([verified], retriage=True) is Case.FULL
+    # 用户请求的重新评估：带补充信息的不复用、重新取证，不带的照样复用
+    assert classify([verified], retriage=True, user_notes=True) is Case.FULL
+    assert classify([verified], retriage=True) is Case.VERIFIED
     assert complete(prepared(verified))
     # 静态巡检的取证只有结论、没有报告与评估：仍算已取证(交给确认补报告与评估)，不从零调查
     collected = occurrence(verified=True, deterministic=True, evidence={"verification": COLLECTED})

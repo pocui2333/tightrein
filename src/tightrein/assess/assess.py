@@ -149,15 +149,22 @@ def assess_pending(runtime: Runtime, limit: int | None = None) -> list[AssessOut
 
 
 def retriage(runtime: Runtime, problem: str, note: str | None = None) -> AssessOutcome:
-    """用户请求重新评估(可带补充信息，跨次累积)：不复用采集时的取证。"""
+    """用户请求重新评估并立即评估(可带补充信息，跨次累积；带了补充信息的不复用采集时的取证)。"""
+    request_retriage(runtime, problem, note)
+    return assess(runtime, problem, retriage=True)
+
+
+def request_retriage(runtime: Runtime, problem: str, note: str | None = None) -> Problem:
+    """只登记重新评估(去掉转人工标记、累积补充信息)，下一次运行的评估会选中它(select.eligible)。"""
     found = problems.get(runtime.conn, problem)
     if found is None:
         raise LookupError(f"没有问题 {problem}")
+    if found.status not in select.RETRIAGEABLE:
+        raise ValueError(f"{problem} 的状态是 {found.status}，不能重新评估")
     record = select.assessed(found)
     user_notes = [*record.get("userNotes", []), *([note] if note else [])]
     with persist.restoring(runtime, [problem]), transaction(runtime.conn):
-        persist.update(runtime, found, assess={"retriage": True, "manual": False, "userNotes": user_notes})
-    return assess(runtime, problem, retriage=True)
+        return persist.update(runtime, found, assess={"retriage": True, "manual": False, "userNotes": user_notes})
 
 
 def override(runtime: Runtime, problem: str, verdict: str, reason: str, *, severity: str | None = None,
@@ -296,7 +303,7 @@ def _examine(runtime: Runtime, problem: Problem, git: Git, commit: str) -> tuple
     retriage_ = bool(record.get("retriage"))
     found = occurrences.find(runtime.conn, problem.id)
     snapshot = Snapshot(Path(git.repo))
-    case = cases.classify(found, retriage=retriage_)
+    case = cases.classify(found, retriage=retriage_, user_notes=bool(record.get("userNotes")))
     claim = claims.build(problem, found, record.get("userNotes", []), int(section["claimSamples"]))
     files = main_diff.candidate_files(claim, found)
     claim = claim.with_fact(main_diff.LABEL, main_diff.collect(git, problem.last_commit, commit, files).value())
@@ -496,7 +503,8 @@ def _pending(runtime: Runtime, problem: Problem, reason: str) -> None:
     pending(runtime, problem.id, point=POINT, decision="这个问题的证据不足以自动判定，需要你来定",
             options=["补充信息后重新评估", "直接改判"], recommendation="补充信息后重新评估", reason=reason,
             if_not="问题保持原状态，不再自动评估",
-            command=f"tightrein problem retriage {problem.id} --note <补充的信息>")
+            command=f"tightrein problem retriage {problem.id} [--note <补充的信息>] 或 "
+                    f"tightrein problem override {problem.id} --verdict <判定> --reason <理由>")
 
 
 def _issue_pending(runtime: Runtime, issue: str, title: str) -> None:

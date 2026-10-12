@@ -3,7 +3,10 @@
 - list [--status <状态>]；
 - mute <编号> --days N --note "<原因>"：抑制 N 天(到期、再出现或出现在新版本时由去重恢复，见 collect/dedup/status.py)；
 - unmute <编号>：取消抑制，回到待评估；
-- reopen <编号>：已关闭或已解决的重新打开，回到待评估。
+- reopen <编号>：已关闭或已解决的重新打开，回到待评估；
+- retriage <编号> [--note "<补充的信息>"]：请求重新评估(去掉转人工标记)，下一次运行评估；带补充信息的重新取证，
+  不带的复用采集时的取证；
+- override <编号> --verdict <判定> --reason "<理由>" [--severity] [--destination]：改判，不调用模型。
 人工处置写进 problems 表的 extra(带原因与时间)，供重建与复盘。
 """
 
@@ -22,8 +25,13 @@ from tightrein.protocol.naming import format_iso, kind_of
 from tightrein.store.tables import problems
 
 MANUAL = "manual"  # problems.extra 中人工处置的记录
+VERDICTS = ("confirmed", "conditional", "refuted", "insufficient")
+SEVERITIES = ("P0", "P1", "P2", "P3")
+DESTINATIONS = ("issue", "false_positive", "wont_fix", "tradeoff", "watch", "watch_evidence", "manual",
+                "awaiting_deploy")
 REOPENABLE = frozenset({ProblemStatus.CLOSED, ProblemStatus.RESOLVED})
 NOT_MUTABLE = frozenset({ProblemStatus.MUTED, ProblemStatus.CLOSED})
+STAGE = "assess"
 
 
 def register(commands: argparse._SubParsersAction[argparse.ArgumentParser], common: argparse.ArgumentParser,
@@ -43,6 +51,17 @@ def register(commands: argparse._SubParsersAction[argparse.ArgumentParser], comm
                              handler=handler)
         parser.add_argument("subject", metavar="<id>", help=text(language, "help.arg_problem"))
         parser.add_argument("--note", help=text(language, "help.option_note"))
+    parser = add_command(group, "retriage", common=common, language=language, help_key="help.problem_retriage",
+                         handler=retriage)
+    parser.add_argument("subject", metavar="<id>", help=text(language, "help.arg_problem"))
+    parser.add_argument("--note", help=text(language, "help.retriage_note"))
+    parser = add_command(group, "override", common=common, language=language, help_key="help.problem_override",
+                         handler=override)
+    parser.add_argument("subject", metavar="<id>", help=text(language, "help.arg_problem"))
+    parser.add_argument("--verdict", required=True, choices=VERDICTS, help=text(language, "help.override_verdict"))
+    parser.add_argument("--reason", required=True, help=text(language, "help.override_reason"))
+    parser.add_argument("--severity", choices=SEVERITIES, help=text(language, "help.override_severity"))
+    parser.add_argument("--destination", choices=DESTINATIONS, help=text(language, "help.override_destination"))
 
 
 def list_(session: Session) -> Result:
@@ -88,6 +107,43 @@ def reopen(session: Session) -> Result:
         return session.declined()
     extra = {**problem.extra, MANUAL: _manual(session, "reopen", session.args.note)}
     return _save(session, replace(problem, status=ProblemStatus.NEW.value, extra=extra))
+
+
+def retriage(session: Session) -> Result:
+    from tightrein.assess import assess  # 评估阶段；延迟导入，别的命令不必加载评估
+
+    problem = _problem(session)
+    if not session.confirm([session.text("cmd.retriage_action", subject=problem.id)]):
+        return session.declined()
+    try:
+        found = assess.request_retriage(session.runtime(STAGE), problem.id, session.args.note)
+    except ValueError as error:
+        raise UsageError(session.text("cmd.problem_wrong_status", subject=problem.id, status=problem.status)) \
+            from error
+    return Result(session.command, lines=[session.text("cmd.retriage_requested", subject=found.id)],
+                  data={"id": found.id, "status": found.status}, next=f"tightrein run assess --object {found.id}")
+
+
+def override(session: Session) -> Result:
+    from tightrein.assess import assess
+
+    problem = _problem(session)
+    args = session.args
+    if not session.confirm([session.text("cmd.override_action", subject=problem.id, verdict=args.verdict)]):
+        return session.declined()
+    current = session.begin(STAGE)
+    try:
+        outcome = assess.override(current, problem.id, args.verdict, args.reason, severity=args.severity,
+                                  destination=args.destination)
+    except ValueError as error:
+        raise UsageError(str(error)) from error
+    session.end(current)
+    lines = [session.text("cmd.override_done", subject=problem.id, verdict=outcome.verdict,
+                          destination=outcome.destination)]
+    return Result(session.command, lines=lines,
+                  data={"id": problem.id, "verdict": outcome.verdict, "destination": outcome.destination,
+                        "issue": outcome.issue},
+                  next=f"tightrein show {outcome.issue or problem.id}")
 
 
 def _problem(session: Session) -> problems.Problem:

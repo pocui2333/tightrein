@@ -160,7 +160,8 @@ def plan_view(plan: Mapping[str, Any], keys: Sequence[str]) -> dict[str, Any]:
 def acceptance(body: str) -> list[str]:
     """Issue 正文「验收标准」一节中实施阶段要满足的条目原文(方案逐条对应、审查逐条核对)。
 
-    只能在部署后确认的(观察类来源的「部署后的观察期内不再出现…」，assess/issue/body.post_deploy)不在其中：它是验收
+    只能在部署后确认的(按来源生成、由采集复查的「观察期内不再出现…」「静态巡检…不再命中」等，assess/issue/body.post_deploy)
+    不在其中：它是验收
     阶段的标准，由发布的验收按关联问题的出现确认(44 号计划 6「验收：只做实施阶段做不到的」)。"""
     found: list[str] = []
     level: int | None = None

@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -79,12 +79,15 @@ def schema_for(point: str) -> dict[str, Any]:
 
 
 def ask(runtime: Runtime, point: str, variables: Mapping[str, str], *, subject: str, workdir: Path,
-        round: int | None = None) -> Asked:
+        round: int | None = None, conditions: tuple[str, ...] = (), turns: int | None = None) -> Asked:
+    """conditions 按调用点的 modelWhen 选模型；turns 给出时收紧这一次的轮数上限(不放宽)。"""
     schema = schema_for(point)
-    model = runtime.settings.model_for(point)
+    model = runtime.settings.model_for(point, conditions)
     prompt = build(point, variables, language=runtime.language, schema=schema, tool=model.tool)
     params = params_for(point, settings=runtime.settings, run=runtime.run, subject=subject, prompt=prompt.text,
-                        schema=schema, workdir=workdir, round=round, prompt_hash=prompt.hash)
+                        schema=schema, workdir=workdir, conditions=conditions, round=round, prompt_hash=prompt.hash)
+    if turns is not None and turns < params.limits.turns:
+        params = replace(params, limits=replace(params.limits, turns=turns))
     result = call(params, runtime.agents)
     output = result.output if result.ok else None
     return Asked(point, output, result, prompt.hash)

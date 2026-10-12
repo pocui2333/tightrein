@@ -453,6 +453,10 @@
     },
     "assess.triage": {
       "model": "opus",
+      "modelWhen": {
+        "light": "sonnet"
+      },
+      "lightTurns": 10,
       "rounds": 1
     },
     "assess.confirm": {

@@ -199,3 +199,22 @@ def test_only_one_module_keeps_the_other_results(workspace, guide, conn, clock):
     assert [(trial.key, trial.status) for trial in report.trials] == [("baseline.test", PASSED), (module.key, FAILED)]
     with pytest.raises(LookupError):
         check.check(current, only="collect.nothing")
+
+
+def test_the_static_patrol_needs_semgrep_when_rules_are_configured(workspace, tmp_path):
+    module = ModuleSetup("collect.static", ModuleStatus.ENABLED, None, None, None, None, None)
+    bin_dir = tmp_path / "bin"
+
+    def current(configs):
+        settings = Settings.from_data({"controls": {"collect.static": {"semgrep": {"configs": configs}}},
+                                       "tools": {"semgrep": {"path": None}}})
+        return SimpleNamespace(workspace=workspace, settings=settings, environ={"PATH": str(bin_dir)},
+                               tool=SimpleNamespace(root=tmp_path))
+
+    assert check.trial_program(current([]), module).status == SKIPPED  # 没配规则集：不用 Semgrep
+    missing = check.trial_program(current(["p/python"]), module)
+    assert missing.status == FAILED and "找不到 Semgrep" in missing.detail
+    bin_dir.mkdir()
+    (bin_dir / "semgrep").write_text("#!/bin/sh\n", encoding="utf-8")
+    (bin_dir / "semgrep").chmod(0o755)
+    assert check.trial_program(current(["p/python"]), module).status == SKIPPED

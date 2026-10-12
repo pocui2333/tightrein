@@ -9,7 +9,8 @@
 
 已取证：采集时的取证判成立或条件成立、带代码事实与反证的才算。输出已带报告与评估的直接复用(仍要通过证据检查，
 见 evidence.py)；只有取证结论的(静态巡检的取证不写报告与评估)交给 assess.confirm，拿着这份证据与程序截取的
-当前代码补报告与评估，不再从零调查。用户请求的重新评估一律不复用，重新取证。
+当前代码补报告与评估，不再从零调查。用户请求的重新评估：带了补充信息的不复用，重新取证(补充的信息可能推翻采集时的
+结论)；没带的照样复用(多半是转人工之后想再自动评估一次，代码可能已经变了，确认会对照当前代码)。
 """
 
 from __future__ import annotations
@@ -38,9 +39,9 @@ def latest(found: Sequence[Occurrence]) -> Occurrence:
     return max(found, key=lambda item: (item.seen_at, item.id or 0))
 
 
-def classify(found: Sequence[Occurrence], *, retriage: bool) -> Case:
+def classify(found: Sequence[Occurrence], *, retriage: bool, user_notes: bool = False) -> Case:
     item = latest(found)
-    if not retriage and item.evidence.get("verified") and prepared(item) is not None:
+    if not (retriage and user_notes) and item.evidence.get("verified") and prepared(item) is not None:
         return Case.VERIFIED
     if any(occurrence.evidence.get("reproducible") for occurrence in found):
         return Case.REPRODUCIBLE

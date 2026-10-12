@@ -294,7 +294,14 @@
     "arg_key": "Settings key, e.g. language or controls.implement.code.turns; prints everything when omitted",
     "arg_workspace": "Name of the workspace to delete",
     "arg_text": "Description of the request",
-    "problem_status": "Only list problems in this status"
+    "problem_status": "Only list problems in this status",
+    "problem_retriage": "Request a re-assessment (clears the manual flag); assessed on the next run",
+    "retriage_note": "Extra information; with it the evidence is gathered again instead of reusing the collected one",
+    "problem_override": "Override the verdict without calling a model",
+    "override_verdict": "Verdict",
+    "override_reason": "Reason for the override",
+    "override_severity": "Severity; defaults to the last assessment's",
+    "override_destination": "Destination; defaults by verdict (issue, false positive, or manual)"
   },
   "cli": {
     "close_failed": "Closing this process's runs failed ({kind}): {message}; the next run will recover them",
@@ -401,6 +408,10 @@
     "trial_failed": "failed",
     "trial_skipped": "skipped",
     "uninstall_timer": "Remove timer {path}",
-    "unmute_action": "Unmute {subject} for assessment"
+    "unmute_action": "Unmute {subject} for assessment",
+    "retriage_action": "Request a re-assessment of {subject} on the next run",
+    "retriage_requested": "{subject} will be re-assessed on the next run",
+    "override_action": "Override {subject} as {verdict}",
+    "override_done": "{subject} overridden as {verdict}, destination {destination}"
   }
 }

@@ -209,6 +209,8 @@
 | `assess` | `treatment` | <details><summary>7 项</summary><code>[{"worth": ["wont"], "treatment": "wont_fix"}, {"severities": ["P0"], "treatment": "fix_now"}, {"severities": ["P1"], "verdicts": ["confirmed"], "treatment": "fix_now"}, {"worth": ["defer"], "treatment": "watch"}, {"severities": ["P1", "P2"], "treatment": "fix_later"}, {"severities": ["P3"], "sizes": ["small"], "worth": ["fix"], "treatment": "fix_later"}, {"treatment": "watch"}]</code></details> |
 | `assess` | `vagueWords` | `["可能", "大概", "也许", "似乎", "建议进一步排查", "probably", "perhaps", "maybe", "おそらく", "たぶん", "かもしれ"]` |
 | `assess.triage` | `model` | `"opus"` |
+| `assess.triage` | `modelWhen.light` | `"sonnet"` |
+| `assess.triage` | `lightTurns` | `10` |
 | `assess.triage` | `rounds` | `1` |
 | `assess.confirm` | `model` | `"sonnet"` |
 | `assess.confirm` | `fallback` | `"opus-mid"` |

@@ -47,6 +47,8 @@
 | `tightrein problem mute` | 抑制一个问题 |
 | `tightrein problem unmute` | 取消抑制 |
 | `tightrein problem reopen` | 重新打开已关闭或已解决的问题 |
+| `tightrein problem retriage` | 请求重新评估(去掉转人工标记)，下一次运行评估 |
+| `tightrein problem override` | 改判：不调用模型，按给出的判定定去向 |
 | `tightrein retro` | tightrein 自身问题的记录簿 |
 | `tightrein retro list` | 按评级列出待看的记录 |
 | `tightrein retro show` | 看一条记录 |
@@ -346,6 +348,35 @@ tightrein problem reopen <id> [--note <note>]
 |---|---|---|---|
 | `<id>` | 是 | — | 问题编号，如 P-0003 |
 | `--note <note>` | 否 | — | 补充说明 |
+
+### problem retriage
+
+请求重新评估(去掉转人工标记)，下一次运行评估
+
+```
+tightrein problem retriage <id> [--note <note>]
+```
+
+| 参数 | 必填 | 缺省 | 说明 |
+|---|---|---|---|
+| `<id>` | 是 | — | 问题编号，如 P-0003 |
+| `--note <note>` | 否 | — | 补充的信息；带了就重新取证，不复用采集时的取证 |
+
+### problem override
+
+改判：不调用模型，按给出的判定定去向
+
+```
+tightrein problem override <id> --verdict {confirmed,conditional,refuted,insufficient} --reason <reason> [--severity {P0,P1,P2,P3}] [--destination {issue,false_positive,wont_fix,tradeoff,watch,watch_evidence,manual,awaiting_deploy}]
+```
+
+| 参数 | 必填 | 缺省 | 说明 |
+|---|---|---|---|
+| `<id>` | 是 | — | 问题编号，如 P-0003 |
+| `--verdict {confirmed,conditional,refuted,insufficient}` | 是 | — | 判定 |
+| `--reason <reason>` | 是 | — | 改判的理由 |
+| `--severity {P0,P1,P2,P3}` | 否 | — | 严重度；缺省沿用上一次评估的 |
+| `--destination {issue,false_positive,wont_fix,tradeoff,watch,watch_evidence,manual,awaiting_deploy}` | 否 | — | 去向；缺省按判定定(成立写成 Issue、不成立关闭并抑制、证据不足转人工) |
 
 ## retro
 

@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from tightrein.agents.params import CONDITIONS, FRONTEND, HIGH_RISK
+from tightrein.agents.params import CONDITIONS, FRONTEND, HIGH_RISK, LIGHT
 from tightrein.settings.load import MissingSetting, Settings, SettingsInvalid, call_points, merge
 from tightrein.store.files.layout import ToolLayout, WorkspaceLayout
 
@@ -236,7 +236,7 @@ def test_routes_only_name_registered_call_points_and_their_declared_conditions()
 
 def test_every_declared_condition_belongs_to_a_registered_call_point() -> None:
     assert set(CONDITIONS) <= call_points()
-    assert {condition for conditions in CONDITIONS.values() for condition in conditions} == {HIGH_RISK, FRONTEND}
+    assert {condition for conditions in CONDITIONS.values() for condition in conditions} == {HIGH_RISK, FRONTEND, LIGHT}
 
 
 def test_the_same_model_must_have_the_same_price_in_every_alias() -> None:

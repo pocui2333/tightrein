@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 from tightrein.cli import exit_codes
@@ -35,3 +36,16 @@ def test_only_closed_or_resolved_problems_are_reopened_and_list_filters_by_statu
     assert cli.load(problems, "P-0002").status == "new"
     listed = cli.json("problem", "list", "--status", "new")
     assert [item["id"] for item in listed["result"]] == ["P-0001", "P-0002"]
+
+
+def test_retriage_only_marks_the_problem_and_override_needs_a_verdict(cli):
+    cli.save(problems, problem("P-0001", "new"))
+    cli.save(problems, replace(cli.load(problems, "P-0001"), extra={"assess": {"manual": True}}))
+    result = cli.json("problem", "retriage", "P-0001", "--note", "只在月底出现", "--yes")
+    assert result["exitCode"] == 0 and result["next"] == "tightrein run assess --object P-0001"
+    record = cli.load(problems, "P-0001").extra["assess"]
+    assert record["retriage"] is True and record["manual"] is False and record["userNotes"] == ["只在月底出现"]
+    cli.save(problems, problem("P-0002", "closed"))
+    assert cli("problem", "retriage", "P-0002", "--yes").code == exit_codes.USAGE
+    assert cli("problem", "override", "P-0001", "--verdict", "maybe", "--reason", "x", "--yes").code == \
+        exit_codes.USAGE

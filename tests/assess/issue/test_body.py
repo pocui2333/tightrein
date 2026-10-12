@@ -63,14 +63,16 @@ def test_acceptance_per_probe(source, role, expected):
 
 
 @pytest.mark.parametrize("language", ["zh", "en", "ja"])
-def test_only_the_observed_criterion_is_confirmed_after_deploy(language):
-    """观察类来源的「部署后的观察期内不再出现…」是验收阶段的标准(任一语言的原文、带不带复选框都认)，其余不是。"""
+def test_criteria_rechecked_by_collection_are_confirmed_after_deploy(language):
+    """按来源生成、由采集复查的条件(观察期内不再出现、静态巡检不再命中等)在修复分支上核对不了，是验收阶段的标准；
+    任一语言的原文、带不带复选框都认；只有观察类的带指纹。"""
     (observed,) = body.probe_acceptance("collect.project_probes", None, "probe", "average:fp", None, language)
     assert body.post_deploy(observed) and body.post_deploy(f"[ ] {observed}")
     assert body.post_deploy_fingerprint(observed) == "average:fp"
     for source in ("collect.api_fuzz", "collect.static", "collect.incidental"):
         (other,) = body.probe_acceptance(source, "GET /a", "server_error", "fp", None, language)
-        assert not body.post_deploy(other) and body.post_deploy_fingerprint(other) is None
+        assert body.post_deploy(other) and body.post_deploy_fingerprint(other) is None
+    assert not body.post_deploy("average([]) 返回 0")
     text = body.document("0007 t", {"acceptance": body.checkboxes(["average([]) 返回 0", observed])}, language)
     assert body.post_deploy_items(text) == [observed]
 
