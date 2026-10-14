@@ -136,3 +136,6 @@ def test_branch_slugs_read_like_a_person_named_them():
     assert _slug(issue("static", [{"file": "api/progress.js", "symbol": None}])) == "progress"  # 再退到文件名
     assert _slug(issue("static", [{"file": "web/routes/index.ts", "symbol": None}])) == "routes"  # 文件名太泛取目录
     assert _slug(issue("static")) == "bug"
+    numbered = SimpleNamespace(extra={"slug": "static", "rootCauses": [{"file": "utils/time_parse.py"}]},
+                               title="正文里的「3-5 年经验」被误判为日期", kind="bug")
+    assert _slug(numbered) == "time-parse"  # 标题只抠出 3-5 时不用它

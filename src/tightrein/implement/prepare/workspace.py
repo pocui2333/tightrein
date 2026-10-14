@@ -139,7 +139,9 @@ def _slug(issue: Issue) -> str:
     """分支名里的简称：评估写下的英文简称优先，其次标题中的英文词，都没有时用种类。旧版简称开头带的检查类别
     (`static-…`、`probe-…`)去掉：分支名要像人起的。"""
     found = TOOL_SLUG_PREFIX.sub("", kebab(str(issue.extra.get("slug") or "")))
-    return found or kebab(issue.title) or _cause_words(issue) or issue.kind
+    title = kebab(issue.title)
+    worded = title if re.search(r"[a-z]", title) else ""  # 中文标题里只抠出 3-5 这种数字时没有意义
+    return found or worded or _cause_words(issue) or title or issue.kind
 
 
 def _cause_words(issue: Issue) -> str:
