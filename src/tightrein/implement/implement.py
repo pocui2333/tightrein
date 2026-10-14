@@ -39,6 +39,7 @@ from tightrein.implement.check.findings import NEEDS_USER, PLAN_GAP, Finding, fi
 from tightrein.implement.context import STEPS, Decision, ImplementContext, load
 from tightrein.implement.prepare import workspace
 from tightrein.protocol import documents, recovery
+from tightrein.protocol.boundaries import gate_is_auto_all
 from tightrein.protocol.handoff import Handoff, Status, write
 from tightrein.protocol.limits import no_progress
 from tightrein.protocol.naming import FileName, format_iso
@@ -65,6 +66,7 @@ RUNNERS = {
     DELIVER: "tightrein.implement.deliver.deliver",
 }
 GATE_DESIGN = "design"  # 方案确认(可配置的关卡)
+DESIGN_ISSUE_REASON = "design_issue"  # 方案停在「根因在设计本身」(implement/design/design.py)
 GATE_DECISION = "needs_decision"  # 需要拍板(固定人工)
 CONTINUE = "tightrein approve {issue} --note \"<补充说明>\""
 RERUNS = "reruns"  # 同一步同一轮没通过后重跑的次数(implement.py 记)
@@ -149,13 +151,21 @@ def decide(runtime: Runtime, context: ImplementContext) -> Next:
     if last.status is Status.PASSED:
         return _after_passed(context, last)
     if last.status is Status.PENDING:
-        if fresh:
+        if fresh or _now_automatic(runtime, last):
             return Next(Kind.RUN, last.point, round=last.round)
         return Next(Kind.WAIT, last.point, round=last.round, reason=last.summary,
                     gate=dict(last.facts.get("gate") or {}))
     if fresh:
         return _retry(context, last, fresh[-1])
     return _dispatch(runtime, context, done, last)
+
+
+def _now_automatic(runtime: Runtime, last: Handoff) -> bool:
+    """停在方案关卡之后才开了全自动(方案关卡 auto_all)：「按设计层面修」与定案不再等人，重跑那一步；
+    定案仍有固定人工的原因(要拍板、改受保护文件)时重跑后照旧停下(待办文档只写一次)。"""
+    if not gate_is_auto_all(GATE_DESIGN, runtime.settings):
+        return False
+    return last.point == APPROVE or (last.point == DESIGN and last.facts.get("reason") == DESIGN_ISSUE_REASON)
 
 
 # 推导下一步

@@ -133,6 +133,14 @@ def test_a_gate_waits_until_the_user_decides(world: Any) -> None:
     assert _decide(world) == implement.Next(Kind.RUN, APPROVE)  # 由定案取用这个决定
 
 
+def test_gates_left_pending_before_full_autonomy_are_run_again(new_world: Any, settings_with: Any) -> None:
+    world = new_world(settings=settings_with({"boundaries": {"gates": {"design": "auto_all"}}}))
+    _save(world, DESIGN, Status.PENDING, {"version": 1, "reason": "design_issue", "gate": {"decision": "按设计修？"}})
+    assert _decide(world) == implement.Next(Kind.RUN, DESIGN)
+    _save(world, APPROVE, Status.PENDING, {"gate": {"decision": "确认方案"}})
+    assert _decide(world) == implement.Next(Kind.RUN, APPROVE)
+
+
 def test_local_problems_go_back_to_coding_until_the_rounds_run_out(world: Any) -> None:
     _planned(world)
     _round(world, 1, [_blocker("local", kind="a")])
