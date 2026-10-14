@@ -38,6 +38,7 @@ if TYPE_CHECKING:
 
 POINT = "implement.prepare"
 URGENT = "P0"  # 立即修的 P0 用 hotfix 分支
+GENERIC_STEMS = frozenset({"index", "main", "app", "utils", "util", "helpers", "common", "__init__", "mod", "lib"})
 TOOL_SLUG_PREFIX = re.compile(r"^(?:static|probe|error|alert|latency|server-error|incidental|authz)(?:-|$)")
 # 快照 commit 的作者：不是提交到分支上的 commit，不经 Git.commit，也就不涉及署名规则
 SNAPSHOT_IDENTITY = {"GIT_AUTHOR_NAME": "tightrein", "GIT_AUTHOR_EMAIL": "tightrein@localhost",
@@ -139,10 +140,18 @@ def _slug(issue: Issue) -> str:
 
 
 def _cause_words(issue: Issue) -> str:
-    """中文标题转不出英文词时，用第一个根因所在的函数名(`Database.set_progress` → `set-progress`)。"""
-    for cause in issue.extra.get("rootCauses") or []:
-        symbol = str((cause or {}).get("symbol") or "").rpartition(".")[2].lstrip("_")
+    """中文标题转不出英文词时，用第一个根因所在的函数名(`Database.set_progress` → `set-progress`)；没有函数名时用
+    文件名(`api/progress.js` → `progress`)，文件名太泛(index、main 之类)时用所在的目录名。"""
+    causes = [cause for cause in issue.extra.get("rootCauses") or [] if isinstance(cause, dict)]
+    for cause in causes:
+        symbol = str(cause.get("symbol") or "").rpartition(".")[2].lstrip("_")
         found = kebab(re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "-", symbol))
+        if found:
+            return found
+    for cause in causes:
+        path = Path(str(cause.get("file") or ""))
+        name = path.parent.name if path.stem.lower() in GENERIC_STEMS else path.stem
+        found = kebab(re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "-", name.lstrip("_")))
         if found:
             return found
     return ""

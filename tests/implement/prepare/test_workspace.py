@@ -133,4 +133,6 @@ def test_branch_slugs_read_like_a_person_named_them():
 
     assert _slug(issue("static-restore-progress")) == "restore-progress"  # 不带来源名
     assert _slug(issue("static", [{"symbol": "Database.set_progress"}])) == "set-progress"  # 取根因的函数名
+    assert _slug(issue("static", [{"file": "api/progress.js", "symbol": None}])) == "progress"  # 再退到文件名
+    assert _slug(issue("static", [{"file": "web/routes/index.ts", "symbol": None}])) == "routes"  # 文件名太泛取目录
     assert _slug(issue("static")) == "bug"
