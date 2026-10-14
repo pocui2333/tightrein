@@ -7,8 +7,8 @@
 - 类别：带 featureLabels 中任一标签的是需求(request)，其余当缺陷报告(report)；两种都是确定性来源(deterministic)：
   人报的 Issue 不会「再出现一次」，按偶发先观察就永远到不了评估。报告走完整取证；需求在评估里不取证，查重之后
   直接写成待修的用户需求；
-- 位置：正文中第一个 `目录/文件.扩展名:行号`(反引号里的或裸写的)，没有为 None；指纹为 `github-issue:<编号>`，
-  一个 GitHub Issue 一个问题，是否与别的问题同一根因交给评估的查重；
+- 位置：正文中第一个 `目录/文件.扩展名:行号`(反引号里的或裸写的；网址里的不算)，没有为 None；指纹为
+  `github-issue:<编号>`，一个 GitHub Issue 一个问题，是否与别的问题同一根因交给评估的查重；
 - 证据：编号、链接、标签、正文(先脱敏再截到 bodyChars)；覆盖范围永远为空(不会因为「没再出现」被判为已解决)。
 """
 
@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, Any
 
+from tightrein.assess.checks import locations_in
 from tightrein.assess.issue import github as mirror
 from tightrein.collect.common.signals import Signal, factory_for, releases, truncate
 from tightrein.collect.common.source import SourceResult, SourceStatus, SourceUnavailable, skipped
@@ -33,7 +34,7 @@ REPORT, REQUEST = "report", "request"
 GROUP_KEY = "github-issue:{number}"
 NOT_ENABLED = "GitHub Issue 同步没有启用(接入清单 release.github_issues)，或 origin 不是 GitHub 仓库"
 NOTHING_NEW = "没有新的打开的 Issue"
-# 正文中的代码位置：至少带一层目录的 `路径:行号`，前面不能紧跟路径字符(不从链接中间截出来)
+# 正文中的代码位置：至少带一层目录的 `路径:行号`，前面不能紧跟路径字符；网址里的由 locations_in 排除
 LOCATION = re.compile(r"(?<![\w/.\-])((?:[\w.\-]+/)+[\w.\-]+\.[A-Za-z0-9]+):(\d+)\b")
 
 
@@ -82,5 +83,5 @@ def linked(runtime: Runtime) -> set[int]:
 
 
 def location_in(text: str) -> str | None:
-    match = LOCATION.search(text or "")
-    return f"{match.group(1)}:{match.group(2)}" if match else None
+    found = locations_in(text or "", LOCATION)
+    return f"{found[0].group(1)}:{found[0].group(2)}" if found else None

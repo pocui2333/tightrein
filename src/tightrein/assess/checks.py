@@ -3,6 +3,7 @@
 - 位置补全：取证输出中的位置应是相对仓库根的完整路径；只写了文件名或缺了前几级目录时，按代码快照中「唯一的路径
   后缀」补全，零个或多个匹配就不补，留给检查判不通过；文字中引用的 `文件:行号` 也补，补不全的只在扩展名在快照中
   出现过时才报(不把普通文字当代码引用)；只去掉开头的 `./`(lstrip 会把 `.github`、`.eslintrc.js` 削掉)。
+  网址(`http://127.0.0.1:8118`)之内的片段与「IP 或 localhost:端口」不是代码位置，不补、不报(locations_in)。
 - 检查项：每条证据都是 `文件:行号` 且真实存在、不越界；判定是四档之一，证据不足写缺什么、条件成立写条件；
   判不成立时挡住它的代码(location)与主张中第几条事实(factRef)恰好给一个；反证至少一条、追到入口(原样引用主张中的
   入口或真实存在的位置)，写「上游有校验」时给出并核对位置；结论不含含糊措辞；评估(assessment)在判成立时必须给出，
@@ -23,6 +24,11 @@ VERDICTS = ("confirmed", "conditional", "refuted", "insufficient")
 CONFIRMING = frozenset({"confirmed", "conditional"})
 # 文字中引用的 `文件:行号`：文件名带扩展名，前面不是路径字符
 IN_TEXT = re.compile(r"(?<![\w/.-])([\w./-]+\.[A-Za-z0-9]+):(\d+)(?:-(\d+))?")
+# 网址(scheme://主机[:端口][/路径])：其中的「主机:端口」与路径都不是代码位置。只认 ASCII，到空白、中文标点、括号、
+# 引号、逗号为止，紧挨着网址写的代码位置照常认
+URL = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[\w\-.~:/?#\[\]@!$&*+=%]*", re.ASCII)
+# 「主机:端口」的主机：IPv4 地址与 localhost；域名(api.example.com:443)的扩展名不在代码中出现，按 Snapshot.cited 排除
+HOST = re.compile(r"\d{1,3}(?:\.\d{1,3}){3}|localhost", re.IGNORECASE)
 WHOLE = re.compile(r"([^:\s][^:]*):(\d+)(?:-(\d+))?")
 LEADING = re.compile(r"([^:\s（(][^:\s（(]*:\d+(?:-\d+)?)`?(?:\s|（|\(|$)")
 SKIPPED_DIRECTORIES = frozenset({".git", "node_modules"})
@@ -77,6 +83,10 @@ class Snapshot:
         extension = Path(file).suffix
         return bool(extension) and any(path.endswith(extension) for path in self.files())
 
+    def cited(self, file: str) -> bool:
+        """文字中的 `文件:行号` 算不算代码引用：文件存在，或扩展名在快照中出现过(`api.example.com:443` 不算)。"""
+        return self.exists(file) or self.is_code_extension(file)
+
     def problem(self, value: Any) -> str | None:
         """value 不是「文件:行号」、文件不存在或行号越界时的原因。"""
         location = parse_location(value)
@@ -99,6 +109,18 @@ class Completed:
     def problems(self) -> list[str]:
         return [f"[locations] 文字中引用的 `{item}` 在代码中找不到唯一的文件或行号越界，写相对仓库根的完整路径"
                 for item in dict.fromkeys(self.unresolved)]
+
+
+def locations_in(text: str, pattern: re.Pattern[str] = IN_TEXT) -> list[re.Match[str]]:
+    """文字中形如 `文件:行号` 的片段(pattern 的第 1 组为文件)：网址之内的与「IP 或 localhost:端口」不算。"""
+    urls = [found.span() for found in URL.finditer(text)]
+    return [match for match in pattern.finditer(text)
+            if not is_host(match.group(1)) and not any(start <= match.start() < end for start, end in urls)]
+
+
+def is_host(name: str) -> bool:
+    """「主机:端口」的主机部分(IPv4 地址、localhost)：不会是代码文件。"""
+    return HOST.fullmatch(name) is not None
 
 
 def parse_location(value: Any) -> tuple[str, int, int] | None:
@@ -258,19 +280,24 @@ def _whole(snapshot: Snapshot, text: str) -> str | None:
 
 
 def _in_text(snapshot: Snapshot, text: str) -> str:
-    def replace(match: re.Match[str]) -> str:
-        file = match.group(1)
-        resolved = snapshot.resolve(file)
-        if resolved is None:
-            if snapshot.is_code_extension(file):
-                snapshot.unresolved.append(match.group(0))
-            return match.group(0)
-        whole = resolved + match.group(0)[len(file):]
-        if snapshot.problem(whole) is not None:
-            snapshot.unresolved.append(match.group(0))
-        return whole
+    parts, last = [], 0
+    for match in locations_in(text):
+        parts += [text[last:match.start()], _in_text_one(snapshot, match)]
+        last = match.end()
+    return "".join(parts) + text[last:]
 
-    return IN_TEXT.sub(replace, text)
+
+def _in_text_one(snapshot: Snapshot, match: re.Match[str]) -> str:
+    file = match.group(1)
+    resolved = snapshot.resolve(file)
+    if resolved is None:
+        if snapshot.is_code_extension(file):
+            snapshot.unresolved.append(match.group(0))
+        return match.group(0)
+    whole = resolved + match.group(0)[len(file):]
+    if snapshot.problem(whole) is not None:
+        snapshot.unresolved.append(match.group(0))
+    return whole
 
 
 def _complete(snapshot: Snapshot, value: Any) -> Any:

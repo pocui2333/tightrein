@@ -47,6 +47,34 @@ def test_a_confirmed_low_risk_problem_becomes_an_approved_issue(runtime, make_pr
     assert (layout.subject_dir("P-0001") / "00-problem-assess.json").is_file()  # 重建用的快照
 
 
+def test_a_proxy_url_in_the_evidence_does_not_fail_the_new_issue(runtime, make_problem, agent, readonly, outputs,
+                                                                  layout):
+    """Issue 0028：取证事实里写了代理地址，建好的 Issue 曾因 `//127.0.0.1:8118` 被判位置不存在、评估失败。"""
+    make_problem()
+    output = outputs.confirmed()
+    output["facts"].append({"location": "services/orders.py:3",
+                            "observation": "默认配置设了 ai_review.proxy: http://127.0.0.1:8118，"
+                                           "按默认配置运行时 agy 的 http(s) 代理会补上"})
+    agent.queue(TRIAGE, output)
+    outcome = assessing.assess(runtime, "P-0001")
+    assert outcome.status == Status.PASSED and outcome.issue == "0001"
+    created = read_json(layout.subject_dir("0001") / "22-assess.issue-handoff.json")
+    assert created["status"] == "passed" and created["facts"]["bodyProblems"] == []
+
+
+def test_a_body_problem_after_the_issue_is_created_does_not_fail_the_assessment(runtime, make_problem, agent,
+                                                                                readonly, outputs, layout):
+    """正文检查没过(问题标题里的行号越界)：Issue 照常建好放行，评估与写成 Issue 两步都是 passed，只记下没过的项。"""
+    make_problem(title="订单报错，见 services/orders.py:99")  # 问题标题原样写进「引用」
+    agent.queue(TRIAGE, outputs.confirmed())
+    outcome = assessing.assess(runtime, "P-0001")
+    assert outcome.status == Status.PASSED and issues.get(runtime.conn, "0001").status == "todo"
+    assert handoff(layout, "P-0001")["status"] == "passed"
+    created = read_json(layout.subject_dir("0001") / "22-assess.issue-handoff.json")
+    assert created["status"] == "passed" and created["facts"]["failures"] == []
+    assert any("services/orders.py:99" in item for item in created["facts"]["bodyProblems"])
+
+
 def collected(outputs, **changes):
     """静态巡检取证的输出：只有结论，没有报告与评估。"""
     output = {key: value for key, value in outputs.confirmed().items()

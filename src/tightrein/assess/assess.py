@@ -462,9 +462,9 @@ def _commit(runtime: Runtime, work: Work, snapshot: Snapshot, commit: str) -> As
         raise
     create.write_handoff(runtime, finding, made, None)
     _after_issue(runtime, made)
+    # 正文检查没过的项只记在 assess.issue 的交接里：Issue 已建好，评估这一步照常算通过(见 issue/create.py)
     return AssessOutcome(problem.id, work.verdict, work.rating.severity, decision.disposition, made.issues[0],
-                         Status.FAILED if made.failures else Status.PASSED, decision.destination.value,
-                         issues=made.issues, reason=reason)
+                         Status.PASSED, decision.destination.value, issues=made.issues, reason=reason)
 
 
 def _apply_destination(runtime: Runtime, problem: Problem, decision: Decision, reason: str) -> None:

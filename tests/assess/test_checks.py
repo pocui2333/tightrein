@@ -39,6 +39,43 @@ def test_ambiguous_missing_or_out_of_range_references_are_reported(repo: Path) -
         "[locations] 文字中引用的 `services/orders.py:99` 在代码中找不到唯一的文件或行号越界，写相对仓库根的完整路径"]
 
 
+# Issue 0028「引用」中的原句：代理地址曾被当成代码位置 `//127.0.0.1:8118`
+PROXY_SENTENCE = ("`config/config.yaml:89` 默认配置设了 ai_review.proxy: http://127.0.0.1:8118，"
+                  "按默认配置运行时 agy 的 http(s) 代理会补上")
+
+
+def agy_repo(tmp_path: Path) -> Path:
+    """Issue 0028 所在仓库的替身：processors/ai_review.py 440 行，config/config.yaml 100 行。"""
+    root = tmp_path / "agy"
+    (root / "processors").mkdir(parents=True)
+    (root / "processors" / "ai_review.py").write_text("x = 1\n" * 440, encoding="utf-8")
+    (root / "config").mkdir()
+    (root / "config" / "config.yaml").write_text("key: value\n" * 100, encoding="utf-8")
+    return root
+
+
+def test_urls_and_host_ports_are_not_code_locations(tmp_path: Path) -> None:
+    assert [match.group(0) for match in checks.locations_in(PROXY_SENTENCE)] == ["config/config.yaml:89"]
+    snapshot = Snapshot(agy_repo(tmp_path))
+    text = ("代理 http://127.0.0.1:8118/processors/ai_review.py:313 或 127.0.0.1:8118、localhost:8080、"
+            "proxy.example.com:3128，见 https://github.com/acme/shop/blob/main/ai_review.py:7")
+    done = complete({"note": text, "facts": [{"location": "processors/ai_review.py:313",
+                                              "observation": PROXY_SENTENCE}]}, snapshot)
+    assert done.value["note"] == text and done.problems() == []  # 网址里的路径、主机:端口都不补、不报
+    assert checks.is_host("127.0.0.1") and checks.is_host("localhost") and not checks.is_host("ai_review.py")
+
+
+def test_real_locations_next_to_urls_are_still_completed_and_checked(tmp_path: Path) -> None:
+    snapshot = Snapshot(agy_repo(tmp_path))
+    beside = "代理 http://127.0.0.1:8118，调用点 ai_review.py:313(http://127.0.0.1:8118)processors/ai_review.py:379"
+    done = complete({"note": beside}, snapshot)
+    assert done.value["note"] == ("代理 http://127.0.0.1:8118，调用点 processors/ai_review.py:313"
+                                  "(http://127.0.0.1:8118)processors/ai_review.py:379")
+    assert done.problems() == []
+    wrong = complete({"note": "代理 http://127.0.0.1:8118 processors/ai_review.py:999"}, snapshot)
+    assert len(wrong.problems()) == 1 and "`processors/ai_review.py:999`" in wrong.problems()[0]
+
+
 def test_only_the_given_keys_are_touched(repo: Path) -> None:
     value = {"claim": "routes/orders.py:4", "rootCauses": [{"file": "routes/orders.py", "line": 4}],
              "facts": [{"location": "../orders.py:1"}]}

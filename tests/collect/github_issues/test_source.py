@@ -83,6 +83,12 @@ def test_long_bodies_are_cut_and_bare_locations_are_found(source_runtime):
     assert len(signal.evidence["body"]) == 4000
 
 
+def test_paths_inside_urls_are_not_taken_as_the_location():
+    text = "代理 http://127.0.0.1:8118/src/app/main.py:3 或 https://ci.example.com/log?file=src/app/main.py:5 报错"
+    assert source.location_in(text) is None
+    assert source.location_in(text + "，见 src/app/main.py:120") == "src/app/main.py:120"
+
+
 def test_github_failures_fail_the_source_and_disabled_sync_skips_it(source_runtime):
     current = runtime(source_runtime, [])
     current.github.error = GitError("gh: 502")

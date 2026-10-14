@@ -107,6 +107,16 @@ def test_failures_waste_and_interruptions_are_found(layout: WorkspaceLayout) -> 
     assert crossed.impact is Impact.MAJOR and crossed.tokens == 1_400_000
 
 
+def test_body_problems_of_a_created_issue_are_a_minor_failure_not_a_failed_step() -> None:
+    data = RunData(RUN, "done")
+    data.handoffs = [handoff("assess.issue", "0028", facts={"bodyProblems": ["0028：用了相对日期「昨天」"]}),
+                     handoff("assess.issue", "0029", facts={"bodyProblems": []})]
+    [found] = detect(data, THRESHOLDS, blamed=set()).findings
+    assert (found.kind, found.point, found.phenomenon, found.impact) == (
+        Kind.FAILURE, "assess.issue", "issue-body-check", Impact.MINOR)
+    assert found.subject == "0028" and "相对日期「昨天」" in found.detail
+
+
 def test_calls_finished_by_the_fallback_are_recorded(layout: WorkspaceLayout) -> None:
     data = RunData(RUN, "succeeded")
     data.calls = [detect_module.CallMark("assess.triage", "P-0019", "ok", 1000, "sonnet",

@@ -186,18 +186,50 @@ def test_bare_file_names_are_completed_and_unknown_locations_block_the_issue(run
     assert len(issues.find(runtime.conn)) == 1
 
 
-def test_a_document_that_fails_the_checks_is_kept_and_the_handoff_fails(runtime, repo, finding, good_output, layout):
+def test_body_problems_after_creation_are_recorded_and_the_handoff_still_passes(runtime, repo, finding, good_output,
+                                                                                layout):
+    """建好的 Issue 正文没过检查：Issue 合格、照常放行，只记进交接(bodyProblems 与说明)，不判这一步失败。"""
     output = good_output()
     output["report"]["steps"] = ["昨天下午用户 A 登录", "请求订单详情"]
     found = finding(output=output, title="订单报错，见 services/orders.py:99")  # 问题标题原样写进「引用」
     made = write(runtime, repo, found)
-    assert any("相对日期「昨天」" in item for item in made.failures)
-    assert any("services/orders.py:99" in item for item in made.failures)
-    assert files.body_path(layout, "0001").is_file()  # 文件保留
+    assert any("相对日期「昨天」" in item for item in made.body_problems)
+    assert any("services/orders.py:99" in item for item in made.body_problems)
+    assert files.body_path(layout, "0001").is_file() and issues.get(runtime.conn, "0001").status == "todo"
 
     create.write_handoff(runtime, found, made, None)
     handoff = read_json(layout.issue_dir("0001") / "22-assess.issue-handoff.json")
-    assert handoff["status"] == "failed" and handoff["facts"]["failures"]
+    assert handoff["status"] == "passed" and handoff["facts"]["failures"] == []
+    assert handoff["facts"]["bodyProblems"] == made.body_problems and "正文检查没过" in handoff["notes"]
+
+
+def test_an_issue_that_was_not_created_still_fails_the_handoff(runtime, finding, layout):
+    found = finding()
+    create.write_handoff(runtime, found, None, "正文要引用的代码位置不合格")
+    handoff = read_json(layout.subject_dir("P-0001") / "22-assess.issue-handoff.json")
+    assert handoff["status"] == "failed" and handoff["facts"]["failures"] == ["正文要引用的代码位置不合格"]
+
+
+def test_urls_in_the_body_are_not_checked_as_code_locations(tmp_path):
+    """Issue 0028 的正文：「引用」里的代理地址 http://127.0.0.1:8118 不是代码位置，同一句里真实的位置照常核对。"""
+    root = tmp_path / "agy"
+    (root / "processors").mkdir(parents=True)
+    (root / "processors" / "ai_review.py").write_text("x = 1\n" * 440, encoding="utf-8")
+    (root / "config").mkdir()
+    (root / "config" / "config.yaml").write_text("key: value\n" * 100, encoding="utf-8")
+    text = body.document("0028 [AI整理] agy 白名单环境变量不全", {
+        "problem": "AI 识别笔记和 AI 检查题目调用 agy 时只转发精简白名单里的环境变量。",
+        "cause": "- 根因位置：`processors/ai_review.py:255` AGY_ENV_KEYS\n"
+                 "- 调用链入口：`processors/ai_review.py:313`、`processors/ai_review.py:379`",
+        "acceptance": "- [ ] 在仅设置 ALL_PROXY（不设置 ai_review.proxy）的环境下 agy 子进程能看到 ALL_PROXY",
+        "references": "- `config/config.yaml:89` 默认配置设了 ai_review.proxy: http://127.0.0.1:8118，"
+                      "按默认配置运行时 agy 的 http(s) 代理会补上\n"
+                      "- `processors/ai_review.py:286` subprocess.run(cmd, cwd=cwd, env=env, ...)"}, "zh")
+    snapshot = Snapshot(root)
+    assert create.check_body(text, "problem", snapshot) == []
+    broken = text.replace("ai_review.py:286", "ai_review.py:986")
+    assert create.check_body(broken, "problem", snapshot) == [
+        "位置 processors/ai_review.py:986：processors/ai_review.py 只有 440 行，引用了第 986 行"]
 
 
 def test_a_large_problem_spread_over_modules_is_split(runtime, repo, finding, good_output):
@@ -322,4 +354,4 @@ def test_relative_dates_are_checked_only_in_the_prose(runtime, repo, finding, go
     output["report"]["summary"] = "按 `today` 取当天的记录时没有按用户过滤。"
     output["facts"] = [{"location": "services/orders.py:3", "observation": "删掉今天 id 最大的一条记录"}]
     made = write(runtime, repo, finding(output=output))
-    assert not any("相对日期" in item for item in made.failures)
+    assert not any("相对日期" in item for item in made.body_problems)

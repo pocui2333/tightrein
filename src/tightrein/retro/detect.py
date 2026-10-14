@@ -30,6 +30,8 @@ SECTION = "retro"
 HANDOFF_GLOB = "*-handoff.json"
 STARTED_GLOB = "*-started.json"
 MISJUDGED_KEY = "misjudged"
+# 新建的 Issue 正文检查没过的项(assess/issue/create.py)：Issue 照常建好、交接仍为 passed，这里记成小问题
+BODY_PROBLEMS_KEY = "bodyProblems"
 # 改判(把「不成立」改判为成立)：上一次判断已记为误判时由那一条负责，不重复计数
 OVERRIDE = "false_refute"
 MISJUDGMENT_LABELS = {"false_confirm": "判为成立，后来证明不是", OVERRIDE: "判为不成立，用户改判为成立",
@@ -217,6 +219,11 @@ def _step_findings(data: RunData, thresholds: Thresholds) -> list[Finding]:
         elif handoff.status is Status.PENDING:
             found.append(Finding(Kind.INTERRUPTION, point, point, "waiting-user", "停在人工关卡，等用户决定",
                                  Impact.TRIVIAL, subject, f"{where}等用户决定：{handoff.summary}"))
+        body_problems = handoff.facts.get(BODY_PROBLEMS_KEY)
+        if body_problems:
+            found.append(Finding(Kind.FAILURE, point, point, "issue-body-check",
+                                 "新建的 Issue 正文没过检查(Issue 照常建好)", Impact.MINOR, subject,
+                                 f"{where}：{'；'.join(map(str, body_problems))}"))
         tokens = _weighted(handoff, thresholds.cache_read_weight)
         if tokens > thresholds.step_tokens:
             impact = Impact.MAJOR if tokens >= thresholds.big_tokens else Impact.MINOR

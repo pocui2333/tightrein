@@ -6,8 +6,9 @@
   根因、根因键与预估要改的文件并进记录(去重)，代码笔记按「只补缺」合并；已关联的问题再次评估(回归后等)时不重复
   加入问题列表，新的取证照样写进「追加的问题」，标题末尾注明「再次评估」；
 - 新建前核对正文要引用的代码位置(只补全证据、根因、报告、评估，不改主张与信号原文)：补不全或不存在就不建，交接
-  为 failed 并提示重新评估；建好后按检查项(必需小节、位置真实、日期为绝对日期)再查一遍，不过就保留文件、交接为
-  failed；
+  为 failed 并提示重新评估；建好后按检查项(必需小节、位置真实、日期为绝对日期)再查一遍，没过的记进交接的
+  bodyProblems 与说明(复盘记为小问题)，交接仍为 passed：Issue 已经合格建好、照常放行与实施，判 failed 只会让评估
+  这一步显示失败、计入对象熔断与复盘的严重失败、提示用户处理，却没有可重做的；
 - 一个 Issue 只做一件事：粗规模档为「大」且根因分布在几个模块的，按模块拆成几个 Issue；
 - 放行：缺省待决定；关卡 boundaries.gates.issue 配为 auto 时，低风险的(没有安全、数据、权限类标记且规模为小)直接
   放行为待修；
@@ -27,7 +28,7 @@ from typing import TYPE_CHECKING, Any
 
 from tightrein.assess import notes as code_notes
 from tightrein.assess import persist
-from tightrein.assess.checks import IN_TEXT, Snapshot, complete
+from tightrein.assess.checks import Snapshot, complete, locations_in
 from tightrein.assess.claims import Claim, signal_evidence
 from tightrein.assess.issue import body, files, github, remote
 from tightrein.assess.issue.transitions import (
@@ -101,7 +102,7 @@ class Created:
     issues: list[str] = field(default_factory=list)
     appended: str | None = None
     auto_approved: bool = False
-    failures: list[str] = field(default_factory=list)  # 建好后的检查没过：文件保留，交接为 failed
+    body_problems: list[str] = field(default_factory=list)  # 建好后的正文检查没过的项：只记下，Issue 照常
     saved: dict[Path, str | None] = field(default_factory=dict)  # 改动前的文件内容，外层事务回滚时用来恢复
 
     def remember(self, layout: WorkspaceLayout, issue: str) -> None:
@@ -162,7 +163,7 @@ def from_problem(runtime: Runtime, finding: Finding, snapshot: Snapshot, made: C
         created.auto_approved = record.status == IssueStatus.TODO
         files.write(runtime, record, body=text)
         created.issues.append(record.id)
-        created.failures += [f"{record.id}：{reason}" for reason in check_body(text, record.origin, snapshot)]
+        created.body_problems += [f"{record.id}：{reason}" for reason in check_body(text, record.origin, snapshot)]
         if index == 0:
             notes = code_notes.load(runtime.workspace, finding.problem.id)
             if notes is not None:
@@ -234,10 +235,13 @@ def low_risk(finding: Finding) -> bool:
 
 
 def check_body(text: str, origin: str, snapshot: Snapshot) -> list[str]:
-    """建好后的检查：必需小节、正文中的代码位置真实、叙述中的日期为绝对日期。"""
+    """建好后的检查：必需小节、正文中的代码位置真实、叙述中的日期为绝对日期。代码位置与补全时同一规则
+    (checks.locations_in、Snapshot.cited)：网址里的、「主机:端口」、扩展名不在代码中出现的不算代码位置。"""
     sections = body.split(text)
     reasons = [f"缺少小节 {body.HEADINGS[key]['zh']}" for key in REQUIRED[origin] if not sections.get(key)]
-    for match in IN_TEXT.finditer(text):
+    for match in locations_in(text):
+        if not snapshot.cited(match.group(1)):
+            continue
         problem = snapshot.problem(match.group(0))
         if problem is not None:
             reasons.append(f"位置 {match.group(0)}：{problem}")
@@ -291,7 +295,7 @@ def new_issue(runtime: Runtime, description: str, *, severity: str | None, kind:
         files.write(runtime, record, body=body.render_manual(identifier, title, description, runtime.language))
     _handoff(runtime, identifier, Status.PASSED, f"新建用户需求 Issue {identifier}",
              {"issues": [identifier], "problems": [], "appended": None, "autoApproved": False, "splitHint": hint,
-              "failures": []})
+              "failures": [], "bodyProblems": []})
     github.sync(runtime, record)
     return identifier
 
@@ -318,7 +322,7 @@ def from_request(runtime: Runtime, problem: Problem, imported: remote.Remote, ma
 def write_request_handoff(runtime: Runtime, problem: str, made: Created) -> None:
     _handoff(runtime, made.issues[0], Status.PASSED, f"导入需求 Issue {made.issues[0]}",
              {"issues": list(made.issues), "problems": [problem], "appended": None, "autoApproved": False,
-              "splitHint": None, "failures": []})
+              "splitHint": None, "failures": [], "bodyProblems": []})
 
 
 def split_back(runtime: Runtime, issue: str, parts: Sequence[str]) -> list[str]:
@@ -365,14 +369,16 @@ def _split(runtime: Runtime, original: Issue, parts: Sequence[str], created: lis
 
 
 def write_handoff(runtime: Runtime, finding: Finding, created: Created | None, failure: str | None) -> None:
+    """failure 为没建成的原因(交接 failed)；建成了但正文检查没过的只记进 bodyProblems 与说明，交接仍为 passed。"""
     subject = created.issues[0] if created and created.issues else finding.problem.id
-    failed = failure is not None or bool(created and created.failures)
     summary = failure or (f"追加到 Issue {created.appended}" if created and created.appended
                           else f"新建 Issue {'、'.join(created.issues) if created else ''}")
-    _handoff(runtime, subject, Status.FAILED if failed else Status.PASSED, summary, {
+    noted = list(created.body_problems) if created else []
+    _handoff(runtime, subject, Status.FAILED if failure is not None else Status.PASSED, summary, {
         "issues": created.issues if created else [], "problems": [finding.problem.id],
         "appended": created.appended if created else None, "autoApproved": bool(created and created.auto_approved),
-        "splitHint": None, "failures": [failure] if failure else (created.failures if created else [])})
+        "splitHint": None, "failures": [failure] if failure else [], "bodyProblems": noted},
+        notes=("正文检查没过(Issue 已建好，照常放行与实施)：" + "；".join(noted)) if noted else None)
 
 
 def _new_record(runtime: Runtime, finding: Finding, split: bool) -> tuple[Issue, str]:
@@ -436,12 +442,13 @@ def _first_line(description: str) -> str:
     raise ValueError("需求描述是空的")
 
 
-def _handoff(runtime: Runtime, subject: str, status: Status, summary: str, facts: dict[str, Any]) -> None:
+def _handoff(runtime: Runtime, subject: str, status: Status, summary: str, facts: dict[str, Any],
+             notes: str | None = None) -> None:
     from tightrein.protocol.records import versions
 
     path = runtime.workspace.step_file(subject, HANDOFF)
     write(path, Handoff(point=POINT, subject=subject, run=runtime.run, status=status, summary=summary, facts=facts,
-                        metrics=Metrics(produced={"issues": len(facts["issues"])}),
+                        metrics=Metrics(produced={"issues": len(facts["issues"])}), notes=notes,
                         created_at=format_iso(runtime.clock.now()),
                         versions=versions(runtime.tool.root, runtime.settings.hash, prompt_hash=None, tool=None,
                                           tool_version=None, model=None)))

@@ -28,6 +28,7 @@ tightrein 自身问题的记录簿。每次运行结束都检查一遍，把 tig
    | 单次调用耗时超过 `callDuration` | 浪费 | `call-slow` | minor |
    | 交接状态 failed | 失败 | `step-failed` | severe(停下要用户处理) |
    | 交接状态 pending | 打扰 | `waiting-user` | trivial |
+   | 交接事实中的 `bodyProblems`(新建的 Issue 正文检查没过，Issue 照常建好) | 失败 | `issue-body-check` | minor |
    | 单步 token 超过 `stepTokens` | 浪费 | `step-tokens` | 达到 `bigTokens` 为 major，否则 minor |
    | 单步耗时超过 `stepDuration` | 浪费 | `step-slow` | minor |
    | 单步轮数超过 `rounds` | 浪费 | `many-rounds` | minor |

@@ -10,7 +10,8 @@
   标题找回，不重复建(正文不留本地标记)；失败只记录，下次按本地状态与镜像状态重算差异重试；只移除仓库里确实存在的旧
   标签(GitHub.issue_labels)；
 - 正文里反引号中的 `路径:行号` 换成取证 commit 的永久链接；「追加的问题」中各问题的位置是按它自己取证时的 commit
-  写的，按它「引用」里的取证 commit 链接(镜像在追加之后才新建时，不会指到 Issue 取证 commit 上的别的行)。
+  写的，按它「引用」里的取证 commit 链接(镜像在追加之后才新建时，不会指到 Issue 取证 commit 上的别的行)；
+  `127.0.0.1:8118` 这种主机与端口不换。
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ import re
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
+from tightrein.assess.checks import is_host
 from tightrein.onboard.setup import ModuleStatus
 from tightrein.protocol.git import GitError, PublicRepository
 from tightrein.protocol.git.github import NewIssue
@@ -190,5 +192,7 @@ def _linked(slug: str, text: str, commit: str | None) -> str:
 
 def _link(slug: str, commit: str, match: re.Match[str]) -> str:
     path, start, end = match.group(1), match.group(2), match.group(3)
+    if is_host(path):  # `127.0.0.1:8118`、`localhost:8080` 是主机与端口，不是代码位置
+        return match.group(0)
     lines = f"L{start}" + (f"-L{end}" if end else "")
     return f"[`{path}:{start}{'-' + end if end else ''}`](https://github.com/{slug}/blob/{commit}/{path}#{lines})"

@@ -107,6 +107,17 @@ def test_appended_problems_link_to_their_own_evidence_commit(runtime, make_issue
     assert f"{'c' * 40}/routes/orders.py" not in created
 
 
+def test_host_and_port_in_backticks_are_not_turned_into_code_links(runtime, make_issue, hub):
+    make_issue("0008", status="todo", extra={"triageCommit": "c" * 40})
+    text = files.read_body(runtime.workspace, "0008").replace(
+        "订单查询没有按用户过滤", "代理设为 `127.0.0.1:8118`(或 `localhost:8118`)时订单查询没有按用户过滤")
+    files.write(runtime, issues.get(runtime.conn, "0008"), body=text)
+    github.sync(runtime, issues.get(runtime.conn, "0008"))
+    created = hub.created[0].body
+    assert "`127.0.0.1:8118`" in created and "`localhost:8118`" in created and "/127.0.0.1" not in created
+    assert "blob/" + "c" * 40 + "/services/orders.py#L3" in created  # 真实的代码位置照常换成链接
+
+
 def test_status_changes_close_or_reopen_without_status_labels(runtime, mirrored, hub):
     closed = transitions.close(runtime, "0007", "wont_fix")
     assert not [call for call in hub.calls if call[0] in ("label_create", "labels")]  # 缺省不打状态标签

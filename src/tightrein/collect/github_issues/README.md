@@ -24,7 +24,7 @@ GitHub 上回应(重复的、不成立的、不修的关掉，成立的由本地
 | 字段 | 取值 |
 |---|---|
 | check_type | 带 `featureLabels` 中任一标签为 `request`(需求)，其余为 `report`(缺陷报告) |
-| location | 正文中第一个 `目录/文件.扩展名:行号`(反引号里的或裸写的)；没有为 null |
+| location | 正文中第一个 `目录/文件.扩展名:行号`(反引号里的或裸写的；网址里的不算)；没有为 null |
 | message | 标题 |
 | occurred_at | Issue 的创建时间 |
 | commit | 创建时间之前最近一次成功部署的 commit |
