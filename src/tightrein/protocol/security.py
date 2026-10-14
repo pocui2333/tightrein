@@ -275,7 +275,8 @@ def snapshot(repo: Path, runner: ProcessRunner) -> TreeSnapshot:
     for path in _untracked(status):
         digest.update(f"\0{path}\0{_file_digest(repo / path)}".encode())
     head, branch = _head_of(records)
-    refs = _git(runner, repo, env, "for-each-ref", "--format=%(refname)%00%(objectname)", "refs/heads", "refs/tags")
+    refs = _git(runner, repo, env, "for-each-ref", "--format=%(refname)%00%(objectname)", "refs/heads", "refs/tags",
+                "refs/remotes")
     remotes = _git(runner, repo, env, "config", "-z", "--get-regexp", r"^remote\.", ok=(0, NOT_FOUND_EXIT))
     stash = _git(runner, repo, env, "stash", "list", "--format=%H")
     worktrees = _git(runner, repo, env, "worktree", "list", "--porcelain", "-z")
@@ -290,20 +291,33 @@ def snapshot(repo: Path, runner: ProcessRunner) -> TreeSnapshot:
     )
 
 
+def _not_the_agent(name: str, old: Mapping[str, str], new: Mapping[str, str]) -> bool:
+    """这次引用变化不是 agent 做的：远程跟踪分支(程序自己 fetch)；新出现的本地分支(并行实施时别的 Issue 建的)；
+    本地分支快进到与 origin 上同名分支一致(人在运行时 git pull)。已有分支被改到别处或被删仍算越界。"""
+    if name.startswith("refs/remotes/"):
+        return True
+    if name not in old:
+        return name.startswith("refs/heads/")
+    branch = name.removeprefix("refs/heads/")
+    return name.startswith("refs/heads/") and name in new and new[name] == new.get(f"refs/remotes/origin/{branch}")
+
+
 def compare(before: TreeSnapshot, after: TreeSnapshot, repo: Path, runner: ProcessRunner) -> list[str]:
     """前后两次 snapshot 的差异，每项一句说明；没有差异时为空。"""
     changes = _head_change(before, after, repo, runner)
     own = f"refs/heads/{before.branch}" if before.branch is not None and before.branch == after.branch else None
     old, new = dict(before.refs), dict(after.refs)
     for name in sorted(set(old) | set(new)):
-        if name != own and old.get(name) != new.get(name):
-            changes.append(f"引用 {name} 从 {_short(old.get(name))} 变为 {_short(new.get(name))}")
+        if name == own or old.get(name) == new.get(name) or _not_the_agent(name, old, new):
+            continue
+        changes.append(f"引用 {name} 从 {_short(old.get(name))} 变为 {_short(new.get(name))}")
     if before.remotes != after.remotes:
         keys = sorted({key for key, _ in set(before.remotes) ^ set(after.remotes)})
         changes.append(f"远程配置被修改：{'、'.join(keys)}")
     if before.stash != after.stash:
         changes.append(f"stash 从 {len(before.stash)} 条变为 {len(after.stash)} 条")
-    if before.worktrees != after.worktrees:
+    # 新增的 worktree 不算：并行实施时别的 Issue 在建自己的 worktree；已有的被移走或改了才算
+    if set(before.worktrees) - set(after.worktrees):
         changes.append("worktree 列表被修改")
     started = sorted(set(after.operations) - set(before.operations))
     if started:

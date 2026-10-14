@@ -42,7 +42,7 @@
 - `userVisibleChange`：具体到页面与操作；用户无感知的写「无」。
 - `affectedEndpoints`、`affectedPages`：受影响的接口与页面。
 - `notDoing`：相关但这次不碰的部分，逐条列出。
-- `userDecisions`：需要用户拍板的点，每条 `question`、`recommendation`、`reason`；能从代码与规则得出答案的自行决定，不交给用户。「方案算不算满足某条验收标准」不是要拍板的点：按标准想达到的行为判断，满足就在 `acceptanceMapping` 对应上并在说明里写清理由，即使代码写法与标准字面描述的不同；确实满足不了的不要硬凑，写进方案的说明。
+- `userDecisions`：需要用户拍板的点，每条 `question`、`recommendation`、`reason`；能从代码与规则得出答案的自行决定，不交给用户。「要不要顺带做 Issue 范围以外的事」(补历史数据、迁移存量、清理旧记录、顺手重构)也不是要拍板的点：这次不做，写进 `notDoing`，建议需要时另开 Issue。「方案算不算满足某条验收标准」也不是要拍板的点：按标准想达到的行为判断，满足就在 `acceptanceMapping` 对应上并在说明里写清理由，即使代码写法与标准字面描述的不同；确实满足不了的不要硬凑，写进方案的说明。
 - `knowledgeSuggestions`：建议沉淀进项目知识库的规律(下次还用得上的约定、反复出现的问题写法、经验)，一条一句；没有时写空数组，不硬凑。
 
 # 本次输入

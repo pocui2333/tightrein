@@ -354,7 +354,12 @@ def test_uncommitted_changes_left_by_an_earlier_round_are_not_a_change(repo):
 
 def test_the_comparison_covers_refs_remotes_stash_worktrees_and_operations(repo, tmp_path):
     git(repo, "checkout", "-q", "-b", "fix")
-    assert changes(repo, lambda: git(repo, "branch", "other")) == [f"引用 refs/heads/other 从 (无) 变为 {head(repo)[:12]}"]
+    # 新出现的本地分支不算(并行实施时别的 Issue 建的)；已有分支被挪走或删掉、新打标签仍算
+    assert changes(repo, lambda: git(repo, "branch", "other")) == []
+    (repo / "a.txt").write_text("moved\n", encoding="utf-8")
+    git(repo, "commit", "-q", "-am", "moved")
+    assert changes(repo, lambda: git(repo, "branch", "-f", "other", "HEAD"))[0].startswith("引用 refs/heads/other 从")
+    assert changes(repo, lambda: git(repo, "branch", "-D", "other"))[0].startswith("引用 refs/heads/other 从")
     assert changes(repo, lambda: git(repo, "tag", "v1"))[0].startswith("引用 refs/tags/v1 从 (无) 变为")
     assert changes(repo, lambda: git(repo, "remote", "add", "origin", "https://example.test/r.git")) == [
         "远程配置被修改：remote.origin.fetch、remote.origin.url"]
@@ -364,8 +369,10 @@ def test_the_comparison_covers_refs_remotes_stash_worktrees_and_operations(repo,
         git(repo, "stash", "-q")
 
     assert changes(repo, stash) == ["stash 从 0 条变为 1 条"]
-    assert changes(repo, lambda: git(repo, "worktree", "add", "-q", "--detach", str(tmp_path / "wt"))) == [
-        "worktree 列表被修改"]
+    # 新增 worktree 不算(别的 Issue 在建自己的)；已有的被移除才算
+    assert changes(repo, lambda: git(repo, "worktree", "add", "-q", "--detach", str(tmp_path / "wt"))) == []
+    assert changes(repo, lambda: git(repo, "worktree", "remove", str(tmp_path / "wt"))) == ["worktree 列表被修改"]
+    git(repo, "branch", "other")
 
     def conflict() -> None:
         git(repo, "checkout", "-q", "other")
@@ -382,6 +389,28 @@ def test_the_comparison_covers_refs_remotes_stash_worktrees_and_operations(repo,
                    capture_output=True, check=False)
     found = compare(before, snapshot(repo, runner), repo, runner)
     assert "开始了未完成的 git 操作：MERGE_HEAD" in found and "工作树的内容有变化" in found
+
+
+def test_a_person_pulling_main_during_a_call_is_not_the_agent(repo, tmp_path):
+    """人在运行时 git pull：本地 main 快进到与 origin/main 一致，不算越界(只读 worktree 与主仓库共用分支引用)。"""
+    origin = tmp_path / "origin.git"
+    git(repo, "branch", "-M", "main")
+    subprocess.run(["git", "clone", "-q", "--bare", str(repo), str(origin)], check=True, capture_output=True)
+    git(repo, "remote", "add", "origin", str(origin))
+    git(repo, "fetch", "-q", "origin")
+    git(repo, "checkout", "-q", "-b", "fix")
+    other = tmp_path / "other"
+    subprocess.run(["git", "clone", "-q", str(origin), str(other)], check=True, capture_output=True)
+    (other / "b.txt").write_text("b\n", encoding="utf-8")
+    git(other, "add", "b.txt")
+    git(other, "commit", "-q", "-m", "someone else")
+    git(other, "push", "-q", "origin", "HEAD:main")
+
+    def pull() -> None:
+        git(repo, "fetch", "-q", "origin")
+        git(repo, "branch", "-f", "main", "origin/main")
+
+    assert changes(repo, pull) == []
 
 
 def test_commits_on_the_branch_and_branch_switches_are_told_apart(repo):
