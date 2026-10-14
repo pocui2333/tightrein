@@ -52,7 +52,7 @@ agents/
 | auth_failed | 认证失败 | 各工具的登录、令牌报错 | 停，并对该工具立即依赖熔断 |
 | quota_exhausted | 订阅额度用完 | claude `rate_limit_event` 为 rejected、`You've hit your … limit · resets …`；agy `Individual quota reached … Resets in …`；codex `hit your usage limit` | 全部停下，不换工具；到重置时间前该工具的调用不启动 |
 | unavailable | 工具不存在、无法启动或依赖熔断中且无备用 | 可执行文件找不到、`start_error` | 换备用模型 1 次 |
-| boundary | 越界 | 启动前工作目录有凭据(不启动)、只读步骤工作目录有变化、可写步骤主仓库或 worktree 之外不可写的路径有变化、执行了不在白名单的命令、工具调用读了隐藏目录或凭据文件 | 停，不做格式重试 |
+| boundary | 越界 | 启动前工作目录有凭据(不启动)、只读步骤工作目录有变化、可写步骤主仓库或 worktree 之外不可写的路径有变化、执行了不在白名单的命令或带了执行别的命令、写文件的选项、工具调用读了隐藏目录或凭据文件 | 停，不做格式重试 |
 | failed | 其余工具失败 | | 停 |
 
 ## 一次调用的流程(call.py)
@@ -79,6 +79,7 @@ agents/
 | 单次输出上限 | 环境变量 `CLAUDE_CODE_MAX_OUTPUT_TOKENS` | 程序按每步用量检查 | 程序按每轮用量检查 |
 | 每个 Issue 的用量上限 | 程序逐行累计(按消息编号去重)，将超时杀进程 | 同左 | 同左 |
 | 命令白名单 | 原生 `--allowedTools Bash(<前缀> *)` | 原生 `permissions.allow`(admin install 补齐只读命令) | 程序逐条检查(`boundaries.command_allowed`)，不在白名单即越界并杀进程 |
+| 执行别的命令或写文件的选项(`git grep -O`、`--output`) | 程序逐条检查 `Bash` 的命令(`boundaries.unsafe_option`)，命中即越界并杀进程 | 同左，查 `run_command` | 同左(含在白名单检查里) |
 | 只读 | `--permission-mode dontAsk` 加快照比对 | `--sandbox` 加快照比对 | `--sandbox read-only` 加快照比对 |
 | 额度信号 | `rate_limit_event`；rejected 时立即停下 | 只有报错 | 只有报错 |
 | 费用 | 工具报 `total_cost_usd` | 按价格估算 | 按价格估算 |

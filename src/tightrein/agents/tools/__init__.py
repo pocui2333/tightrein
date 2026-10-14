@@ -50,7 +50,9 @@ class Resume:
 @dataclass(frozen=True)
 class LineEvent:
     tool_calls: int = 0
-    commands: tuple[str, ...] = ()  # 要执行的 shell 命令(工具自己不逐条放行时由程序检查)
+    # 要执行的 shell 命令：工具自己不逐条放行时程序按白名单检查；执行别的命令或写文件的选项(git grep -O 等)工具按前缀
+    # 放行挡不住，程序总要查
+    commands: tuple[str, ...] = ()
     tool_inputs: tuple[tuple[str, Any], ...] = ()  # (工具名, 参数)：程序据此检查是否读了隐藏目录或凭据文件
     tokens: Tokens | None = None
     usage_id: str | None = None  # 同一次模型响应分多行输出时用量会重复出现，按它去重
@@ -78,7 +80,7 @@ class Parsed:
 class Adapter(Protocol):
     name: str
     native_turns: bool  # 工具自己保证轮数上限；否则程序数 tool-call 兜底
-    checks_commands: bool  # 工具自己逐条放行命令；否则程序按白名单检查每条命令
+    checks_commands: bool  # 工具自己逐条放行命令；否则程序按白名单检查每条命令(危险选项总由程序查)
     env_names: tuple[str, ...]  # 除 protocol.security.ENV_ALLOW 外该工具运行必需的环境变量
 
     def env_values(self, params: CallParams) -> dict[str, str]: ...

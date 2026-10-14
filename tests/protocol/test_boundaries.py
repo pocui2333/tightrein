@@ -120,9 +120,30 @@ def test_tasks_that_only_write_tests_may_touch_nothing_else(settings, tmp_path):
     ("git -C /tmp grep x", False),
     ("cat 'unclosed", False),
     ("", False),
+    # 只读命令里执行别的命令或写文件的选项
+    ("""git grep -O'sh -c "git update-ref refs/heads/fix/19 abc"' hello""", False),
+    ("git grep --open-files-in-pager=vim hello", False),
+    ("git grep --op=vim hello", False),
+    ("git grep -nO'sh -c id' hello", False),
+    ("git log -1 --output=/repo/.git/config", False),
+    ("git diff --output /tmp/x HEAD", False),
+    ("git grep -e -O hello", True),
+    ("git grep -n hello -- -O", True),
+    ("git grep -C1 -n --or -e a -e b", True),
+    ("git log --output-indicator-new=+ -1", True),
 ])
 def test_the_command_allowlist(settings, command, allowed):
     assert boundaries.command_allowed(command, settings.get("boundaries.readCommands")) is allowed
+
+
+def test_options_that_run_other_commands_or_write_files_are_named():
+    """git grep -O 用给的命令打开命中的文件，--output 写任意文件：只读命令按前缀放行挡不住，单独查出来。"""
+    assert boundaries.unsafe_option("git grep -nO'sh -c id' x") == "-nOsh -c id"
+    assert boundaries.unsafe_option("git grep --open-files hello") == "--open-files"
+    assert boundaries.unsafe_option("git show --output=a.txt HEAD") == "--output=a.txt"
+    assert boundaries.unsafe_option("git grep --o x") is None  # 有歧义(--or)，git 自己拒绝
+    assert boundaries.unsafe_option("git grep -m1 -A 3 -e -O x") is None
+    assert boundaries.unsafe_option("grep -O x") is None and boundaries.unsafe_option("git log -O order.txt") is None
 
 
 def test_project_commands_extend_the_allowlist(settings):

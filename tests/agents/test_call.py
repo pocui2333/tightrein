@@ -403,6 +403,22 @@ def test_commands_outside_the_allow_list_are_a_boundary_violation(make_world):
     assert result.violations == ["command：不在白名单的命令 rm -rf src"]
 
 
+def test_options_that_run_other_commands_are_a_violation_for_every_tool(make_world):
+    """claude 按前缀原生放行 `git grep *`，挡不住 `git grep -O<命令>`(只读步骤经它能执行任意命令，如让别的 Issue 的
+    修复分支向前移动，而快照比对放过这种移动)：程序照样逐条查，命中即越界；普通的 git grep 照常放行。"""
+    unsafe = """git grep -O'sh -c "git update-ref refs/heads/fix/19 HEAD"' Order"""
+    world = make_world(FakeRun(claude_lines(VALID, tools=(("Bash", {"command": "git grep -n Order"}),
+                                                          ("Bash", {"command": unsafe})))))
+    result = call(world.params(), world.context)
+    assert (result.status, result.attempts) == (CallStatus.BOUNDARY, 1)
+    option = '-Osh -c "git update-ref refs/heads/fix/19 HEAD"'  # shell 引号已去掉
+    assert result.violations == [f"command：执行别的命令或写文件的选项 {option}：{unsafe}"]
+    world = make_world(FakeRun(codex_lines(commands=("git log -1 --output=.git/config",))))
+    assert call(world.codex(), world.context).violations[0].startswith("command：执行别的命令或写文件的选项 --output")
+    world = make_world(FakeRun(claude_lines(VALID, tools=(("Bash", {"command": "git grep -n Order"}),))))
+    assert call(world.params(), world.context).status is CallStatus.OK
+
+
 def test_single_outputs_over_the_cap_are_stopped(make_world):
     world = make_world(FakeRun(codex_lines(output_tokens=20_000)))
     result = call(world.codex(), world.context)

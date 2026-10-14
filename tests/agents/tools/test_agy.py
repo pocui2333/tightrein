@@ -163,6 +163,8 @@ def test_finished_tool_steps_count_as_tool_calls(adapter):
     assert sum(event.tool_calls for event in events) == 2  # ACTIVE 不算，DONE 与 ERROR 各算一次
     # 工具参数在 ACTIVE 时就带出，供程序检查读取越界
     assert events[3].tool_inputs == (("run_command", {"CommandLine": "ls"}),)
+    # 白名单由 agy 按前缀原生放行；命令另交给程序查执行别的命令或写文件的选项(git grep -O 等)
+    assert events[3].commands == ("ls",) and events[6].commands == ()
     assert events[6].tool_inputs == (("write_to_file", {"TargetFile": "/ws/worktrees/fix-0007/c.txt"}),)
     assert adapter.parse_line("不是 JSON").tool_calls == 0
 

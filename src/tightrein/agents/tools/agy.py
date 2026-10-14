@@ -34,6 +34,7 @@ from tightrein.protocol.process import Command
 SUCCESS = "SUCCESS"
 TOOL_STEP = "tool"
 FINISHED_STATES = frozenset({"DONE", "ERROR"})
+SHELL_TOOL, SHELL_LINE = "run_command", "CommandLine"
 SETTINGS = Path.home() / ".gemini" / "antigravity-cli" / "settings.json"
 NO_BROWSER_DIR = Path(tempfile.gettempdir()) / "tightrein-no-browser"
 NO_BROWSER = "#!/bin/sh\n# tightrein：无人值守调用 agy 时不打开浏览器(登录凭据读取被中断时 agy 会转入浏览器登录)\nexit 1\n"
@@ -200,11 +201,13 @@ def tool_note(commands: Sequence[str], turns: int | None) -> str:
 
 def _step_event(step: Mapping[str, Any]) -> LineEvent:
     """工具步骤结束(DONE 或 ERROR)算一次工具调用；agent_response 等步骤完成时带本步用量。工具步骤开始(ACTIVE)时
-    就带出参数：读取越界在执行前即可发现。"""
+    就带出参数：读取越界在执行前即可发现。白名单由 agy 按前缀原生放行，命令另交给程序查执行别的命令或写文件的选项。"""
     if step.get("step_type") == TOOL_STEP:
         info = step.get("tool_info") or {}
-        inputs = ((str(info.get("name") or step.get("tool_name") or ""), info.get("parameters")),)
-        return LineEvent(tool_calls=1 if step.get("state") in FINISHED_STATES else 0, tool_inputs=inputs)
+        name, parameters = str(info.get("name") or step.get("tool_name") or ""), info.get("parameters")
+        line = parameters.get(SHELL_LINE) if name == SHELL_TOOL and isinstance(parameters, dict) else None
+        return LineEvent(tool_calls=1 if step.get("state") in FINISHED_STATES else 0,
+                         commands=(str(line),) if line else (), tool_inputs=((name, parameters),))
     return LineEvent(tokens=tokens_of(step["usage"])) if step.get("usage") else NOTHING
 
 

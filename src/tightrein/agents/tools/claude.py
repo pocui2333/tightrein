@@ -96,7 +96,11 @@ class ClaudeAdapter:
         uses = [block for block in content if isinstance(block, dict) and block.get("type") == "tool_use"] \
             if isinstance(content, list) else []
         usage = message.get("usage")
+        # 白名单由 claude 按前缀原生放行；命令另交给程序查执行别的命令或写文件的选项(boundaries.unsafe_option)
+        commands = tuple(str(block["input"]["command"]) for block in uses if block.get("name") == SHELL
+                         and isinstance(block.get("input"), dict) and block["input"].get("command"))
         return LineEvent(tool_calls=len(uses), tokens=tokens_of(usage) if usage else None, usage_id=message.get("id"),
+                         commands=commands,
                          tool_inputs=tuple((str(block.get("name") or ""), block.get("input")) for block in uses))
 
     def parse(self, stdout: str, stderr: str, exit_code: int | None, now: datetime) -> Parsed:

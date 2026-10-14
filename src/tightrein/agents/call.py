@@ -40,7 +40,7 @@ from tightrein.agents.tools.claude import ClaudeAdapter
 from tightrein.agents.tools.codex import CodexAdapter
 from tightrein.agents.tools.replay import NAME as REPLAY
 from tightrein.agents.tools.replay import ReplayAdapter
-from tightrein.protocol.boundaries import command_allowed, hidden_reads
+from tightrein.protocol.boundaries import command_allowed, hidden_reads, unsafe_option
 from tightrein.protocol.handoff import Tokens, schema_errors
 from tightrein.protocol.limits import Action, Breaker, backoff_s, decide
 from tightrein.protocol.naming import STAGES, Clock, FileName, format_iso, step_sequence
@@ -464,8 +464,13 @@ class _Watch:
         self.turns += event.tool_calls
         if self.turn_limit is not None and self.turns > self.turn_limit:
             return self._stop("turns", f"工具调用超过 {self.turn_limit} 次")
-        for command in event.commands if self.check_commands else ():
-            if not command_allowed(command, self.allowed):
+        for command in event.commands:
+            # 执行别的命令或写文件的选项(git grep -O 等)：工具按前缀原生放行的也挡不住，不论哪种工具都查
+            option = unsafe_option(command)
+            if option is not None:
+                self.violations.append(f"command：执行别的命令或写文件的选项 {option}：{command}")
+                return self._stop("command", f"命令带了执行别的命令或写文件的选项：{command}")
+            if self.check_commands and not command_allowed(command, self.allowed):
                 self.violations.append(f"command：不在白名单的命令 {command}")
                 return self._stop("command", f"执行了不在白名单的命令：{command}")
         if event.tool_inputs:

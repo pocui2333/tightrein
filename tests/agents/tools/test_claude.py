@@ -141,6 +141,15 @@ def test_lines_count_tool_calls_and_deduplicate_usage(adapter):
     assert first.tokens == Tokens(input=2000, output=60, cache_read=800)
     assert adapter.parse_line(lines[3]).tool_calls == 0  # api_retry
     assert adapter.parse_line("不是 JSON").tokens is None
+    assert first.commands == ()
+
+
+def test_shell_commands_are_handed_to_the_program(adapter):
+    """白名单由 claude 按前缀原生放行；Bash 的命令另交给程序查执行别的命令或写文件的选项(git grep -O 等)。"""
+    line = json.dumps({"type": "assistant", "message": {"id": "m1", "content": [
+        {"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "git grep -n Order"}},
+        {"type": "tool_use", "id": "t2", "name": "Read", "input": {"file_path": "a.py"}}]}})
+    assert adapter.parse_line(line).commands == ("git grep -n Order",)
 
 
 def test_rate_limit_events_are_read(adapter):

@@ -43,6 +43,12 @@ AUTO_ALL = "auto_all"  # 全自动：可配置关卡不再看风险与门槛，�
 # shlex 以 punctuation_chars 拆出的这些记号说明命令里有串联、管道、重定向或子命令
 _SHELL_OPERATORS = frozenset(";&|<>()")
 _SUBSTITUTIONS = ("`", "$(")
+# 只读命令表按前缀放行(`git grep` 放行 `git grep -n x`)，下面这些选项却让它执行别的命令或写文件：git grep 的
+# -O、--open-files-in-pager[=<命令>] 用给的命令打开命中的文件(长选项可缩写到 --op，短选项可与别的连写，如 -nO<命令>)；
+# git log/show/diff 的 --output[=]<文件> 把输出写进任意文件(可以是另一个仓库的 .git/config)
+_GREP_PAGER = "--open-files-in-pager"
+_GREP_VALUED = frozenset("efABCm")  # git grep 带参数的短选项：同一记号里其后的字符或下一个记号是参数，不是选项
+_OUTPUT = "--output"
 
 
 @dataclass(frozen=True)
@@ -116,17 +122,46 @@ def check_round(changes: Sequence[Change], *, worktree: Path, settings: Settings
 
 
 def command_allowed(command: str, allowed: Sequence[str]) -> bool:
-    """命令以白名单中某一条开头(按 shell 记号比较)，且不含串联、管道、重定向与子命令。"""
+    """命令以白名单中某一条开头(按 shell 记号比较)，且不含串联、管道、重定向、子命令与执行别的命令或写文件的选项。"""
     if any(marker in command for marker in _SUBSTITUTIONS):
         return False
     tokens = _tokens(command)
-    if not tokens or any(set(token) <= _SHELL_OPERATORS for token in tokens):
+    if not tokens or any(set(token) <= _SHELL_OPERATORS for token in tokens) or unsafe_option(command) is not None:
         return False
     for entry in allowed:
         prefix = _tokens(entry)
         if prefix and tuple(tokens[: len(prefix)]) == tuple(prefix):
             return True
     return False
+
+
+def unsafe_option(command: str) -> str | None:
+    """git 命令里让它执行别的命令或写文件的选项(git grep -O、--open-files-in-pager，--output)；没有时为 None。
+
+    claude、agy 的白名单按前缀原生放行，挡不住这些选项，所以不论哪种工具程序都逐条查(agents/call.py)。`--` 之后是
+    路径，不再看；git grep 带参数的短选项(-e 等)其后是参数。"""
+    tokens = _tokens(command)
+    if len(tokens) < 2 or tokens[0] != "git":
+        return None
+    grep, valued = tokens[1] == "grep", False
+    for token in tokens[2:]:
+        if valued:
+            valued = False
+            continue
+        if token == "--":
+            break
+        name = token.split("=", 1)[0]
+        if name == _OUTPUT or (grep and len(name) > len("--o") and _GREP_PAGER.startswith(name)):
+            return token
+        if not grep or not token.startswith("-") or token.startswith("--"):
+            continue
+        for index, flag in enumerate(token[1:], start=1):
+            if flag == "O":
+                return token
+            if flag in _GREP_VALUED:
+                valued = index == len(token) - 1
+                break
+    return None
 
 
 def hidden_reads(calls: Iterable[tuple[str, Any]], *, workdir: Path, hidden: Sequence[Path],

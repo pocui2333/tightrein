@@ -34,7 +34,7 @@
 - 超量(`over_cap`)：计入的文件数或增删行数超过上限；
 - 第一次越界：撤回本轮改动，带原因交回重做一次；再越界：停下，生成「出问题」文档。
 
-另几类越界由别处产生：`read_only_changed`(只读步骤前后快照不同，`security.md`)、可写步骤的 `outside`(主仓库或 worktree 之外不可写的路径有变化，`security.md`)、`credential`(启动前工作目录有凭据)、`command`(命令不在白名单)、`hidden_read`(见下)。
+另几类越界由别处产生：`read_only_changed`(只读步骤前后快照不同，`security.md`)、可写步骤的 `outside`(主仓库或 worktree 之外不可写的路径有变化，`security.md`)、`credential`(启动前工作目录有凭据)、`command`(命令不在白名单或带了执行别的命令、写文件的选项)、`hidden_read`(见下)。
 
 `hidden_reads`：会话记录中的工具调用(各适配器 `parse_line` 给出的工具名与参数)读了隐藏目录或凭据文件才算越界。参数中的字符串切成片段，含 `/` 或 `.` 的当作路径(相对工作目录，`~/` 按家目录展开，解析符号链接)：落在隐藏位置(工作区的 data/、家目录下的 .ssh、.aws、.gnupg 等，工作目录与额外可读目录除外)即越界；文件名匹配凭据文件模式的只在路径确实存在时算读取(代码片段中的 `it.key` 不是文件)；只提交结果的工具(`StructuredOutput`)不检查。
 
@@ -57,6 +57,7 @@
 
 - 命令按 shell 记号拆开，开头与白名单某一条的记号完全相同才放行(`git grep` 放行 `git grep -n x`，不放行 `git -C /x grep`)；
 - 含串联、管道、重定向、子命令(`;`、`&&`、`|`、`>`、`$(…)`、反引号)的一律拒绝；引号不成对的拒绝；
+- 让只读命令执行别的命令或写文件的选项一律拒绝(`unsafe_option`)：`git grep` 的 `-O`、`--open-files-in-pager`(用给的命令打开命中的文件；长选项可缩写，短选项可与别的连写，如 `-nO<命令>`)，`git log`、`git show`、`git diff` 的 `--output`(把输出写进任意文件)；工具按前缀原生放行挡不住它们，不论哪种工具程序都逐条查，命中即越界并杀进程；
 - 先由工具自带的权限设置挡住，程序再检查一遍兜底。
 
 **在哪配置**：`boundaries.readCommands`；可写步骤另加项目自己的测试、lint、构建命令(工作区 `project.commands`)。
@@ -111,4 +112,5 @@
 - 路径模式取 gitignore 子集：项目维护者熟悉这种写法，不需要另学正则；
 - 受保护文件只许追加：缺省项是安全底线，项目配置写错一次就可能放开凭据文件；
 - 命令白名单按记号比较并拒绝 shell 运算符：前缀字符串比较会被 `cat a; rm b` 绕过；
+- 只读命令的危险选项另查：`git grep -O'sh -c "…"' x` 以 `git grep` 开头、没有 shell 运算符，按前缀放行时只读步骤也能执行任意命令(如经 `git commit-tree`、`git update-ref` 让别的 Issue 的修复分支向前移动，而这正是快照比对放过的)；
 - 参考：[AI agent guardrails checklist](https://dev.to/brennhill/ai-agent-guardrails-a-practical-checklist-42be)(审批与急停)、[Google: Small CLs](https://google.github.io/eng-practices/review/developer/small-cls.html)、[SmartBear: Best practices for code review](https://smartbear.com/learn/code-review/best-practices-for-peer-code-review/)、[gitignore 模式格式](https://git-scm.com/docs/gitignore#_pattern_format)。
