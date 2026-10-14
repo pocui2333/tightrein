@@ -64,6 +64,8 @@ from tightrein.store.files.json import write_json
 from tightrein.store.files.layout import ToolLayout, WorkspaceLayout
 
 RETRY_OUTPUT_CHARS = 8000  # 重试说明中附上的原输出
+WRAP_UP_PROMPT = ("轮数已用完。不要再调用任何工具，只根据本次会话中已经读到的内容，按给定的 schema 输出结论，只输出一个 "
+                  "JSON 对象；没查清的地方按规则写成证据不足，并写明还缺什么。")
 TOOL_OUTPUT_CHARS = 16384  # raw 中单个字符串值的上限
 TRUNCATED = "\n...(已截断)"
 NO_JSON = "/：输出中没有可解析的 JSON 对象"
@@ -296,7 +298,7 @@ def _attempts(params: CallParams, context: AgentContext, adapter: Adapter, model
               run: _Run, before: _Before) -> CallResult:
     current = params
     resume = None if params.resume_session is None else Resume(params.resume_session, params.prompt)
-    finalizing = False
+    finalizing = wrapped = False
     seen: Counter[CallStatus] = Counter()
     while True:
         # 要补要结构化结果的调用：先不带 schema 做完事，再续接同一会话只要 JSON
@@ -320,6 +322,13 @@ def _attempts(params: CallParams, context: AgentContext, adapter: Adapter, model
             if errors:
                 status, error = CallStatus.SCHEMA_INVALID, "；".join(errors)
                 note = retry_note(raw_output(attempt.parsed), errors)
+        # 只读调用轮数用完：续接同一会话一次，按已读到的内容补要结论，读过的不白费(只一次，不再放宽轮数)
+        if (status is CallStatus.TURN_LIMIT and not wrapped and params.schema is not None
+                and params.access is Access.READ and run.session_id is not None):
+            wrapped = finalizing = True
+            resume = Resume(run.session_id, WRAP_UP_PROMPT, finalize=True)
+            _emit(context, params, "decision", "轮数用完，续接同一会话按已读到的内容补要结论")
+            continue
         _record_dependency(context, model.tool, status)
         if status is CallStatus.OK:
             return run.result(status, output=output, text=attempt.parsed.text)

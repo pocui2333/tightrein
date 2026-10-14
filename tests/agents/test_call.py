@@ -366,10 +366,26 @@ def test_timeouts_native_limits_and_tool_errors_are_not_retried(make_world):
                        FakeRun(["not json"], exit_code=2, stderr="boom"))
     timed_out = call(world.params(), world.context)
     assert (timed_out.status, timed_out.output, timed_out.error) == (CallStatus.TIMEOUT, None, "进程被终止：timeout")
-    assert call(world.params(subject="P-0043"), world.context).status is CallStatus.TURN_LIMIT
+    params = world.params(subject="P-0043")
+    assert call(replace(params, access=Access.WRITE), world.context).status is CallStatus.TURN_LIMIT  # 可写的不补要
     failed = call(world.params(subject="P-0044"), world.context)
     assert failed.status is CallStatus.FAILED and "退出码 2" in failed.error and "boom" in failed.error
     assert len(world.runner.commands) == 3
+
+
+def test_a_read_only_call_out_of_turns_is_asked_once_for_its_conclusion(make_world):
+    wrap_up = json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": "",
+                          "session_id": SESSION, "structured_output": VALID,
+                          "usage": {"input_tokens": 50, "output_tokens": 5}, "total_cost_usd": 0.01})
+    world = make_world(FakeRun(claude_lines(None, subtype="error_max_turns"), exit_code=1), FakeRun([wrap_up]))
+    result = call(world.params(), world.context)
+    assert (result.status, result.output, result.attempts) == (CallStatus.OK, VALID, 2)
+    second = world.runner.commands[1]
+    assert second.argv[1:4] == ("-p", "--resume", SESSION) and second.stdin.startswith("轮数已用完")
+    world = make_world(FakeRun(claude_lines(None, subtype="error_max_turns"), exit_code=1),
+                       FakeRun(claude_lines(None, subtype="error_max_turns"), exit_code=1))
+    assert call(world.params(), world.context).status is CallStatus.TURN_LIMIT  # 只补要一次
+    assert len(world.runner.commands) == 2
 
 
 def test_core_counts_turns_for_tools_without_native_limits(make_world):
