@@ -7,7 +7,8 @@
 4. 各阶段依次推进，每一步(每个对象的每一步)包在独立的错误边界里：一步出错只记为该步失败，其余照常；
 5. 每开始一步、一个新对象前查暂停：暂停在当前这一步做完后生效；
 6. 额度到了留余量的门槛时不开始新的对象(评估新问题、开始新 Issue)，手上的照常做完；
-7. 实施缺省同时只处理一个 Issue：有进行中的先做它，没有才按严重度开始一个新的；并行时会改到同一文件的不同时做；
+7. 实施缺省同时只处理一个 Issue：有进行中的先做它，没有才按严重度开始一个新的；并行时会改到同一文件的不同时做，
+   前一个做完再接着做；
    还在等前置 Issue 合入的、停在关卡等用户而还没有新决定的不挑；
 8. 对象熔断：同一对象连续失败或推进后没有前进，达到次数即不再处理、交给人(手动接管)；停在人工关卡不计数；
 9. 每次运行结束都执行复盘。
@@ -279,7 +280,8 @@ def _assess(runtime: Runtime, subject: str | None, outcome: Outcome, heartbeat: 
 def _implement(runtime: Runtime, subject: str | None, outcome: Outcome, heartbeat: _Heartbeat) -> None:
     """指定对象时只推进它；否则同时推进至多 resources.concurrency.sessions 个互不相关的 Issue(见
     _issues_to_implement)，每个在自己的线程里、用自己的数据库连接(protocol/runtime.isolated)，各自的 worktree 与分支
-    互不干扰。同批还有没做完的时按 _Refill 补人，一轮开始的总数到 resources.refillMax 为止。"""
+    互不干扰。同批还有没做完的时按 _Refill 补人；同批全做完时不再凑数、等候，直接按 sessions 个空位再开(先前因为会改到
+    同一文件而没挑的这时能做了)，挑不出来才结束。一轮开始的总数到 resources.refillMax 为止。"""
     if subject is not None:
         issue = _issue_to_implement(runtime, subject)
         if issue is not None:
@@ -304,18 +306,22 @@ def _implement(runtime: Runtime, subject: str | None, outcome: Outcome, heartbea
                 running.pop(future)
                 future.result()
                 freed.append(monotonic())
-            if not running or _halted(runtime, heartbeat) is not None:
+            if _halted(runtime, heartbeat) is not None:
                 continue
-            room = min(refill.count(freed, monotonic()), refill.most - len(started))
+            idle = not running  # 同批全做完：位置都空着，不凑 refillWhenFree、不等 refillAfter，直接再开
+            room = min(sessions if idle else refill.count(freed, monotonic()), refill.most - len(started))
             seen = (frozenset(issue.id for issue in running.values()), len(freed), room)
             if room <= 0 or seen == exhausted:  # 上次没补满之后什么都没变：不每隔几秒空查一遍
                 continue
             busy = set().union(*(_touched_files(runtime, issue) for issue in running.values()))
             found = _issues_to_implement(runtime, room, skip=started, busy=busy)
+            if idle:
+                freed.clear()  # 与第一批一样：没补上的位置不算空出来的；挑不出来时 running 为空，循环结束
             for issue in found:
                 started.add(issue.id)
-                freed.remove(min(freed))
-                _emit(runtime, issue.id, "decision", "同批还有没做完的，补上空位")
+                if not idle:
+                    freed.remove(min(freed))
+                _emit(runtime, issue.id, "decision", "同批都做完了，接着开始" if idle else "同批还有没做完的，补上空位")
                 running[pool.submit(_drive_isolated, runtime, outcome, heartbeat, issue)] = issue
             if len(found) < room:
                 exhausted = (frozenset(issue.id for issue in running.values()), len(freed),
@@ -487,7 +493,8 @@ def _issue_to_implement(runtime: Runtime, subject: str | None) -> issues.Issue |
 def _issues_to_implement(runtime: Runtime, limit: int, *, skip: AbstractSet[str] = frozenset(),
                          busy: AbstractSet[str] = frozenset()) -> list[issues.Issue]:
     """这一轮要推进的 Issue：进行中的先做，再按严重度、编号开始待修的，至多 limit 个；会改到的文件(_touched_files)与
-    已选的(以及 busy，正在做的)有重叠的不同时做(各自的 PR 改同一个文件，后合并的要重新同步、可能冲突)，留到下一轮。
+    已选的(以及 busy，正在做的)有重叠的不同时做(各自的 PR 改同一个文件，后合并的要重新同步、可能冲突)，等撞上的那个
+    做完、空出位置时再挑(_implement)。
     skip 为这一轮已经推进过的(停在关卡的仍是进行中，不再重复挑)。还在等前置 Issue 合入的(assess/issue/blockers.py)、
     停在关卡等用户而还没有新决定的(implement.waiting_for_user)不挑：推了也马上停下，白占一个位置。"""
     from tightrein.implement.implement import waiting_for_user

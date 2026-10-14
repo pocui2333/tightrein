@@ -394,25 +394,66 @@ def test_startup_restores_read_only_worktrees_locked_by_dead_processes(stages, m
     assert os.access(tree / "src", os.W_OK) and not marker.exists()
 
 
-def test_several_unrelated_issues_are_implemented_at_once(stages, make_runtime, monkeypatch):
-    """resources.concurrency.sessions 个互不相关的 Issue 同时推进；根因文件重叠的留到下一轮(这里不补人)。"""
-    monkeypatch.setattr(schedule, "isolated", separate)
-    runtime = make_runtime({"resources": {"refillWhenFree": 2, "refillAfter": "1h", "concurrency": {"sessions": 2}}})
-    for issue_id, file in (("0001", "a.py"), ("0002", "a.py"), ("0003", "b.py")):
+def add_touching(runtime: Any, *files: tuple[str, str]) -> None:
+    """(编号, 根因文件) 的待修 Issue。"""
+    for issue_id, file in files:
         issues.save(runtime.conn, issues.Issue(id=issue_id, status="todo", title=f"Issue {issue_id}", kind="bug",
                                                origin="problem", severity="P2",
                                                extra={"rootCauses": [{"file": file, "line": 1}]}), runtime.clock)
-    threads = set()
+
+
+def test_several_unrelated_issues_are_implemented_at_once(stages, make_runtime, monkeypatch):
+    """resources.concurrency.sessions 个互不相关的 Issue 同时推进(各在自己的线程里)；根因文件重叠的不同时做，同批全做完
+    后不等 refillAfter 接着做，不留到下一次运行。"""
+    monkeypatch.setattr(schedule, "REFILL_POLL_S", 0.05)
+    monkeypatch.setattr(schedule, "isolated", separate)
+    runtime = make_runtime({"resources": {"refillWhenFree": 2, "refillAfter": "1h", "concurrency": {"sessions": 2}}})
+    add_touching(runtime, ("0001", "a.py"), ("0002", "a.py"), ("0003", "b.py"))
+    together = threading.Barrier(2, timeout=2)  # 0001 与 0003 同时在做才过得去
+    guard = threading.Lock()
+    active: set[str] = set()
+    clashes: list[str] = []
 
     def implement(runtime, issue):
-        threads.add(threading.get_ident())
+        with guard:
+            if issue == "0002" and "0001" in active:
+                clashes.append(issue)
+            active.add(issue)
+        if issue in ("0001", "0003"):
+            together.wait()
+        with guard:
+            active.discard(issue)
         return SimpleNamespace(subject=issue, point="implement.deliver", status="passed", summary="交付",
                                next_point=None)
 
     stages.implement = implement
+    outcome = run(runtime, stage="implement")
+    assert sorted(value for name, value in stages.calls if name == "implement") == ["0001", "0002", "0003"]
+    assert not outcome.failed and clashes == []  # 0001、0003 一起做；0002 等 0001 做完才开始
+
+
+def test_an_issue_touching_the_same_file_is_done_after_the_running_one_in_the_same_run(stages, make_runtime,
+                                                                                         monkeypatch):
+    """第一批只挑得出一个(另一个改同一个文件)时，它做完就接着做另一个：曾经 0004 与 0028 都改 processors/ai_review.py，
+    实施只做了 0028 就结束，0004 等到下一次运行。这一轮做过的不再重复推进。"""
+    monkeypatch.setattr(schedule, "REFILL_POLL_S", 0.05)
+    monkeypatch.setattr(schedule, "isolated", separate)
+    runtime = make_runtime({"resources": {"concurrency": {"sessions": 2}}})
+    add_issue(runtime, "0001", "todo", rootCauses=[{"file": "a.py", "line": 1}], plannedFiles=["ai_review.py"])
+    add_issue(runtime, "0002", "todo", rootCauses=[{"file": "b.py", "line": 1}], plannedFiles=["ai_review.py"])
+    assert [item.id for item in schedule._issues_to_implement(runtime, 2)] == ["0001"]
+    run(runtime, stage="implement")
+    assert [value for name, value in stages.calls if name == "implement"] == ["0001", "0002"]
+
+
+def test_after_the_round_is_all_done_no_more_than_refill_max_are_started(stages, make_runtime, monkeypatch):
+    """同批全做完时接着开也算在 refillMax 里：第一批就到了上限，改同一文件而没挑的留到下一次运行。"""
+    monkeypatch.setattr(schedule, "REFILL_POLL_S", 0.05)
+    monkeypatch.setattr(schedule, "isolated", separate)
+    runtime = make_runtime({"resources": {"refillMax": 2, "concurrency": {"sessions": 2}}})
+    add_touching(runtime, ("0001", "a.py"), ("0002", "a.py"), ("0003", "b.py"))
     run(runtime, stage="implement")
     assert sorted(value for name, value in stages.calls if name == "implement") == ["0001", "0003"]
-    assert len(threads) == 2  # 各在自己的线程里
 
 
 def test_one_issue_at_a_time_by_default(stages, make_runtime):
@@ -423,23 +464,21 @@ def test_one_issue_at_a_time_by_default(stages, make_runtime):
     assert [value for name, value in stages.calls if name == "implement"] == ["0001"]
 
 
-@pytest.mark.parametrize("refill, expected", [("0s", ["0001", "0002", "0003"]), ("1h", ["0001", "0002"])])
+@pytest.mark.parametrize("refill, while_running", [("0s", True), ("1h", False)])
 def test_a_free_slot_is_refilled_after_waiting_while_others_still_run(stages, make_runtime, monkeypatch, refill,
-                                                                      expected):
+                                                                      while_running):
     """空位不到 refillWhenFree 个时的兜底：同批里先做完的空出位置，等过 refillAfter 而同批还有没做完的，就补一个；
-    等不到就留到下一轮。"""
+    等不到就等同批全做完再开。"""
     monkeypatch.setattr(schedule, "REFILL_POLL_S", 0.05)
     monkeypatch.setattr(schedule, "isolated", separate)
     runtime = make_runtime({"resources": {"refillAfter": refill, "refillWhenFree": 2, "concurrency": {"sessions": 2}}})
-    for issue_id, file in (("0001", "a.py"), ("0002", "b.py"), ("0003", "c.py")):
-        issues.save(runtime.conn, issues.Issue(id=issue_id, status="todo", title=f"Issue {issue_id}", kind="bug",
-                                               origin="problem", severity="P2",
-                                               extra={"rootCauses": [{"file": file, "line": 1}]}), runtime.clock)
+    add_touching(runtime, ("0001", "a.py"), ("0002", "b.py"), ("0003", "c.py"))
     third_started = threading.Event()
+    waited: list[bool] = []
 
     def implement(runtime, issue):
         if issue == "0002":  # 慢的那个：等第三个补进来，等不到就 1 秒后自己结束
-            third_started.wait(timeout=1)
+            waited.append(third_started.wait(timeout=1))
         if issue == "0003":
             third_started.set()
         return SimpleNamespace(subject=issue, point="implement.deliver", status="passed", summary="交付",
@@ -447,7 +486,8 @@ def test_a_free_slot_is_refilled_after_waiting_while_others_still_run(stages, ma
 
     stages.implement = implement
     run(runtime, stage="implement")
-    assert sorted(value for name, value in stages.calls if name == "implement") == expected
+    assert sorted(value for name, value in stages.calls if name == "implement") == ["0001", "0002", "0003"]
+    assert waited == [while_running]
 
 
 def test_issues_waiting_for_prerequisites_are_skipped_until_those_land(stages, make_runtime):

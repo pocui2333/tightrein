@@ -15,7 +15,7 @@
 7. 按顺序推进，每一步与每个对象的每一步都包在独立的错误边界里，开始每一步、每个新对象前查暂停：
    - 采集：`collect.collect.run`；手动触发时把启用的来源全部交给它(`only`)，其余由采集按 state 表判断到点；
    - 评估：指定了问题时 `assess.assess.assess`，否则 `assess.assess.assess_pending`；额度到了留余量的门槛时不开始；
-   - 实施：缺省同时只处理一个 Issue：有 implementing 的先做它，没有才按严重度、编号开始一个 todo 的(留余量时不开始新的)；`implement.implement.implement` 一步一步推，停在关卡(pending)、失败、离开实施或推进后没有前进为止。`resources.concurrency.sessions`(只能是 1–3)大于 1 时同时推进至多这么多个会改到的文件互不重叠的 Issue(`_touched_files`：根因文件、评估预估的文件、方案的文件、worktree 中已改动的文件)，同批有先做完的按 `resources.refillWhenFree`、`refillAfter` 补人，一轮开始的总数到 `refillMax` 为止(`protocol/resources.md`「并行实施时补人」)。还在等前置 Issue 合入的(`extra.blockedBy`，`assess/issue/blockers.py`)、停在关卡等用户而还没有新决定的(`implement.implement.waiting_for_user`，与推导下一步得出「等用户」同一套判断)不挑：推了也马上停下，白占一个位置；它们照常在 status 与 watch 中列为要人处理；
+   - 实施：缺省同时只处理一个 Issue：有 implementing 的先做它，没有才按严重度、编号开始一个 todo 的(留余量时不开始新的)；`implement.implement.implement` 一步一步推，停在关卡(pending)、失败、离开实施或推进后没有前进为止。`resources.concurrency.sessions`(只能是 1–3)大于 1 时同时推进至多这么多个会改到的文件互不重叠的 Issue(`_touched_files`：根因文件、评估预估的文件、方案的文件、worktree 中已改动的文件)，同批有先做完的按 `resources.refillWhenFree`、`refillAfter` 补人，同批全做完时直接再开(会改到同一文件而没挑的这时接着做)，一轮开始的总数到 `refillMax` 为止(`protocol/resources.md`「并行实施时补人」)。还在等前置 Issue 合入的(`extra.blockedBy`，`assess/issue/blockers.py`)、停在关卡等用户而还没有新决定的(`implement.implement.waiting_for_user`，与推导下一步得出「等用户」同一套判断)不挑：推了也马上停下，白占一个位置；它们照常在 status 与 watch 中列为要人处理；
    - 发布：releasing 的 Issue 只交给合并队列 `release.queue.queue`(它定先后与合并)；accepting 的(验收观察中)与指定的对象单独调用 `release.release.release`，一次推进到能走多远就走多远(等 CI、等部署、观察期、要人决定时停)，同一次运行中不重复调用(队列里刚合并转入验收的也不再调用)；
    - 复盘：`retro.retro.retro`，每次运行结束都跑；
 8. 结束：有步骤失败为 failed，否则 done；摘要(每一步的阶段、对象、状态、一句话)写进 runs 的 summary。
