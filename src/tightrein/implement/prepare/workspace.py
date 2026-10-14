@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import re
 import tempfile
+import threading
 from collections.abc import Mapping
 from dataclasses import asdict
 from pathlib import Path
@@ -37,6 +38,7 @@ if TYPE_CHECKING:
     from tightrein.store.tables.issues import Issue
 
 POINT = "implement.prepare"
+REPOSITORY_LOCK = threading.Lock()
 URGENT = "P0"  # 立即修的 P0 用 hotfix 分支
 GENERIC_STEMS = frozenset({"index", "main", "app", "utils", "util", "helpers", "common", "__init__", "mod", "lib"})
 TOOL_SLUG_PREFIX = re.compile(r"^(?:static|probe|error|alert|latency|server-error|incidental|authz)(?:-|$)")
@@ -55,7 +57,8 @@ def run(runtime: Runtime, context: ImplementContext) -> Handoff:
         return _handoff(runtime, issue, Status.FAILED, f"分支名不合规：{error}", {"reason": "branch_rejected"})
     if not path.is_dir():
         links = tuple(runtime.settings.section(POINT).get("links") or ())
-        create_fix(runtime.git, path, branch, links=links, scope=runtime.scope(issue.id, POINT))
+        with REPOSITORY_LOCK:  # 几个 Issue 并行实施时，在共用的主仓库上建 worktree 与分支一个一个来，不抢 git 的锁
+            create_fix(runtime.git, path, branch, links=links, scope=runtime.scope(issue.id, POINT))
     tree = runtime.git.at(path)
     base = tree.head().commit or ""
     log = runtime.workspace.step_file(issue.id, FileName(POINT, "log", "log"))

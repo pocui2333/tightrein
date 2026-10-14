@@ -469,6 +469,7 @@
 | `git.commit` | `"{type}: {summary}"` |
 | `git.types.bug` | `"fix"` |
 | `git.types.feature` | `"feat"` |
+| `git.commitTypes` | `null` |
 | `git.pr` | `"{summary}"` |
 
 ## tools

@@ -1,6 +1,8 @@
 import importlib
 import json
 import os
+import threading
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
@@ -14,6 +16,7 @@ from tightrein.protocol.git import worktrees
 from tightrein.protocol.naming import format_iso
 from tightrein.protocol.schedule import RunStatus, StepStatus
 from tightrein.settings.load import Settings
+from tightrein.store.db import connect
 from tightrein.store.tables import counters, issues, problems, runs, state
 
 for package in ("tightrein.collect", "tightrein.implement", "tightrein.release", "tightrein.retro"):
@@ -358,3 +361,48 @@ def test_startup_restores_read_only_worktrees_locked_by_dead_processes(stages, m
     later = make_runtime(run="R-20261008T030001Z-run")
     schedule.run(later, trigger="manual", host=HOST, alive=lambda pid: False)
     assert os.access(tree / "src", os.W_OK) and not marker.exists()
+
+
+def test_several_unrelated_issues_are_implemented_at_once(stages, make_runtime, monkeypatch):
+    """resources.concurrency.sessions 个互不相关的 Issue 同时推进；根因文件重叠的留到下一轮。"""
+
+    @contextmanager
+    def separate(runtime):  # 与真实的 isolated 一样，在线程里另开数据库连接
+        from tightrein.protocol.limits import Breaker
+        from tightrein.protocol.resources import IssueBudget, Quota
+
+        conn = connect(runtime.workspace.database)
+        clock, settings = runtime.clock, runtime.settings
+        agents = SimpleNamespace(**{**vars(runtime.agents), "conn": conn, "breaker": Breaker(conn, clock, settings),
+                                    "quota": Quota(conn, clock, settings),
+                                    "budget": IssueBudget(conn, clock, settings)})
+        try:
+            yield SimpleNamespace(**{**vars(runtime), "conn": conn, "agents": agents})
+        finally:
+            conn.close()
+
+    monkeypatch.setattr(schedule, "isolated", separate)
+    runtime = make_runtime({"resources": {"concurrency": {"sessions": 2}}})
+    for issue_id, file in (("0001", "a.py"), ("0002", "a.py"), ("0003", "b.py")):
+        issues.save(runtime.conn, issues.Issue(id=issue_id, status="todo", title=f"Issue {issue_id}", kind="bug",
+                                               origin="problem", severity="P2",
+                                               extra={"rootCauses": [{"file": file, "line": 1}]}), runtime.clock)
+    threads = set()
+
+    def implement(runtime, issue):
+        threads.add(threading.get_ident())
+        return SimpleNamespace(subject=issue, point="implement.deliver", status="passed", summary="交付",
+                               next_point=None)
+
+    stages.implement = implement
+    run(runtime, stage="implement")
+    assert sorted(value for name, value in stages.calls if name == "implement") == ["0001", "0003"]
+    assert len(threads) == 2  # 各在自己的线程里
+
+
+def test_one_issue_at_a_time_by_default(stages, make_runtime):
+    runtime = make_runtime()
+    add_issue(runtime, "0001", "todo")
+    add_issue(runtime, "0002", "todo")
+    run(runtime, stage="implement")
+    assert [value for name, value in stages.calls if name == "implement"] == ["0001"]

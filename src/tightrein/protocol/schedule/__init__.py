@@ -18,6 +18,7 @@ from __future__ import annotations
 import socket
 import threading
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta, tzinfo
 from enum import StrEnum
@@ -31,7 +32,7 @@ from tightrein.protocol.git.worktrees import ReadonlyRestoreFailed, recover_read
 from tightrein.protocol.handoff import Status
 from tightrein.protocol.naming import STAGES, format_iso, kind_of, parse_duration, parse_iso
 from tightrein.protocol.records import EventLog
-from tightrein.protocol.runtime import Runtime
+from tightrein.protocol.runtime import Runtime, isolated
 from tightrein.protocol.schedule.launchd import log_paths, rotate
 from tightrein.settings.load import Settings
 from tightrein.store import retention
@@ -267,11 +268,32 @@ def _assess(runtime: Runtime, subject: str | None, outcome: Outcome, heartbeat: 
 
 
 def _implement(runtime: Runtime, subject: str | None, outcome: Outcome, heartbeat: _Heartbeat) -> None:
+    """指定对象时只推进它；否则同时推进至多 resources.concurrency.sessions 个互不相关的 Issue(见
+    _issues_to_implement)，每个在自己的线程里、用自己的数据库连接(protocol/runtime.isolated)，各自的 worktree 与分支
+    互不干扰。"""
+    if subject is not None:
+        issue = _issue_to_implement(runtime, subject)
+        if issue is not None:
+            _drive_issue(runtime, outcome, heartbeat, issue)
+        return
+    chosen = _issues_to_implement(runtime, int(runtime.settings.get("resources.concurrency.sessions")))
+    if len(chosen) <= 1:
+        for issue in chosen:
+            _drive_issue(runtime, outcome, heartbeat, issue)
+        return
+    with ThreadPoolExecutor(max_workers=len(chosen), thread_name_prefix="implement") as pool:
+        for future in [pool.submit(_drive_isolated, runtime, outcome, heartbeat, issue) for issue in chosen]:
+            future.result()
+
+
+def _drive_isolated(runtime: Runtime, outcome: Outcome, heartbeat: _Heartbeat, issue: issues.Issue) -> None:
+    with isolated(runtime) as local:
+        _drive_issue(local, outcome, heartbeat, issue)
+
+
+def _drive_issue(runtime: Runtime, outcome: Outcome, heartbeat: _Heartbeat, issue: issues.Issue) -> None:
     from tightrein.implement.implement import implement
 
-    issue = _issue_to_implement(runtime, subject)
-    if issue is None:
-        return
     new = issue.status == TODO
     _drive(runtime, outcome, heartbeat, "implement", issue.id, new, lambda: implement(runtime, issue.id),
            still=lambda: stage_for(_status(runtime, issue.id)) == IMPLEMENT)
@@ -401,6 +423,30 @@ def _issue_to_implement(runtime: Runtime, subject: str | None) -> issues.Issue |
         if candidates:
             return min(candidates, key=lambda item: (SEVERITY_ORDER.get(item.severity or "", len(SEVERITY_ORDER)), item.id))
     return None
+
+
+def _issues_to_implement(runtime: Runtime, limit: int) -> list[issues.Issue]:
+    """这一轮要推进的 Issue：进行中的先做，再按严重度、编号开始待修的，至多 limit 个；根因文件与已选的有重叠的
+    不同时做(各自的 PR 改同一个文件，后合并的要重新同步、可能冲突)，留到下一轮。"""
+    candidates = [item for status in FOR_IMPLEMENT for item in sorted(
+        (found for found in issues.find(runtime.conn, status=status) if found.held_by is None),
+        key=lambda item: (SEVERITY_ORDER.get(item.severity or "", len(SEVERITY_ORDER)), item.id))]
+    chosen: list[issues.Issue] = []
+    taken: set[str] = set()
+    for item in candidates:
+        files = _cause_files(item)
+        if taken & files:
+            continue
+        chosen.append(item)
+        taken |= files
+        if len(chosen) >= max(limit, 1):
+            break
+    return chosen
+
+
+def _cause_files(issue: issues.Issue) -> set[str]:
+    return {str(cause["file"]) for cause in issue.extra.get("rootCauses") or []
+            if isinstance(cause, dict) and cause.get("file")}
 
 
 def _status(runtime: Runtime, issue: str) -> str | None:

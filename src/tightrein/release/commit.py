@@ -37,7 +37,8 @@ def commit(runtime: Runtime, issue: Issue, delivery: Delivery, conventions: Conv
     differences = file_differences(worktree.changed_files(base), delivery.changed_files)
     if differences:
         raise ReleaseBlocked(POINT_PR, "交付之后工作区有变化：" + "；".join(differences) + "；先回到实施重新自检与审查")
-    message = commit_message(conventions.commit, kind=conventions.types[issue.kind], scope=delivery.text.scope,
+    kind = conventions.commit_type(issue.kind, urgent=issue.severity == "P0", task_type=issue.extra.get("taskType"))
+    message = commit_message(conventions.commit, kind=kind, scope=delivery.text.scope,
                              summary=delivery.text.summary or issue.title, why=delivery.text.why)
     decided = worktree.state(DECISION_KEYS, base=base)
     head = worktree.commit(status.changed_paths, message, base=base, scope=runtime.scope(issue.id, POINT_PR),

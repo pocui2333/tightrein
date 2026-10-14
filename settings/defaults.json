@@ -926,6 +926,7 @@
       "bug": "fix",
       "feature": "feat"
     },
+    "commitTypes": null,
     "pr": "{summary}"
   },
   "tools": {

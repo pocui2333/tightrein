@@ -114,8 +114,13 @@ class Conventions:
     template: str | None
     prefix: str  # 本机配置的个人前缀，没有时为空
     personal_prefix: bool
-    types: Mapping[str, str]  # Issue 种类(bug、feature) → 分支与提交的类型
+    types: Mapping[str, str]  # Issue 种类(bug、feature) → 分支与 PR 标题的类型
     sources: Mapping[str, str] = field(default_factory=dict)  # branch、commit、template → 来源与出处
+    commit_types: Mapping[str, str] | None = None  # 提交的类型(git.commitTypes)；没配时与 types 相同
+
+    def commit_type(self, kind: str, *, urgent: bool = False, task_type: str | None = None) -> str:
+        """提交说明里的类型：分支可以叫 bugfix，提交按规范写 fix，所以单独一套对应。"""
+        return branch_type(kind, urgent=urgent, types=self.commit_types or self.types, task_type=task_type)
 
     @property
     def branch_pattern(self) -> re.Pattern[str]:
@@ -346,8 +351,10 @@ def resolve(settings: Settings, repo: Path) -> Conventions:
     check_format(commit_format, COMMIT_PLACEHOLDERS)
     prefix = str(settings.get("git.branchPrefix") or "")
     required = sources["branch"] != GENERIC and "{prefix}" in branch_format
+    commit_types = settings.get("git.commitTypes")
     return Conventions(branch_format, commit_format, settings.get("git.pr"), template, prefix,
-                       bool(prefix) or required, dict(settings.get("git.types")), sources)
+                       bool(prefix) or required, dict(settings.get("git.types")), sources,
+                       dict(commit_types) if commit_types else None)
 
 
 def infer(subjects: Sequence[str], branches: Sequence[str], *, min_ratio: float = MIN_RATIO,

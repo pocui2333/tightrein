@@ -8,7 +8,7 @@
 
 | 项 | 键 | 缺省 | 出处 |
 |---|---|---|---|
-| 同时跑的 agent 会话(同时处理的 Issue) | sessions | 1 | 推断：两个工具都按订阅计费，同时只占一个会话的额度，给用户自己留用 |
+| 同时跑的 agent 会话(同时处理的 Issue) | sessions | 1 | 两个工具都按订阅计费，缺省只占一个会话的额度，给用户自己留用；调大后实施阶段同时推进这么多个根因文件互不重叠的 Issue，各在自己的线程、worktree 与分支里(protocol/schedule `_issues_to_implement`) |
 | 全局同时进行的模型调用 | modelCalls | 4 | 推断；`agents/call.py` 每次调用持有一个 |
 | 采集时并行的来源 | collectSources | 4 | 推断：大多是查询外部平台，不占本机资源 |
 | 测试并行 | tests | 按 CPU 核数，最多 8 | pytest-xdist |

@@ -127,3 +127,14 @@ def test_a_template_receives_the_same_content_under_its_headings():
     assert "## 测试\n\n复现测试" in body and body.rstrip().endswith("Closes #3")
     plain = git_format.fill_template("请按团队规范填写。\n", PULL)
     assert plain.startswith("请按团队规范填写。\n\n导出时")
+
+
+def test_commits_can_use_their_own_types_while_branches_use_the_project_words():
+    conventions = git_format.Conventions("{type}-{issue}-{slug}", "{type}{scope}: {summary}", "#{issue} {summary}",
+                                         None, "", False, {"bug": "bugfix", "feature": "feature"},
+                                         commit_types={"bug": "fix", "feature": "feat", "refactor": "refactor"})
+    assert conventions.commit_type("bug") == "fix" and conventions.types["bug"] == "bugfix"
+    assert conventions.commit_type("bug", task_type="refactor") == "refactor"
+    message = git_format.commit_message(conventions.commit, kind=conventions.commit_type("bug"), scope="进度接口",
+                                        summary="fix(进度接口): 标记状态时保留公开状态", why="public 被丢掉了。")
+    assert message == "fix(进度接口): 标记状态时保留公开状态\n\npublic 被丢掉了。\n"
