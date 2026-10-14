@@ -101,6 +101,23 @@ def test_open_breakers_are_listed_until_the_pause_ends(world: Any):
     assert status_snapshot(world.source).health.breakers == ()
 
 
+def test_a_step_returned_by_the_flow_is_shown_as_returned_not_failed(world: Any):
+    """用户带原因否决方案：定案交接为退回(returned)，步骤条标为退回、事件标为 warn，不算进出问题的步数。"""
+    world.handoff("0023", "implement.approve", status=Status.RETURNED, summary="用户否决了方案：按设计文档重出",
+                  facts={"rejected": True, "note": "按设计文档重出"}, minutes_ago=33)
+    with world.layout.events(world.run).open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps({"at": format_iso(world.at(0.05)), "run": world.run, "subject": "0023",
+                                 "point": "implement.approve", "kind": "effect",
+                                 "summary": "returned：用户否决了方案：按设计文档重出", "refs": {}},
+                                ensure_ascii=False) + "\n")
+    snapshot = watch_snapshot(world.source)
+    states = {mark.point: mark.state for mark in snapshot.active[0].steps}
+    assert states["implement.approve"] == "returned"
+    event = next(item for item in snapshot.events if item.point == "implement.approve")
+    assert (event.mark, event.summary) == ("warn", "用户否决了方案：按设计文档重出")
+    assert status_snapshot(world.source).today.failed == 2  # 仍只有 0022 的方案、0023 的审查第 1 轮
+
+
 def test_watch_lists_every_issue_in_progress_with_its_steps_and_call(world: Any):
     snapshot = watch_snapshot(world.source)
     assert snapshot.run is not None and snapshot.run.id == world.run

@@ -178,3 +178,22 @@ def test_an_unreadable_handoff_is_skipped_with_an_error(layout: WorkspaceLayout)
     assert any(str(broken) in error for error in data.errors)
     assert {item.phenomenon for item in detect(data, THRESHOLDS, blamed=set()).findings} == {"run-failed",
                                                                                               "step-failed"}
+
+
+def test_steps_returned_by_the_flow_are_not_failures_but_real_failures_still_are(layout: WorkspaceLayout) -> None:
+    """要等别的 Issue 先合入、一个 PR 放不下、用户带原因否决方案：交接为退回(returned)，不记 step-failed；
+    真正没通过的(方案重出到上限仍不合格)照样记。"""
+    conn = database(layout)
+    events(layout, "0015", "0016", "0017")
+    put(layout, handoff("implement.design", "0015", status=Status.RETURNED,
+                        facts={"reason": "blocked", "blockedBy": ["0017", "0019"]}))
+    put(layout, handoff("implement.approve", "0015", status=Status.RETURNED,
+                        facts={"rejected": True, "note": "按设计文档重出"}))
+    put(layout, handoff("implement.design", "0016", status=Status.RETURNED, facts={"reason": "oversize"}))
+    put(layout, handoff("implement.design", "0017", status=Status.FAILED, facts={"reason": "plan_rejected"}))
+    data = gather(layout, conn, RUN, cache_read_weight=0.1)
+    assert sorted((item.subject, item.status) for item in data.handoffs) == [
+        ("0015", Status.RETURNED), ("0015", Status.RETURNED), ("0016", Status.RETURNED), ("0017", Status.FAILED)]
+    found = detect(data, THRESHOLDS, blamed=set()).findings
+    assert [(item.subject, item.point, item.phenomenon) for item in found] == [
+        ("0017", "implement.design", "step-failed")]

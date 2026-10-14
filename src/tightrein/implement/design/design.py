@@ -12,9 +12,9 @@
 
 另外三种结局：
 - 要等别的 Issue 先合入(blockedBy)：不停在关卡、不问用户；编号核对过(存在、不是自己、还没落地、不互相等)就交接带上
-  前置 Issue，implement.py 据此退回待修，调度等它们合入后再挑；编号不对带原因重出；
+  前置 Issue(交接为 returned，不是失败)，implement.py 据此退回待修，调度等它们合入后再挑；编号不对带原因重出；
 - 根因在设计本身(flags.design)而用户还没同意按设计层面修复：停在关卡等用户(Issue 是用户亲自提的需求时视为已同意)；
-- 一个 PR 放不下(oversize)：交接带上可拆的几部分，implement.py 据此把 Issue 退回评估拆分。
+- 一个 PR 放不下(oversize)：交接带上可拆的几部分(交接为 returned)，implement.py 据此把 Issue 退回评估拆分。
 方案通过后，方案中有前端文件时再出一份前端设计说明(design/frontend.py)，并按方案再判一次风险(design/risk.py)。
 """
 
@@ -59,7 +59,7 @@ USER_ORIGIN = "user"
 BLOCKED = "blocked"  # 交接的 reason：要等别的 Issue 先合入(implement.py 的 BLOCKED_REASON)
 # 交接中不带分析过程(只给人看，放备注)
 DROPPED = ("analysis",)
-# 方案之后的步骤：其中失败的「方案缺口」与用户的否决是重出方案的原因
+# 方案之后的步骤：其中没通过的「方案缺口」与用户的否决(定案交接为 returned)是重出方案的原因
 GATE = "design"  # 与定案(implement/approve)同一个可配置关卡
 LATER = ("implement.approve", "implement.code", "implement.check", "implement.review")
 
@@ -100,7 +100,7 @@ def run(runtime: Runtime, context: ImplementContext) -> Handoff:
         if plan["flags"]["design"]["flagged"] and not accepted:
             return _design_issue(runtime, context, plan, version, usage)
         if plan.get("oversize"):
-            return _handoff(runtime, context, Status.FAILED, "一个 PR 放不下，退回评估拆成几个 Issue",
+            return _handoff(runtime, context, Status.RETURNED, "一个 PR 放不下，退回评估拆成几个 Issue",
                             {"version": version, "reason": "oversize", "splitBack": plan["oversize"],
                              "estimate": plan["estimate"]}, usage, notes=plan.get("analysis"))
         found = check(plan, criteria, worktree, runtime.settings)
@@ -183,7 +183,7 @@ def replan_reasons(context: ImplementContext) -> list[str]:
     reasons = []
     for point in LATER:
         found = context.last(point)
-        if found is None or found.status is not Status.FAILED or (found.created_at or "") < since:
+        if found is None or found.status not in (Status.FAILED, Status.RETURNED) or (found.created_at or "") < since:
             continue
         if found.facts.get("rejected"):
             reasons.append(f"用户否决了上一版方案：{found.facts.get('note') or found.summary}")
@@ -218,7 +218,7 @@ def _blocked(runtime: Runtime, context: ImplementContext, plan: Mapping[str, Any
              usage: Usage) -> Handoff:
     found = plan["blockedBy"]
     waiting = [str(item) for item in found["issues"]]
-    return _handoff(runtime, context, Status.FAILED, f"要等 {'、'.join(waiting)} 先合入：{found['reason']}",
+    return _handoff(runtime, context, Status.RETURNED, f"要等 {'、'.join(waiting)} 先合入：{found['reason']}",
                     {"version": version, "reason": BLOCKED, "blockedBy": waiting, "blockedReason": found["reason"]},
                     usage, notes=plan.get("analysis"))
 

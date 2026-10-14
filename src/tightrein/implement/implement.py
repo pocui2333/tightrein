@@ -13,8 +13,9 @@ handoff.json 与用户的决定接着做，没做完的那一步整个丢掉，w
 | 交付 | 通过，之后发布退回(release.pr 的 backTo) | 合并 main 冲突：开新一轮编码，先合并 main 解决冲突；main 改到同一文件：在最后一轮上重新自检与审查 |
 | 任一步 | 待决定 | 有了用户的新决定就重做这一步(由它取用决定)，否则继续等 |
 | 编码、自检、审查 | 没通过 | 越界：第一次撤回重做这一轮，再越界停下；检查没跑起来停下；不通过项按性质只处理最靠前的一类：设计问题停下、需要用户等决定、方案缺口重出方案、局部问题交回编码(轮数上限 controls.implement.review.rounds，连续两轮阻断项相同或 diff 没变即停) |
-| 方案 | 没通过 | 一个 PR 放不下：退回评估拆分(SPLIT_BACK)；要等别的 Issue 先合入：前置还没落地就退回待修(BLOCK)，都落地了从准备重新做起；其余停下 |
-| 定案 | 没通过(用户否决) | 按原因重出方案，上限 controls.implement.design.rounds |
+| 方案 | 退回 | 一个 PR 放不下：退回评估拆分(SPLIT_BACK)；要等别的 Issue 先合入：前置还没落地就退回待修(BLOCK)，都落地了从准备重新做起 |
+| 方案 | 没通过 | 停下 |
+| 定案 | 退回(用户否决) | 按原因重出方案，上限 controls.implement.design.rounds |
 | 停下之后 | 用户给了新决定 | approve：编码类的接着开一轮，其余重做那一步；reject：重出方案 |
 
 回归或重开后的又一次修复从准备开始：开始前把上一次尝试的交接挪进 `attempt_<次>/`(assess/issue/attempts)。
@@ -162,6 +163,7 @@ def decide(runtime: Runtime, context: ImplementContext) -> Next:
                     gate=dict(last.facts.get("gate") or {}))
     if fresh:
         return _retry(context, last, fresh[-1])
+    # 没通过(failed)与退回(returned)都按步骤与 facts.reason 分派；早先把退回也记成 failed 的交接照样分派得对
     return _dispatch(runtime, context, done, last)
 
 

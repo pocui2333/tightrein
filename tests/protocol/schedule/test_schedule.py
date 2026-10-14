@@ -118,6 +118,15 @@ def test_a_failed_assessment_counts_for_the_object_and_the_others_go_on(stages, 
     assert counters.get(runtime.conn, "breaker.object.P-0001") == 1
 
 
+def test_a_step_returned_by_the_flow_is_not_a_failure(stages, make_runtime, kit):
+    """按流程退回(returned：等前置 Issue、拆分、带原因的否决)不算这一步失败，不计进对象熔断。"""
+    runtime = make_runtime()
+    stages.assess_pending = lambda runtime: [kit.assessed("P-0001", HandoffStatus.RETURNED.value)]
+    outcome = run(runtime, stage="assess")
+    assert [(step.subject, step.status) for step in outcome.steps] == [("P-0001", StepStatus.PASSED)]
+    assert counters.get(runtime.conn, "breaker.object.P-0001") == 0
+
+
 def test_a_given_problem_is_only_assessed(stages, make_runtime):
     runtime = make_runtime()
     add_problem(runtime, "P-0003")

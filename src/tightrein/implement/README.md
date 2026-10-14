@@ -47,8 +47,9 @@
 | 交付 | 通过，之后发布退回(`release.pr` 交接的 `backTo`，`ImplementContext.returned`) | 合并 main 冲突(`implement.code`)：开新一轮编码，程序先合并 main、agent 解决冲突(`code/merge.py`)；main 改到同一文件(`implement.check`)：在最后一轮上重新自检与审查。轮数上限从这次退回算 |
 | 任一步 | 待决定 | 有了用户的新决定就重做这一步(由它取用决定)，否则继续等 |
 | 编码、自检、审查 | 没通过 | 越界、检查没跑起来、按性质分派(见上) |
-| 方案 | 没通过 | `oversize` 退回评估；`blocked` 前置还没落地就退回待修，都落地了从准备重新做起；其余停下 |
-| 定案 | 没通过(用户否决) | 按原因重出方案，上限 `controls.implement.design.rounds`(1) |
+| 方案 | 退回(`returned`) | `oversize` 退回评估；`blocked` 前置还没落地就退回待修，都落地了从准备重新做起 |
+| 方案 | 没通过 | 停下 |
+| 定案 | 退回(`returned`，用户否决) | 按原因重出方案，上限 `controls.implement.design.rounds`(1) |
 | 交付 | 没通过 | 交接写了 `backTo`(自检或审查之后又有改动)回到那一步重做一次；其余停下 |
 | 停下之后 | 用户给了新决定 | `approve`：编码类的接着开一轮，其余重做那一步；`reject`：重出方案 |
 

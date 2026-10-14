@@ -88,7 +88,8 @@ _ROUND_IN_PATH = re.compile(r"\.r(\d+)-")
 _CALL_STATUS = re.compile(r"^[^\s/]+/[^\s：]+：(\w+)")
 _STARTED = "*-started.json"
 _NOISE = "子进程环境去掉了："  # agents/call.py 每次调用都记的例行动作，watch 不列
-_STEP_RESULTS = {"passed": "ok", "failed": "bad", "pending": "gate"}  # 各步交接写的事件「<结果>：<摘要>」
+# 各步交接写的事件「<结果>：<摘要>」；按流程退回(returned)不是出错，标为 warn
+_STEP_RESULTS = {"passed": "ok", "failed": "bad", "pending": "gate", "returned": "warn"}
 _SOURCE_STEP = {"done": "done", "active": "active", "waiting": "waiting", "skipped": "skipped", "failed": "failed",
                 "off": "skipped"}
 _TOKEN_FIELDS = frozenset({"input", "output", "cache_read", "cache_write"})
@@ -289,7 +290,7 @@ class CallInfo:
 @dataclass(frozen=True)
 class StepMark:
     point: str
-    state: str  # done、active、skipped、waiting、failed、gate
+    state: str  # done、active、skipped、waiting、failed、gate、returned(按流程退回：重出方案、等前置 Issue、拆分)
     duration_s: float | None
     note: str | None  # 跳过的原因；定案为 auto 或 manual
     round: int | None
@@ -1155,6 +1156,8 @@ def _step_marks(settings: Settings, stage: str, checkpoints: Sequence[Checkpoint
             marks.append(StepMark(point, "failed", duration, None, item.round, rounds))
         elif handoff.status is Status.PENDING:
             marks.append(StepMark(point, "gate", duration, None, item.round, rounds))
+        elif handoff.status is Status.RETURNED:
+            marks.append(StepMark(point, "returned", duration, None, item.round, rounds))
         else:
             auto = handoff.facts.get(FACT_AUTO)
             note = None if not isinstance(auto, bool) else "auto" if auto else "manual"
@@ -1293,7 +1296,7 @@ def _event_lines(events: Sequence[dict[str, Any]]) -> list[EventLine]:
 
 
 def _mark(event: dict[str, Any]) -> tuple[str, str]:
-    """(标记, 摘要)：一步的结果(passed、failed、pending)按结果标出并去掉前缀；模型调用成功是例行的(routine)，
+    """(标记, 摘要)：一步的结果(passed、failed、pending、returned)按结果标出并去掉前缀；模型调用成功是例行的(routine)，
     失败为 bad；其余异常(越界、熔断、超时、重试)为 warn；决定为 info；程序做完的动作为 ok。"""
     summary = str(event.get("summary") or "")
     kind = event.get("kind")

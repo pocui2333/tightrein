@@ -6,7 +6,7 @@
 
 ## 流程
 
-1. 有停着等确认的同一份方案、且之后用户给了决定：approve 通过；reject 交接为没通过，implement.py 按原因重出方案；
+1. 有停着等确认的同一份方案、且之后用户给了决定：approve 通过；reject 交接为退回(`returned`，按流程重出方案，不是失败，复盘不记)，implement.py 按原因重出方案；
 2. 否则列出不能自动确认的全部原因(`auto_reasons`)：需要拍板的点、三类标记、高风险文件、迁移、新增依赖、删除文件、高风险判定、超出 `boundaries.autoApprove`、前端设计说明与方案冲突；
 3. 没有原因且 `boundaries.gates.design` 为 auto：自动通过；否则停在关卡(交接 `gate` 供待审核文档)，同一份方案的原因只记一次事件。
 

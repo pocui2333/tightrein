@@ -97,7 +97,9 @@ def test_the_users_decision_is_bound_to_the_plan_hash(world: Any) -> None:
     rejected = Decision(approve.POINT, "reject", None, "不要改接口", at)
     context = world.context(latest={DESIGN: design, approve.POINT: waiting}, decisions=[rejected])
     result = approve.run(world.runtime, context)
-    assert result.status is Status.FAILED and result.facts["rejected"] and result.facts["note"] == "不要改接口"
+    # 带原因的否决是按流程退回重出方案，不是失败(复盘不记 step-failed)
+    assert result.status is Status.RETURNED and result.facts["rejected"] and result.facts["note"] == "不要改接口"
+    assert result.summary == "用户否决了方案：不要改接口"
 
 
 def test_coding_checks_the_confirmed_plan(world: Any) -> None:

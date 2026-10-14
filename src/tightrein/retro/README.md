@@ -28,6 +28,7 @@ tightrein 自身问题的记录簿。每次运行结束都检查一遍，把 tig
    | 单次调用耗时超过 `callDuration` | 浪费 | `call-slow` | minor |
    | 交接状态 failed | 失败 | `step-failed` | severe(停下要用户处理) |
    | 交接状态 pending | 打扰 | `waiting-user` | trivial |
+   | 交接状态 returned(按流程退回：方案要等别的 Issue 先合入、一个 PR 放不下要拆分、用户否决方案并写明原因) | 不记 | — | — |
    | 交接事实中的 `bodyProblems`(新建的 Issue 正文检查没过，Issue 照常建好) | 失败 | `issue-body-check` | minor |
    | 单步 token 超过 `stepTokens` | 浪费 | `step-tokens` | 达到 `bigTokens` 为 major，否则 minor |
    | 单步耗时超过 `stepDuration` | 浪费 | `step-slow` | minor |
@@ -97,6 +98,7 @@ tightrein 自身问题的记录簿。每次运行结束都检查一遍，把 tig
 - **发现、合并、评级都由程序做**：只有新建记录时调一次模型，复盘本身几乎不花 token。
 - **按指纹合并**：同一个问题每次运行都会出现，按「类型 + 阶段与小步骤 + 调用点 + 现象」合并成一条、累计次数，评级才能反映「反复出现」；现象只用英文短名，不含数字，否则每次都会是新记录。
 - **调用点归组**：角色名末尾的序号与缺陷模式编号去掉后再算指纹，同一调用点的多次调用并到一起(旧 `pipeline/learn/steps/yields.py:role_group`)。
+- **按流程退回不算失败**：等前置 Issue、拆分、带原因的否决都是设计好的去向，交接为 `returned`(protocol/handoff.md)，不记 `step-failed`；记成失败会让解决思路去「修」本来就对的流程。
 - **改判由上一条负责**：改判记录的上一条已判为误判时不重复计数(旧 `pipeline/learn/steps/troubles.py:misjudged`)。
 - **一项出错不影响其余**：复盘在运行末尾，不能因为一个读不懂的文件或一项检测的异常让整次复盘落空(旧 `pipeline/learn/steps/metrics.py:compute`)。
 - **不处理的只追加不再提醒**：用户拒绝过的不反复打扰(旧 `pipeline/learn/steps/suggestions.py:store`)；已处理的再出现说明没修好，重新列为待看。

@@ -209,7 +209,7 @@ def test_a_boundary_violation_is_redone_once(world: Any) -> None:
 def test_an_oversized_plan_goes_back_to_assessment(world: Any) -> None:
     parts = [{"title": "拆一", "goal": "目标一", "acceptance": ["能用"]}, {"title": "拆二", "goal": "目标二",
                                                                          "acceptance": ["也能用"]}]
-    _save(world, DESIGN, Status.FAILED, {"reason": "oversize", "splitBack": {"reason": "太大", "parts": parts}})
+    _save(world, DESIGN, Status.RETURNED, {"reason": "oversize", "splitBack": {"reason": "太大", "parts": parts}})
     found = _decide(world)
     assert found.kind is Kind.SPLIT and found.parts[0] == "拆一\n\n目标一\n\n验收标准：\n- 能用"
     _save(world, DESIGN, Status.FAILED, {"reason": "plan_rejected", "problems": ["预估超上限"]})
@@ -217,10 +217,12 @@ def test_an_oversized_plan_goes_back_to_assessment(world: Any) -> None:
     assert (found.kind, found.code, found.tried) == (Kind.STOP, "plan_rejected", ("预估超上限",))
 
 
-def test_a_rejected_plan_is_replanned(world: Any) -> None:
+@pytest.mark.parametrize("status", [Status.RETURNED, Status.FAILED])  # 早先把否决记成 failed 的交接照样重出
+def test_a_rejected_plan_is_replanned(world: Any, status: Status) -> None:
     _planned(world)
-    _save(world, APPROVE, Status.FAILED, {"rejected": True, "note": "不要改接口"})
+    _save(world, APPROVE, status, {"rejected": True, "note": "不要改接口"})
     assert _decide(world) == implement.Next(Kind.RUN, DESIGN)
+    assert not implement.waiting_for_user(world.runtime, ISSUE)
 
 
 def test_changes_after_review_go_back_to_review_only(world: Any) -> None:
@@ -307,6 +309,21 @@ def test_a_stop_writes_the_failure_document_and_an_approval_continues(world: Any
     assert issues.get(world.runtime.conn, ISSUE).status == IssueStatus.IMPLEMENTING  # type: ignore[union-attr]
 
 
+def test_a_rejection_goes_back_to_the_plan_without_stopping(world: Any, steps: Steps) -> None:
+    """用户带原因否决方案：定案交接为退回，不停下、不写出问题文档、不转待决定，接着重出方案。"""
+    for _ in range(3):
+        implement.implement(world.runtime, ISSUE)
+    steps.plan(APPROVE, Status.RETURNED, {"rejected": True, "note": "按设计文档重出"})
+    outcome = implement.implement(world.runtime, ISSUE)
+    assert (outcome.point, outcome.status, outcome.next_point) == (APPROVE, Status.PASSED, DESIGN)
+    saved = read(world.runtime.workspace.step_file(ISSUE, FileName(APPROVE, "handoff", "json")))
+    assert saved.status is Status.RETURNED
+    assert not world.runtime.workspace.human_document(ISSUE, "failure").exists()
+    record = issues.get(world.runtime.conn, ISSUE)
+    assert record is not None and record.status == IssueStatus.IMPLEMENTING and record.step == DESIGN
+    assert implement.implement(world.runtime, ISSUE).point == DESIGN and steps.ran[-2:] == [APPROVE, DESIGN]
+
+
 def test_a_gate_writes_the_pending_document(world: Any, steps: Steps) -> None:
     for _ in range(3):
         implement.implement(world.runtime, ISSUE)
@@ -325,7 +342,7 @@ def test_an_oversized_issue_is_split_back(world: Any, steps: Steps) -> None:
     for _ in range(2):
         implement.implement(world.runtime, ISSUE)
     parts = [{"title": f"拆分 {number}", "goal": "单独合入", "acceptance": ["能用"]} for number in (1, 2)]
-    steps.plan(DESIGN, Status.FAILED, {"reason": "oversize", "splitBack": {"reason": "太大", "parts": parts}})
+    steps.plan(DESIGN, Status.RETURNED, {"reason": "oversize", "splitBack": {"reason": "太大", "parts": parts}})
     outcome = implement.implement(world.runtime, ISSUE)
     record = issues.get(world.runtime.conn, ISSUE)
     assert record is not None and record.status == IssueStatus.CANCELLED
@@ -345,8 +362,8 @@ def test_waiting_for_another_issue_goes_back_to_todo_and_starts_over_once_it_lan
     issues.save(world.runtime.conn, replace(found, stage="implement"), world.clock)  # 实施中的带着阶段
     for _ in range(2):
         implement.implement(world.runtime, ISSUE)
-    steps.plan(DESIGN, Status.FAILED, {"reason": implement.BLOCKED_REASON, "blockedBy": ["0019"],
-                                       "blockedReason": "要用排序接口"})
+    steps.plan(DESIGN, Status.RETURNED, {"reason": implement.BLOCKED_REASON, "blockedBy": ["0019"],
+                                         "blockedReason": "要用排序接口"})
     outcome = implement.implement(world.runtime, ISSUE)
     assert (outcome.point, outcome.status, outcome.next_point) == (DESIGN, Status.PASSED, None)
     assert "等 0019 合入后再做" in outcome.summary

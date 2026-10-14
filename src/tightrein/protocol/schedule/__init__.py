@@ -558,8 +558,9 @@ def _guarded[T](runtime: Runtime, outcome: Outcome, stage: str, subject: str | N
 
 
 def _step_status(status: Any) -> StepStatus:
+    """一步的结论 → 调度里这一步的结果：按流程退回(returned)不算失败，对象照常算有进展。"""
     return {Status.PASSED: StepStatus.PASSED, Status.FAILED: StepStatus.FAILED,
-            Status.PENDING: StepStatus.PENDING}[Status(status)]
+            Status.PENDING: StepStatus.PENDING, Status.RETURNED: StepStatus.PASSED}[Status(status)]
 
 
 def _assessed(result: Any) -> str:

@@ -25,8 +25,11 @@ VERBATIM_KEYS = frozenset({"facts", "produced"})  # 键名由各步骤自定，�
 
 class Status(StrEnum):
     PASSED = "passed"
-    FAILED = "failed"
+    FAILED = "failed"  # 没通过：出了错或卡住，按原因停下交人、交回重做或重试
     PENDING = "pending"  # 待决定：到人工关卡
+    # 退回：这一步按流程把对象退回别处接着走，不是出错，也不用人处理(方案要等别的 Issue 先合入、一个 PR 放不下要
+    # 拆分、用户否决方案并写明原因)；复盘不记为失败
+    RETURNED = "returned"
 
 
 @dataclass

@@ -174,7 +174,7 @@ def test_an_oversized_issue_goes_back_to_assessment(world: Any, monkeypatch: pyt
     parts = [{"title": f"第 {number} 部分", "goal": "单独合入", "acceptance": ["能用"]} for number in (1, 2)]
     _install(monkeypatch, _plan(oversize={"reason": "要改 30 个文件", "parts": parts}))
     result = design.run(world.runtime, world.context())
-    assert result.status is Status.FAILED and result.facts["reason"] == "oversize"
+    assert result.status is Status.RETURNED and result.facts["reason"] == "oversize"  # 按流程退回，不是失败
     assert result.facts["splitBack"]["parts"] == parts
 
 
@@ -187,12 +187,12 @@ def _others(world: Any) -> None:
 
 
 def test_waiting_for_other_issues_ends_the_step_without_asking(world: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    """要等别的 Issue 先合入：不停在关卡、不问用户，交接带上前置 Issue；编号不对的带原因重出。"""
+    """要等别的 Issue 先合入：不停在关卡、不问用户，交接为退回(不是失败)、带上前置 Issue；编号不对的带原因重出。"""
     _others(world)
     wrong = _plan(blockedBy={"issues": ["0018", "0020", "0021", "0099"], "reason": "要用排序接口"})
     fake = _install(monkeypatch, wrong, _plan(blockedBy={"issues": ["0019", "0022"], "reason": "要用 #25 的排序接口"}))
     result = design.run(world.runtime, world.context())
-    assert result.status is Status.FAILED and result.facts["reason"] == design.BLOCKED
+    assert result.status is Status.RETURNED and result.facts["reason"] == design.BLOCKED
     assert result.facts["blockedBy"] == ["0019", "0022"] and "gate" not in result.facts
     assert result.summary == "要等 0019、0022 先合入：要用 #25 的排序接口"
     assert fake.requests[1].variables["feedback"].splitlines() == [
@@ -236,7 +236,7 @@ def test_replanning_stops_at_the_limit(world: Any, monkeypatch: pytest.MonkeyPat
 def test_replanning_reuses_the_locating_and_carries_the_reasons(world: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     previous = world.handoff(design.POINT, {**_plan(), "version": 1, "planHash": "a" * 64})
     world.clock.advance(timedelta(minutes=5))
-    rejected = world.handoff("implement.approve", {"rejected": True, "note": "不要改接口"}, Status.FAILED,
+    rejected = world.handoff("implement.approve", {"rejected": True, "note": "不要改接口"}, Status.RETURNED,
                              at=world.clock.now())
     gap = {"check": "code", "kind": "big_issue", "location": "src/orders.py:2", "summary": "方案走不通",
            "category": "plan_gap", "trigger": None}
@@ -247,6 +247,18 @@ def test_replanning_reuses_the_locating_and_carries_the_reasons(world: Any, monk
     assert result.facts["version"] == 2  # 上一版通过后重出才加一
     assert fake.requests[0].variables["replan"] == ("- 用户否决了上一版方案：不要改接口\n"
                                                     "- [code/big_issue] src/orders.py:2：方案走不通")
+
+
+def test_a_rejection_recorded_as_failed_before_is_still_a_replan_reason(world: Any,
+                                                                        monkeypatch: pytest.MonkeyPatch) -> None:
+    """早先的定案把否决记成 failed：升级后照样把否决的原因带进重出的方案。"""
+    previous = world.handoff(design.POINT, {**_plan(), "version": 1, "planHash": "a" * 64})
+    world.clock.advance(timedelta(minutes=5))
+    rejected = world.handoff("implement.approve", {"rejected": True, "note": "按设计文档重出"}, Status.FAILED,
+                             at=world.clock.now())
+    fake = _install(monkeypatch, _plan())
+    design.run(world.runtime, world.context(latest={design.POINT: previous, "implement.approve": rejected}))
+    assert fake.requests[0].variables["replan"] == "- 用户否决了上一版方案：按设计文档重出"
 
 
 def test_plans_with_frontend_files_get_a_frontend_design(world: Any, monkeypatch: pytest.MonkeyPatch) -> None:

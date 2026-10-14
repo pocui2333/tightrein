@@ -5,7 +5,7 @@
   删除文件，风险判定不是高风险，预估在 boundaries.autoApprove 门槛内，前端设计说明与方案没有冲突；不满足时列出
   全部原因停在关卡，同一份方案的原因只记一次事件；
 - 用户的决定由命令行经 `record` 写进 Issue(来源、时间、原文)，之后每次方案与编码都带上；approve 即通过，
-  reject 必带原因，implement.py 按原因重出方案(上限 controls.implement.design.rounds)。
+  reject 必带原因，交接为退回(returned，不是失败)，implement.py 按原因重出方案(上限 controls.implement.design.rounds)。
 """
 
 from __future__ import annotations
@@ -117,7 +117,7 @@ def record(runtime: Runtime, issue_id: str, decision: Decision) -> None:
 def _decided(runtime: Runtime, context: ImplementContext, plan_hash: str, decided: Decision) -> Handoff:
     note = decided.note
     if decided.verdict == REJECT:
-        return _handoff(runtime, context, Status.FAILED, f"用户否决了方案：{note or '没有说明'}",
+        return _handoff(runtime, context, Status.RETURNED, f"用户否决了方案：{note or '没有说明'}",
                         {"planHash": plan_hash, "auto": False, "rejected": True, "note": note})
     return _handoff(runtime, context, Status.PASSED, "用户已确认方案",
                     {"planHash": plan_hash, "auto": False, "approvedBy": "user", "note": note,

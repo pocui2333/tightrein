@@ -213,6 +213,7 @@ def _step_findings(data: RunData, thresholds: Thresholds) -> list[Finding]:
     for handoff in data.handoffs:
         point, subject, metrics = handoff.point, handoff.subject, handoff.metrics
         where = f"{_subject_text(subject)}的 {point}" + (f" 第 {handoff.round} 轮" if handoff.round else "")
+        # 按流程退回(returned：等前置 Issue、拆分、带原因的否决)不是失败，不记
         if handoff.status is Status.FAILED:
             found.append(Finding(Kind.FAILURE, point, point, "step-failed", "这一步失败停下，需要用户处理",
                                  Impact.SEVERE, subject, f"{where}失败：{handoff.summary}"))

@@ -48,7 +48,7 @@ TIME_COLUMN = 6
 POINT_COLUMN = 14  # 事件流水中「调用点 轮次」一列
 SUBJECT_COLUMN = 6
 STEP_MARKS = {"done": ("✓", "ok"), "active": ("◐", "active"), "waiting": ("·", "frame"), "skipped": ("⊘", "frame"),
-              "failed": ("■", "bad"), "gate": ("▲", "warn")}
+              "failed": ("■", "bad"), "gate": ("▲", "warn"), "returned": ("↺", "warn")}
 SOURCE_MARKS = {"done": ("✓", "ok"), "active": ("◐", "active"), "waiting": ("·", "frame"), "skipped": ("⊘", "frame"),
                 "off": ("⊘", "frame"), "failed": ("■", "bad")}
 # 事件：一步的结果、程序做完的动作为 ok；模型调用成功是例行的，整行淡显；决定为 info
