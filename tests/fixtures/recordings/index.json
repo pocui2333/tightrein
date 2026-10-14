@@ -8,7 +8,7 @@
       "dir": "01-assess.triage-r1",
       "tool": "claude",
       "exitCode": 0,
-      "sha256": "55c142ea3e34192b9870770cd5321d3c2a9befeaa3c6a9754a589bb4ec82b80f"
+      "sha256": "6e2c918ddbe503ec054125e54016140d536ae843504c9f6d4a898de13bb11813"
     },
     {
       "point": "implement.design",

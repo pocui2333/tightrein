@@ -117,6 +117,16 @@ def test_a_refuted_report_is_answered_and_closed_as_not_planned(runtime, hub, im
     assert_human(hub.comments())
 
 
+def test_replies_never_carry_internal_wording_and_fixed_ones_say_so(runtime, hub, imported, agent, readonly, outputs):
+    imported(12)
+    jargon = outputs.refuted(sourceOfPhenomenon={"location": "routes/orders.py:4", "factRef": None,
+                                                 "explanation": "主张基于旧版本，当时路由还没有校验。"})
+    agent.queue(TRIAGE, jargon)
+    assessing.assess(runtime, "P-0001")
+    assert hub.calls[0] == ("comment", 12, "看了下代码，这里没有问题。")  # 带「主张」这种内部用语的理由不用
+    assert_human(hub.comments())
+
+
 def test_a_duplicate_is_closed_with_a_reference_to_the_github_number(runtime, hub, imported, make_problem, make_issue,
                                                                      agent, readonly):
     make_problem("P-0002", status="ongoing", issue="0007", title="保存订单时报错")

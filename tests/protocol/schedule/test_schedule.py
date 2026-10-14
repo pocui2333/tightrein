@@ -406,3 +406,45 @@ def test_one_issue_at_a_time_by_default(stages, make_runtime):
     add_issue(runtime, "0002", "todo")
     run(runtime, stage="implement")
     assert [value for name, value in stages.calls if name == "implement"] == ["0001"]
+
+
+@pytest.mark.parametrize("refill, expected", [("0s", ["0001", "0002", "0003"]), ("1h", ["0001", "0002"])])
+def test_a_free_slot_is_refilled_after_waiting_while_others_still_run(stages, make_runtime, monkeypatch, refill,
+                                                                      expected):
+    """同批里先做完的空出位置，等过 refillAfter 而同批还有没做完的，就补一个；等不到就留到下一轮。"""
+    monkeypatch.setattr(schedule, "REFILL_POLL_S", 0.05)
+
+    @contextmanager
+    def separate(runtime):
+        from tightrein.protocol.limits import Breaker
+        from tightrein.protocol.resources import IssueBudget, Quota
+
+        conn = connect(runtime.workspace.database)
+        clock, settings = runtime.clock, runtime.settings
+        agents = SimpleNamespace(**{**vars(runtime.agents), "conn": conn, "breaker": Breaker(conn, clock, settings),
+                                    "quota": Quota(conn, clock, settings),
+                                    "budget": IssueBudget(conn, clock, settings)})
+        try:
+            yield SimpleNamespace(**{**vars(runtime), "conn": conn, "agents": agents})
+        finally:
+            conn.close()
+
+    monkeypatch.setattr(schedule, "isolated", separate)
+    runtime = make_runtime({"resources": {"refillAfter": refill, "concurrency": {"sessions": 2}}})
+    for issue_id, file in (("0001", "a.py"), ("0002", "b.py"), ("0003", "c.py")):
+        issues.save(runtime.conn, issues.Issue(id=issue_id, status="todo", title=f"Issue {issue_id}", kind="bug",
+                                               origin="problem", severity="P2",
+                                               extra={"rootCauses": [{"file": file, "line": 1}]}), runtime.clock)
+    third_started = threading.Event()
+
+    def implement(runtime, issue):
+        if issue == "0002":  # 慢的那个：等第三个补进来，等不到就 1 秒后自己结束
+            third_started.wait(timeout=1)
+        if issue == "0003":
+            third_started.set()
+        return SimpleNamespace(subject=issue, point="implement.deliver", status="passed", summary="交付",
+                               next_point=None)
+
+    stages.implement = implement
+    run(runtime, stage="implement")
+    assert sorted(value for name, value in stages.calls if name == "implement") == expected

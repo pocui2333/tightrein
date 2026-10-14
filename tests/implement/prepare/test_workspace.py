@@ -126,7 +126,7 @@ def test_a_failing_prepare_command_is_a_configuration_error(new_world: Any, sett
 def test_branch_slugs_read_like_a_person_named_them():
     from types import SimpleNamespace
 
-    from tightrein.implement.prepare.workspace import _slug
+    from tightrein.implement.prepare.workspace import branch_slug as _slug
 
     def issue(slug, causes=()):
         return SimpleNamespace(extra={"slug": slug, "rootCauses": list(causes)}, title="中文标题", kind="bug")

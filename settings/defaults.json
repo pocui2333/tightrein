@@ -86,7 +86,7 @@
       "rounds": 1,
       "access": "read",
       "network": false,
-      "pinActive": "3m"
+      "pinActive": "5m"
     },
     "collect": {
       "timeout": "30m",
@@ -103,6 +103,7 @@
       "model": "sonnet",
       "fallback": "opus-mid",
       "turns": 10,
+      "pinActive": "8m",
       "escalateSeverities": [
         "high"
       ]
@@ -554,7 +555,7 @@
       "timeout": "30m",
       "checkpointRollbackFindings": 3,
       "rounds": 3,
-      "pinActive": "5m"
+      "pinActive": "8m"
     },
     "implement.check": {
       "environmentPatterns": [
@@ -653,7 +654,7 @@
       "turns": 30,
       "outputTokens": 32000,
       "timeout": "10m",
-      "pinActive": "5m"
+      "pinActive": "8m"
     },
     "release": {
       "mergeMethod": "squash",
@@ -798,6 +799,7 @@
     "shutdownGrace": "30s"
   },
   "resources": {
+    "refillAfter": "3m",
     "concurrency": {
       "sessions": 1,
       "modelCalls": 4,

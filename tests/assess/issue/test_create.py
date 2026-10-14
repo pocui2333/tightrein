@@ -113,20 +113,20 @@ def test_low_risk_issues_are_approved_automatically_and_the_rest_wait(runtime, r
 ])
 def test_slugs_per_probe(finding, problem, latest, expected):
     found = finding(evidence=latest.get("evidence"), flags=latest.get("flags"), **problem)
-    assert create.slug(found, 40, 1) == expected
+    assert create.slug(found, 40) == expected
 
 
 def test_slugs_are_truncated_without_a_trailing_dash_and_fall_back_to_the_source(finding):
     found = finding(source="collect.api_fuzz", check_type="server_error", location="GET /api/order-items/{id}",
                     evidence={"status": 500})
-    assert create.slug(found, 15, 1) == "api-order-items"
+    assert create.slug(found, 15) == "api-order-items"
     assert create.normalize("API Orders---", 6) == "api-or"
     assert create.normalize("abc-def", 4) == "abc"
     empty = finding("P-0002", source="collect.alerts", check_type="", location=None)
-    assert create.slug(empty, 40, 7) == "issue-7"
+    assert create.slug(empty, 40) == ""  # 取不到时留空，分支名由实施阶段另取，不用本地序号凑
     static = finding("P-0003", source="collect.static", check_type="static", location="a.py:3",
                      flags={"symbol": "Runner._acquireLock"})
-    assert create.slug(static, 40, 8) == "acquire-lock"  # 不带 static 这种来源名
+    assert create.slug(static, 40) == "acquire-lock"  # 不带 static 这种来源名
 
 
 def test_code_notes_follow_the_problem_to_the_issue(runtime, repo, finding, layout):

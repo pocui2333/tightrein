@@ -41,7 +41,7 @@ POINT = "implement.prepare"
 REPOSITORY_LOCK = threading.Lock()
 URGENT = "P0"  # 立即修的 P0 用 hotfix 分支
 GENERIC_STEMS = frozenset({"index", "main", "app", "utils", "util", "helpers", "common", "__init__", "mod", "lib"})
-TOOL_SLUG_PREFIX = re.compile(r"^(?:static|probe|error|alert|latency|server-error|incidental|authz)(?:-|$)")
+TOOL_SLUG_PREFIX = re.compile(r"^(?:(?:static|probe|error|alert|latency|server-error|incidental|authz)(?:-|$)|issue-\d+$)")
 # 快照 commit 的作者：不是提交到分支上的 commit，不经 Git.commit，也就不涉及署名规则
 SNAPSHOT_IDENTITY = {"GIT_AUTHOR_NAME": "tightrein", "GIT_AUTHOR_EMAIL": "tightrein@localhost",
                      "GIT_COMMITTER_NAME": "tightrein", "GIT_COMMITTER_EMAIL": "tightrein@localhost"}
@@ -126,7 +126,7 @@ def _branch(runtime: Runtime, issue: Issue, path: Path) -> str:
     conventions = resolve(runtime.settings, runtime.git.repo)
     kind = branch_type(issue.kind, urgent=issue.severity == URGENT, types=conventions.types,
                        task_type=issue.extra.get("taskType"))
-    name = branch_name(conventions, kind=kind, issue=public_id(issue), slug=_slug(issue))
+    name = branch_name(conventions, kind=kind, issue=public_id(issue), slug=branch_slug(issue))
     number = 1
     found = name
     while runtime.git.branch_exists(found):
@@ -135,7 +135,7 @@ def _branch(runtime: Runtime, issue: Issue, path: Path) -> str:
     return found
 
 
-def _slug(issue: Issue) -> str:
+def branch_slug(issue: Issue) -> str:
     """分支名里的简称：评估写下的英文简称优先，其次标题中的英文词，都没有时用种类。旧版简称开头带的检查类别
     (`static-…`、`probe-…`)去掉：分支名要像人起的。"""
     found = TOOL_SLUG_PREFIX.sub("", kebab(str(issue.extra.get("slug") or "")))

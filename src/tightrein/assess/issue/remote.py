@@ -31,6 +31,7 @@ SOURCE = "collect.github_issues"
 REQUEST = "request"
 POINT = "assess.issue"
 REASON_CHARS = 200
+INTERNAL_WORDS = ("主张", "取证", "候选", "信号", "本问题", "现象来源", "触发条件", "评估", "claim", "triage")
 # 第一句：到中日文句末标点为止，或英文句号后跟空白(不在 `orders.py` 这种文件名中间断开)
 _SENTENCE = re.compile(r"^(.+?(?:[。！？!?]|\.(?=\s)))")
 _END = "。！？.!?"
@@ -103,6 +104,8 @@ def respond(runtime: Runtime, problem_id: str, remote: Remote, *, destination: s
     if destination == "merged":
         return _close(runtime, problem_id, remote, _duplicate(_target_number(runtime, merged_into), language),
                       NOT_PLANNED)
+    if destination == "false_positive" and (output.get("fixedOnMain") or {}).get("commit"):
+        destination = "awaiting_deploy"  # 主干上已经修好的不说「没有问题」，说已经修好
     if destination == "false_positive":
         reason = first_sentence(runtime, ((output.get("sourceOfPhenomenon") or {}).get("explanation")), language)
         text = _text("invalid", language, reason=reason) if reason else _text("invalidBare", language)
@@ -120,9 +123,10 @@ def respond(runtime: Runtime, problem_id: str, remote: Remote, *, destination: s
 
 
 def first_sentence(runtime: Runtime, text: Any, language: str) -> str | None:
-    """取一句话当理由：第一句、脱敏、截短；句末没有标点时按语言补上。"""
+    """取一句话当理由：第一句、脱敏、截短；句末没有标点时按语言补上。带评估内部用语(主张、取证、候选……)的不用，
+    回应只留一句通用的话：开发者不会这么说。"""
     found = " ".join(str(text or "").split())
-    if not found:
+    if not found or any(word in found for word in INTERNAL_WORDS):
         return None
     match = _SENTENCE.match(found)
     sentence = runtime.redactor.text(match.group(1) if match else found).strip()[:REASON_CHARS]

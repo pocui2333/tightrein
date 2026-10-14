@@ -39,7 +39,7 @@
 | `rounds` | `1` |
 | `access` | `"read"` |
 | `network` | `false` |
-| `pinActive` | `"3m"` |
+| `pinActive` | `"5m"` |
 
 ### 各控制键
 
@@ -55,6 +55,7 @@
 | `collect.static.verify` | `model` | `"sonnet"` |
 | `collect.static.verify` | `fallback` | `"opus-mid"` |
 | `collect.static.verify` | `turns` | `10` |
+| `collect.static.verify` | `pinActive` | `"8m"` |
 | `collect.static.verify` | `escalateSeverities` | `["high"]` |
 | `collect.static.verify.deep` | `model` | `"opus-mid"` |
 | `collect.static.verify.deep` | `fallback` | `"sonnet"` |
@@ -263,7 +264,7 @@
 | `implement.code` | `timeout` | `"30m"` |
 | `implement.code` | `checkpointRollbackFindings` | `3` |
 | `implement.code` | `rounds` | `3` |
-| `implement.code` | `pinActive` | `"5m"` |
+| `implement.code` | `pinActive` | `"8m"` |
 | `implement.check` | `environmentPatterns` | <details><summary>12 项</summary><code>["Connection refused", "ConnectionRefusedError", "ECONNREFUSED", "Read timed out", "TimeoutError", "ETIMEDOUT", "ECONNRESET", "ConnectionResetError", "socket\\.timeout", "OSError.*Errno", "address already in use", "EADDRINUSE"]</code></details> |
 | `implement.check` | `environmentRetries` | `1` |
 | `implement.check` | `testFailureExitCodes` | `[1]` |
@@ -315,7 +316,7 @@
 | `implement.review.deep` | `turns` | `30` |
 | `implement.review.deep` | `outputTokens` | `32000` |
 | `implement.review.deep` | `timeout` | `"10m"` |
-| `implement.review.deep` | `pinActive` | `"5m"` |
+| `implement.review.deep` | `pinActive` | `"8m"` |
 | `release` | `mergeMethod` | `"squash"` |
 | `release` | `reviewComment` | `false` |
 | `release.ci` | `watchInterval` | `"30s"` |
@@ -402,6 +403,7 @@
 
 | 键 | 缺省值 |
 |---|---|
+| `resources.refillAfter` | `"3m"` |
 | `resources.concurrency.sessions` | `1` |
 | `resources.concurrency.modelCalls` | `4` |
 | `resources.concurrency.collectSources` | `4` |

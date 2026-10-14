@@ -18,11 +18,13 @@ from __future__ import annotations
 import socket
 import threading
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Set as AbstractSet
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta, tzinfo
 from enum import StrEnum
 from functools import partial
+from time import monotonic
 from typing import Any
 
 from tightrein.assess.issue.stages import IMPLEMENT, RELEASE, stage_for, statuses_for
@@ -48,6 +50,7 @@ LOOKAHEAD_S = 8 * 86400  # 推算下次时刻最多往后看一周多
 WAKE_KEY = "schedule.lastWake"  # state 表：上次定时醒来的时间
 MISSED_KEY = "schedule.missed"  # state 表：上次定时醒来之前漏掉的醒来次数(机器睡眠、定时器没装好)
 AUTOMATIC = frozenset({"schedule", "event"})
+REFILL_POLL_S = 5.0  # 并行实施时多久看一次空位
 RUN_ORDER = ("implement", "release", "collect", "assess", "retro")  # 一轮之内的先后(见 _stages)
 FOR_ASSESS = ("new", "regressed")
 TODO, ACCEPTING = "todo", "accepting"
@@ -276,14 +279,36 @@ def _implement(runtime: Runtime, subject: str | None, outcome: Outcome, heartbea
         if issue is not None:
             _drive_issue(runtime, outcome, heartbeat, issue)
         return
-    chosen = _issues_to_implement(runtime, int(runtime.settings.get("resources.concurrency.sessions")))
-    if len(chosen) <= 1:
+    sessions = int(runtime.settings.get("resources.concurrency.sessions"))
+    chosen = _issues_to_implement(runtime, sessions)
+    if sessions <= 1:
         for issue in chosen:
             _drive_issue(runtime, outcome, heartbeat, issue)
         return
-    with ThreadPoolExecutor(max_workers=len(chosen), thread_name_prefix="implement") as pool:
-        for future in [pool.submit(_drive_isolated, runtime, outcome, heartbeat, issue) for issue in chosen]:
-            future.result()
+    refill_s = runtime.settings.duration("resources.refillAfter")
+    started = {issue.id for issue in chosen}
+    with ThreadPoolExecutor(max_workers=sessions, thread_name_prefix="implement") as pool:
+        running: dict[Future[None], issues.Issue] = {
+            pool.submit(_drive_isolated, runtime, outcome, heartbeat, issue): issue for issue in chosen}
+        freed: list[float] = []  # 空出来的位置各自从什么时候开始空着
+        while running:
+            done, _ = wait(running, timeout=REFILL_POLL_S, return_when=FIRST_COMPLETED)
+            for future in done:
+                running.pop(future)
+                future.result()
+                freed.append(monotonic())
+            if not running or _halted(runtime, heartbeat) is not None:
+                continue
+            # 同批还有没做完的，空位又等过了 resources.refillAfter：从队列里补上(根因文件不与正在做的重叠)
+            due = [at for at in freed if monotonic() - at >= refill_s]
+            if not due:
+                continue
+            busy = set().union(*(_cause_files(issue) for issue in running.values()))
+            for issue in _issues_to_implement(runtime, len(due), skip=started, busy=busy):
+                started.add(issue.id)
+                freed.remove(min(freed))
+                _emit(runtime, issue.id, "decision", "同批还有没做完的，空位等过了时限，补上这个 Issue")
+                running[pool.submit(_drive_isolated, runtime, outcome, heartbeat, issue)] = issue
 
 
 def _drive_isolated(runtime: Runtime, outcome: Outcome, heartbeat: _Heartbeat, issue: issues.Issue) -> None:
@@ -425,14 +450,16 @@ def _issue_to_implement(runtime: Runtime, subject: str | None) -> issues.Issue |
     return None
 
 
-def _issues_to_implement(runtime: Runtime, limit: int) -> list[issues.Issue]:
-    """这一轮要推进的 Issue：进行中的先做，再按严重度、编号开始待修的，至多 limit 个；根因文件与已选的有重叠的
-    不同时做(各自的 PR 改同一个文件，后合并的要重新同步、可能冲突)，留到下一轮。"""
+def _issues_to_implement(runtime: Runtime, limit: int, *, skip: AbstractSet[str] = frozenset(),
+                         busy: AbstractSet[str] = frozenset()) -> list[issues.Issue]:
+    """这一轮要推进的 Issue：进行中的先做，再按严重度、编号开始待修的，至多 limit 个；根因文件与已选的(以及 busy，
+    正在做的)有重叠的不同时做(各自的 PR 改同一个文件，后合并的要重新同步、可能冲突)，留到下一轮。skip 为这一轮已经
+    推进过的(停在关卡的仍是进行中，不再重复挑)。"""
     candidates = [item for status in FOR_IMPLEMENT for item in sorted(
-        (found for found in issues.find(runtime.conn, status=status) if found.held_by is None),
+        (found for found in issues.find(runtime.conn, status=status) if found.held_by is None and found.id not in skip),
         key=lambda item: (SEVERITY_ORDER.get(item.severity or "", len(SEVERITY_ORDER)), item.id))]
     chosen: list[issues.Issue] = []
-    taken: set[str] = set()
+    taken: set[str] = set(busy)
     for item in candidates:
         files = _cause_files(item)
         if taken & files:

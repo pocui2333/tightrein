@@ -14,6 +14,7 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from tightrein.assess.issue.github import public_id
+from tightrein.implement.prepare.workspace import branch_slug
 from tightrein.protocol.git import Conventions, GitHub, PullText
 from tightrein.protocol.git.format import (
     BranchRejected,
@@ -21,7 +22,6 @@ from tightrein.protocol.git.format import (
     branch_problem,
     branch_type,
     fill_template,
-    kebab,
     pull_body,
     title,
 )
@@ -113,7 +113,7 @@ def review_body(delivery: Delivery, labels: dict[str, str]) -> str:
 def suggest(issue: Issue, conventions: Conventions) -> str:
     """建议的分支名；项目要求个人前缀而没有配置或用了 AI 名称时，前缀留给用户填写。"""
     kind = _kind(issue, conventions)
-    slug = kebab(str(issue.extra.get("slug") or "")) or kebab(issue.title) or issue.kind
+    slug = branch_slug(issue)
     try:
         return branch_name(conventions, kind=kind, issue=public_id(issue), slug=slug)
     except BranchRejected:

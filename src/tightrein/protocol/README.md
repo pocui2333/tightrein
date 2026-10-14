@@ -46,4 +46,4 @@
 | `rounds` | 1 |
 | `access` | read |
 | `network` | false |
-| `pinActive` | 3m |
+| `pinActive` | 5m |

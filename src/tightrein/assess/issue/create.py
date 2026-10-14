@@ -213,9 +213,10 @@ def check_body(text: str, origin: str, snapshot: Snapshot) -> list[str]:
     return reasons
 
 
-def slug(finding: Finding, max_length: int, number: int) -> str:
+def slug(finding: Finding, max_length: int) -> str:
     """英文简称，也用作分支名：接口取路由末两段(去掉路径参数)加状态码，报错取异常类型加方法名，其余取具体分类加
-    方法名(不带 `static`、`probe` 这种来源名：一看就是工具起的)；小写连字符，截断后不留尾部连字符；取不到时为 `issue-<序号>`。"""
+    方法名(不带 `static`、`probe` 这种来源名：一看就是工具起的)；小写连字符，截断后不留尾部连字符；取不到时为空，
+    分支名由实施阶段按标题或根因位置另取(不用本地序号凑一个)。"""
     problem = finding.problem
     evidence = signal_evidence(finding.latest)
     symbol = str(finding.latest.evidence.get("symbol") or problem.extra.get("symbol") or "").rpartition(".")[2]
@@ -228,8 +229,7 @@ def slug(finding: Finding, max_length: int, number: int) -> str:
     else:
         # 只留检查类别里的具体分类(incidental:error-handling 的 error-handling)，不留 static、probe 这种来源名
         words = [problem.check_type.partition(":")[2], _snake_words(symbol)]
-    found = normalize("-".join(word for word in words if word), max_length)
-    return found or f"issue-{number}"
+    return normalize("-".join(word for word in words if word), max_length)
 
 
 def _snake_words(symbol: str) -> str:
@@ -364,7 +364,7 @@ def _new_record(runtime: Runtime, finding: Finding, split: bool) -> tuple[Issue,
     record = Issue(
         id=identifier, status=status, title=title, kind="feature" if finding.task_type == "feature" else "bug",
         origin="problem", severity=finding.severity, gate=None if auto else GATE,
-        extra={"slug": slug(finding, int(section["slugMaxLength"]), number), PROBLEMS: [problem.id],
+        extra={"slug": slug(finding, int(section["slugMaxLength"])), PROBLEMS: [problem.id],
                "rootCauses": causes, "rootKey": root_key(causes), "triageCommit": finding.commit,
                "treatment": finding.treatment, "size": finding.size, "taskType": finding.task_type,
                "impactKind": finding.impact_kind, "labels": list(finding.labels),

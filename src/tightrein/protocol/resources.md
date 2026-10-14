@@ -9,6 +9,7 @@
 | 项 | 键 | 缺省 | 出处 |
 |---|---|---|---|
 | 同时跑的 agent 会话(同时处理的 Issue) | sessions | 1 | 两个工具都按订阅计费，缺省只占一个会话的额度，给用户自己留用；调大后实施阶段同时推进这么多个根因文件互不重叠的 Issue，各在自己的线程、worktree 与分支里(protocol/schedule `_issues_to_implement`) |
+| 空位补人(并行实施时) | refillAfter(在 resources 下，不在 concurrency 里) | 3m | 同批里有 Issue 先做完、空位等过这个时间而同批还有没做完的，就从队列里补一个根因文件不重叠的进来；同批全做完就不再补，进入发布。0 为一空就补，很大则等于一批一批地做 |
 | 全局同时进行的模型调用 | modelCalls | 4 | 推断；`agents/call.py` 每次调用持有一个 |
 | 采集时并行的来源 | collectSources | 4 | 推断：大多是查询外部平台，不占本机资源 |
 | 测试并行 | tests | 按 CPU 核数，最多 8 | pytest-xdist |
