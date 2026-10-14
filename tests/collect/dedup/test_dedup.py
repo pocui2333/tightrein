@@ -112,6 +112,18 @@ def test_covered_runs_on_newer_commits_resolve_problems(runtime, clock, make_sig
     assert resolved.status == "resolved" and resolved.extra[RESOLVED_COMMIT] == "c2"
 
 
+def test_problems_whose_issue_fix_has_not_landed_are_not_resolved_by_absence(runtime, conn, clock, make_result):
+    issues.save(conn, Issue(id="0018", status="todo", title="t", kind="bug", origin="problem"), clock)
+    stored_problem(conn, clock, source="collect.static", location="a.py", status="ongoing", issue="0018")
+    runtime.git.current = "c2"
+    assert dedup(runtime, [make_result("collect.static", [], coverage=["a.py"])]).resolved == 0  # 只是这次没扫到
+    assert problems.get(conn, "P-0001").status == "ongoing"
+    issues.save(conn, replace(issues.get(conn, "0018"), status="done", merge_commit="c2"), clock)
+    next_run(runtime, clock)
+    runtime.git.current = "c3"
+    assert dedup(runtime, [make_result("collect.static", [], coverage=["a.py"])]).resolved == 1
+
+
 def test_failed_or_partial_coverage_does_not_resolve_what_was_not_read(runtime, conn, clock, make_result):
     stored_problem(conn, clock, source="collect.static", location="a.py", extra={})
     runtime.git.current = "c2"

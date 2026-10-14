@@ -109,7 +109,8 @@ def dedup(runtime: Runtime, results: list[SourceResult], *,
     unseen = [problem.id for problem in pending if problem.id not in changeset.occurred]
     latest = {problem_id: records[0] for problem_id, records in output.recent_records(conn, unseen).items()}
     reproduce.apply(changeset, pending, latest, _replayers(runtime), params.reproduce)
-    work = status.plan(changeset, coverages, status.fix_commits(conn, changeset))
+    work = status.plan(changeset, coverages, status.fix_commits(conn, changeset),
+                       status.awaiting_fix(conn, changeset))
     facts = status.query_facts(work.pairs, runtime.git.is_ancestor)
     status.apply(changeset, conn, work, facts, params.status)
     refuted = status.refuted_problems(conn)

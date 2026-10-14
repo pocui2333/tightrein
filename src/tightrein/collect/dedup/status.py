@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -71,6 +72,7 @@ class Event(StrEnum):
 
 FOR_ASSESS = frozenset({ProblemStatus.NEW, ProblemStatus.REGRESSED})
 RESOLVABLE = frozenset({ProblemStatus.NEW, ProblemStatus.ONGOING})
+UNFIXED_ISSUE = ("todo", "implementing", "needs_decision", "releasing")  # Issue 还没合入修复的状态
 CANDIDATES = (*RESOLVABLE, ProblemStatus.MUTED)  # 没出现也要判定的：覆盖后解决、忽略按日期到期
 _ALL = frozenset(ProblemStatus)
 
@@ -314,9 +316,27 @@ def fix_commits(conn: sqlite3.Connection, changeset: ChangeSet) -> dict[str, str
     return {problem_id: row[1] for row in rows for problem_id in linked[row[0]]}
 
 
-def plan(changeset: ChangeSet, coverages: Mapping[str, Coverage], fixes: Mapping[str, str] | None = None) -> Plan:
-    """coverages 为本次 done 或 partial 的来源运行各自的覆盖范围；fixes 为 fix_commits 的结果；
-    调用前已把候选问题批量读进变更集。"""
+def awaiting_fix(conn: sqlite3.Connection, changeset: ChangeSet) -> set[str]:
+    """本次没出现、关联的 Issue 还没合入修复(待修、实施中、待决定、待发布)的问题编号。这些问题不因「覆盖了却没出现」
+    判为已解决：修复还没合入，没报出来只说明这次没扫到(静态巡检靠模型核实，同一处并不每次都报)，不说明已经好了；
+    曾因此在修复合并前判为已解决，之后出现在不含修复的版本上又被判回归。"""
+    linked: dict[str, list[str]] = {}
+    for problem in changeset.known.values():
+        if problem.id not in changeset.occurred and problem.status in RESOLVABLE and problem.issue is not None:
+            linked.setdefault(problem.issue, []).append(problem.id)
+    if not linked:
+        return set()
+    rows = conn.execute(
+        f"SELECT id FROM issues WHERE id IN ({', '.join('?' for _ in linked)}) "
+        f"AND status IN ({', '.join('?' for _ in UNFIXED_ISSUE)})", [*sorted(linked), *UNFIXED_ISSUE],
+    ).fetchall()
+    return {problem_id for row in rows for problem_id in linked[row[0]]}
+
+
+def plan(changeset: ChangeSet, coverages: Mapping[str, Coverage], fixes: Mapping[str, str] | None = None,
+         awaiting: AbstractSet[str] = frozenset()) -> Plan:
+    """coverages 为本次 done 或 partial 的来源运行各自的覆盖范围；fixes 为 fix_commits 的结果；awaiting 为
+    awaiting_fix 的结果(不判已解决)；调用前已把候选问题批量读进变更集。"""
     result = Plan(fixes=dict(fixes or {}))
     decided = {item.problem for item in changeset.transitions}
     for problem_id in sorted(changeset.occurred):
@@ -333,7 +353,8 @@ def plan(changeset: ChangeSet, coverages: Mapping[str, Coverage], fixes: Mapping
         if problem.id in changeset.occurred:
             continue
         coverage = coverages.get(problem.source)
-        if problem.status in RESOLVABLE and coverage is not None and is_covered(problem, problem.source, coverage):
+        if problem.status in RESOLVABLE and problem.id not in awaiting and coverage is not None \
+                and is_covered(problem, problem.source, coverage):
             result.covered.append((problem, coverage))
             if problem.last_commit and coverage.commit:
                 result.pairs.add((problem.last_commit, coverage.commit))
