@@ -60,8 +60,10 @@ def test_issue_done_after_runs(finished: tuple[sample.Harness, list, list]) -> N
     assert failures == []
     assert [result.code for result in results] == [0] * len(results)
     assert sample.issue_statuses(h.sample) == {ISSUE: "done"}
-    first = [step["stage"] for step in results[0].data["result"]["steps"]]
-    assert first[:3] == ["collect", "assess", "implement"] and first[-2:] == ["release", "retro"]
+    # 一轮之内先实施、发布已放行的，再采集、评估：第一轮评估建的 Issue 在第二轮实施
+    first, second = ([step["stage"] for step in result.data["result"]["steps"]] for result in results[:2])
+    assert first == ["collect", "assess", "retro"]
+    assert second[0] == "implement" and "release" in second and second[-1] == "retro"
     assert len(results) > 1  # 合并之后靠拨快时钟走完观察期，不在合并那一次运行里完成
 
 

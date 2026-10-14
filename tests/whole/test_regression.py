@@ -42,7 +42,7 @@ def test_the_regressed_issue_is_fixed_by_a_second_attempt(finished: tuple[sample
     assert sample.issue_statuses(h.sample) == {ISSUE: "done"}
     failed = [(index, step["stage"], step["summary"]) for index, result in enumerate(results, 1)
               for step in result.data["result"]["steps"] if step["status"] != "passed"]
-    assert [(index, stage) for index, stage, _ in failed] == [(2, "release")]
+    assert [(index, stage) for index, stage, _ in failed] == [(4, "release")]  # 第 1 轮评估、第 2 轮修复合并
     assert "回归" in failed[0][2] and "撤销 PR" in failed[0][2]
     record = _issue(h)
     assert record["extra"]["attempt"] == 2

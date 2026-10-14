@@ -18,7 +18,7 @@
       "dir": "02-implement.design",
       "tool": "claude",
       "exitCode": 0,
-      "sha256": "e1f185d8ac6ff94abbf5dd3bb9b04ea1fddc430d2204aea0a0c6785d133ce3a6"
+      "sha256": "0b03d350612b3d35f4bd72bb71049011b3cb559999e09e809a707c69fcd88bb7"
     },
     {
       "point": "implement.code",
@@ -28,7 +28,7 @@
       "dir": "03-implement.code-r1",
       "tool": "claude",
       "exitCode": 0,
-      "sha256": "b49d420f983accfa6b824e641e279af5109234d318974c4aedd4d39ac99903dc"
+      "sha256": "f28a8346828dc9beabf621b70ca1fd9c9c854d76fde02633cffee588e11f4280"
     },
     {
       "point": "implement.review",
@@ -38,7 +38,7 @@
       "dir": "04-implement.review-r1",
       "tool": "claude",
       "exitCode": 0,
-      "sha256": "cab8226aa95a3f618735de620ee4570efbb3e4ecbc708f68b4485e1a21be1abf"
+      "sha256": "7f81a9cd7b9aec5d099a66b3121f23d9d9b9bcaf4bc5aecda5c731dfdd35288a"
     },
     {
       "point": "retro.idea",
@@ -48,7 +48,7 @@
       "dir": "05-retro.idea",
       "tool": "claude",
       "exitCode": 0,
-      "sha256": "05d866172509a230667d7fec9d1a7be6444fea9213935b53fde2aa18c9d7f0ae"
+      "sha256": "65f6e42f22c23b4ef8113ea8dc0610073098d775b9bb28c3ead3b8a246a44030"
     },
     {
       "point": "implement.design",
@@ -58,7 +58,7 @@
       "dir": "06-implement.design-c2",
       "tool": "claude",
       "exitCode": 0,
-      "sha256": "50e2172757200261c371d6fff5b034e7937fdc08d1ef4fa4a51365f49cccb0bb"
+      "sha256": "9ff2e9501d985af7b65f332501290f08d5306df6628f4e6683006e24fd93e23b"
     },
     {
       "point": "implement.code",
@@ -68,7 +68,7 @@
       "dir": "07-implement.code-r1-c2",
       "tool": "claude",
       "exitCode": 0,
-      "sha256": "0126bce8c2a2e8e83dfc7672ba8af8c5941c89aeeb7b0d6d126631b3956863f5"
+      "sha256": "b832a8b2eea932888004190d2396afcafebe995321e5bda3dd95b4ccf0f3bcf4"
     },
     {
       "point": "implement.review",
@@ -78,7 +78,7 @@
       "dir": "08-implement.review-r1-c2",
       "tool": "claude",
       "exitCode": 0,
-      "sha256": "a77f0fb0b823a5f0016bb1436adfea30915a2c4360cce38bbe87e9717db58023"
+      "sha256": "c307585d88dc24794d283dfcf88e8721d8561f281f1c56a7974c40daeecf4e1c"
     }
   ]
 }

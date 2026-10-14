@@ -151,6 +151,13 @@ def test_design_issues_stop_unless_the_user_accepted(world: Any, monkeypatch: py
     assert design.run(world.runtime, context).status is Status.PASSED
 
 
+def test_full_autonomy_accepts_a_design_level_fix(new_world: Any, settings_with: Any,
+                                                  monkeypatch: pytest.MonkeyPatch) -> None:
+    world = new_world(settings=settings_with({"boundaries": {"gates": {"design": "auto_all"}}}))
+    _install(monkeypatch, _plan(flags={**_plan()["flags"], "design": {"flagged": True, "reason": "日期过滤散落在各处"}}))
+    assert design.run(world.runtime, world.context()).status is Status.PASSED
+
+
 def test_a_declined_design_issue_stops(world: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _install(monkeypatch)
     waiting = world.handoff(design.POINT, {"version": 1, "reason": "design_issue"}, Status.PENDING)

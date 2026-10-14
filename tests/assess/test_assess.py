@@ -79,7 +79,9 @@ def test_a_verified_problem_that_fails_the_checks_is_not_investigated_from_scrat
 
 
 def test_the_refuter_of_a_verified_problem_does_not_see_the_collected_evidence(
-        runtime, make_problem, agent, readonly, outputs):
+        runtime, make_problem, agent, readonly, outputs, kit):
+    runtime.settings = kit.make_settings({"controls": {"assess": {"refute": {"severities": ["P0", "P1"], "taskTypes": [],
+                                                                          "impactKinds": []}}}})
     make_problem(source="collect.static", check_type="static", flags={"verified": True, "deterministic": True},
                  evidence={"verification": collected(outputs)})
     confirmed = outputs.confirmed()
@@ -113,6 +115,15 @@ def test_a_light_case_uses_the_cheaper_model_with_fewer_turns(runtime, make_prob
     assert params.model.alias == "sonnet" and params.limits.turns == 10
 
 
+def test_by_default_a_high_risk_conclusion_is_not_refuted(runtime, make_problem, agent, readonly, outputs):
+    make_problem(flags={"deterministic": True})
+    confirmed = outputs.confirmed()
+    confirmed["report"]["severity"] = "P1"
+    agent.queue(TRIAGE, confirmed)
+    outcome = assessing.assess(runtime, "P-0001")
+    assert agent.points() == [TRIAGE] and outcome.verdict == "confirmed"  # 成立与否交给修复后的复现测试
+
+
 def test_a_risky_issue_waits_for_approval(runtime, make_problem, agent, readonly, outputs, layout):
     make_problem()
     output = outputs.confirmed()
@@ -125,7 +136,9 @@ def test_a_risky_issue_waits_for_approval(runtime, make_problem, agent, readonly
 
 
 def test_high_risk_conclusions_are_refuted_and_disagreement_goes_to_the_manual_queue(
-        runtime, make_problem, agent, readonly, outputs, layout):
+        runtime, make_problem, agent, readonly, outputs, layout, kit):
+    runtime.settings = kit.make_settings({"controls": {"assess": {"refute": {"severities": ["P0", "P1"], "taskTypes": [],
+                                                                          "impactKinds": []}}}})
     make_problem(flags={"deterministic": True})
     confirmed = outputs.confirmed()
     confirmed["report"]["severity"] = "P1"

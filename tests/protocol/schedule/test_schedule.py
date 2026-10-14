@@ -54,11 +54,11 @@ def test_a_manual_run_goes_through_every_stage_in_order_and_ends_with_retro(stag
     runtime = make_runtime()
     outcome = run(runtime)
     assert outcome.status is RunStatus.DONE
-    assert stages.names() == ["collect", "assess_pending", "queue", "retro"]
-    assert stages.calls[0] == ("collect", ["collect.alerts"])  # 手动触发：启用的来源全部交给采集，不看是否到点
+    assert stages.names() == ["queue", "collect", "assess_pending", "retro"]  # 先实施、发布已放行的，再采集、评估
+    assert stages.calls[1] == ("collect", ["collect.alerts"])  # 手动触发：启用的来源全部交给采集，不看是否到点
     recorded = runs.get(runtime.conn, runtime.run)
     assert (recorded.status, recorded.trigger, recorded.stage) == ("done", "manual", "run")
-    assert [step["stage"] for step in recorded.summary["steps"]] == ["collect", "retro"]
+    assert [step["stage"] for step in recorded.summary["steps"]] == ["collect", "retro"]  # 没有要推进的 Issue
 
 
 def test_a_scheduled_run_leaves_the_choice_of_sources_to_collect_and_stops_at_advance_to(stages, make_runtime):
@@ -248,7 +248,7 @@ def test_a_paused_workspace_starts_no_run_and_a_run_stops_after_the_current_step
 
     stages.collect = pause_during
     outcome = run(make_runtime(run="R-20261008T030001Z-run"))
-    assert stages.names() == ["collect"]
+    assert stages.names() == ["queue", "collect"]
     assert outcome.halted == "已暂停" and outcome.status is RunStatus.DONE
 
 
@@ -301,7 +301,7 @@ def test_dry_run_lists_the_plan_and_writes_nothing(stages, make_runtime):
     add_issue(runtime, "0001", "releasing")
     outcome = run(runtime, dry_run=True)
     assert [(item.stage, item.subject) for item in outcome.planned] == [
-        ("collect", "collect.alerts"), ("implement", "0004"), ("release", "0001"), ("retro", None)]
+        ("implement", "0004"), ("release", "0001"), ("collect", "collect.alerts"), ("retro", None)]
     assert stages.calls == [] and runs.latest(runtime.conn) is None
     assert not runtime.workspace.run_lock.exists()
 

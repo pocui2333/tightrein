@@ -363,20 +363,9 @@
         "differentTitle": 0.5
       },
       "refute": {
-        "severities": [
-          "P0",
-          "P1"
-        ],
-        "taskTypes": [
-          "security",
-          "data"
-        ],
-        "impactKinds": [
-          "authorization",
-          "data-ownership",
-          "data-correctness",
-          "credential-leak"
-        ]
+        "severities": [],
+        "taskTypes": [],
+        "impactKinds": []
       },
       "sizes": {
         "small": {

@@ -30,7 +30,7 @@ from tightrein.implement.design import frontend, risk
 from tightrein.implement.locate.brief import location_problem
 from tightrein.implement.prompts import design as prompts
 from tightrein.implement.prompts.common import Ask, Usage, acceptance, ask, failure_text, worktree_of
-from tightrein.protocol.boundaries import forbidden, high_risk, matching_pattern
+from tightrein.protocol.boundaries import forbidden, gate_is_auto_all, high_risk, matching_pattern
 from tightrein.protocol.handoff import Handoff, Status
 from tightrein.protocol.recovery import CHECKPOINT_COMMIT
 from tightrein.settings.load import Settings
@@ -47,6 +47,7 @@ USER_ORIGIN = "user"
 # 交接中不带分析过程(只给人看，放备注)
 DROPPED = ("analysis",)
 # 方案之后的步骤：其中失败的「方案缺口」与用户的否决是重出方案的原因
+GATE = "design"  # 与定案(implement/approve)同一个可配置关卡
 LATER = ("implement.approve", "implement.code", "implement.check", "implement.review")
 
 
@@ -58,7 +59,8 @@ def run(runtime: Runtime, context: ImplementContext) -> Handoff:
     if declined is not None:
         return _handoff(runtime, context, Status.FAILED, f"用户不同意按设计层面修复：{declined.note or '没有说明'}",
                         {"version": version, "reason": "design_declined"}, Usage())
-    accepted = design_accepted(context)
+    # 全自动(方案关卡 auto_all)时「根因在设计本身、要按设计层面修」不再单独停下：它不是固定人工的关卡
+    accepted = design_accepted(context) or gate_is_auto_all(GATE, runtime.settings)
     before = risk.plan_risk(context, runtime.settings)
     replan = replan_reasons(context)
     criteria = acceptance(context.body)

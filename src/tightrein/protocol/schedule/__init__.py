@@ -47,6 +47,7 @@ LOOKAHEAD_S = 8 * 86400  # 推算下次时刻最多往后看一周多
 WAKE_KEY = "schedule.lastWake"  # state 表：上次定时醒来的时间
 MISSED_KEY = "schedule.missed"  # state 表：上次定时醒来之前漏掉的醒来次数(机器睡眠、定时器没装好)
 AUTOMATIC = frozenset({"schedule", "event"})
+RUN_ORDER = ("implement", "release", "collect", "assess", "retro")  # 一轮之内的先后(见 _stages)
 FOR_ASSESS = ("new", "regressed")
 TODO, ACCEPTING = "todo", "accepting"
 FOR_IMPLEMENT = statuses_for(IMPLEMENT)  # 状态 → 阶段只在 assess/issue/stages.py 定义
@@ -504,16 +505,18 @@ def _halted(runtime: Runtime, heartbeat: _Heartbeat) -> str | None:
 
 
 def _stages(runtime: Runtime, trigger: str, stage: str | None, subject: str | None) -> list[str]:
-    """要跑的阶段：指定了就只跑它；定时与事件触发只自动推进到 schedule.advanceTo，复盘总是最后跑一次。"""
+    """要跑的阶段：指定了就只跑它；定时与事件触发只自动推进到 schedule.advanceTo，复盘总是最后跑一次。
+
+    一轮之内按 RUN_ORDER 先实施、发布已放行的 Issue，再采集、评估新问题：改动先出来，不被新问题的评估挡住；
+    这一轮评估新建的 Issue 留到下一轮实施。"""
     if stage is not None:
         return [stage]
     if subject is not None:
         return ["assess"] if kind_of(subject) == "problem" else ["implement", "release"]
-    order = list(STAGES)
+    allowed = list(STAGES)
     if trigger in AUTOMATIC:
-        limit = order.index(str(runtime.settings.get("schedule.advanceTo")))
-        order = order[:limit + 1] + (["retro"] if "retro" not in order[:limit + 1] else [])
-    return order
+        allowed = allowed[:allowed.index(str(runtime.settings.get("schedule.advanceTo"))) + 1] + ["retro"]
+    return [name for name in RUN_ORDER if name in allowed]
 
 
 def _run_stage(stages: list[str]) -> str:

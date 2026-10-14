@@ -201,9 +201,9 @@
 | `assess` | `dedup.candidates` | `10` |
 | `assess` | `dedup.sameTitle` | `0.9` |
 | `assess` | `dedup.differentTitle` | `0.5` |
-| `assess` | `refute.severities` | `["P0", "P1"]` |
-| `assess` | `refute.taskTypes` | `["security", "data"]` |
-| `assess` | `refute.impactKinds` | `["authorization", "data-ownership", "data-correctness", "credential-leak"]` |
+| `assess` | `refute.severities` | `[]` |
+| `assess` | `refute.taskTypes` | `[]` |
+| `assess` | `refute.impactKinds` | `[]` |
 | `assess` | `sizes.small.files` | `3` |
 | `assess` | `sizes.medium.files` | `10` |
 | `assess` | `treatment` | <details><summary>7 项</summary><code>[{"worth": ["wont"], "treatment": "wont_fix"}, {"severities": ["P0"], "treatment": "fix_now"}, {"severities": ["P1"], "verdicts": ["confirmed"], "treatment": "fix_now"}, {"worth": ["defer"], "treatment": "watch"}, {"severities": ["P1", "P2"], "treatment": "fix_later"}, {"severities": ["P3"], "sizes": ["small"], "worth": ["fix"], "treatment": "fix_later"}, {"treatment": "watch"}]</code></details> |

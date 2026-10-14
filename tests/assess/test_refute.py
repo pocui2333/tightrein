@@ -8,8 +8,19 @@ def rule(settings) -> RefuteRule:
     return RefuteRule.from_settings(settings.section("assess"))
 
 
-def test_refute_is_only_needed_for_high_risk(kit):
+def test_by_default_only_a_refuted_p0_is_refuted_again(kit):
+    """缺省不复核成立的结论(交给修复后的复现测试)；判不成立的 P0 要直接关掉，仍须复核。"""
     found = rule(kit.make_settings())
+    assert not needed(found, "confirmed", severity="P0", p0=True, task_type="security", impact_kind="authorization")
+    assert needed(found, "refuted", severity=None, p0=True, task_type=None, impact_kind=None)
+    assert needed(found, "refuted", severity="P0", p0=False, task_type=None, impact_kind=None)
+    assert not needed(found, "refuted", severity="P1", p0=False, task_type=None, impact_kind=None)
+
+
+def test_refute_is_only_needed_for_high_risk(kit):
+    found = rule(kit.make_settings({"controls": {"assess": {"refute": {
+        "severities": ["P0", "P1"], "taskTypes": ["security", "data"],
+        "impactKinds": ["authorization", "data-ownership", "data-correctness", "credential-leak"]}}}}))
     high = {"p0": False, "task_type": "bug", "impact_kind": "non-core-error"}
     assert needed(found, "confirmed", severity="P1", **high)
     assert needed(found, "conditional", severity="P0", **high)

@@ -15,7 +15,7 @@
 5. **分情况**(`cases.py`)：已取证(复用采集时的取证，不再从零调查)、能复现(只找出错位置)、完整取证、轻量推测(只推测触发条件)。
 6. **查重**(`dedup.py`)：程序先比(位置、文件、标题相似度)，明显重复的直接并入、明显不相关的不算候选，拿不准才调 `assess.dedup`；模型的判断由程序核对。
 7. **取证**(`evidence.py`)：已取证的调 `assess.confirm`(带证据包，`reuse.py`：采集时的取证结论加程序按行号截取的当前代码原文，只补报告与评估)，其余调 `assess.triage`；输出先补全位置，再做证据检查(`checks.py`，全部程序判定)，不过就带逐项原因重做，仍不过判证据不足并转人工(不退回从零调查)。
-8. **证伪复核**(`refute.py`)：只在 P0、P1 或安全、数据类(配置)时调 `assess.refute`，盲审、模型与取证不同；两次结论按合并表定。
+8. **证伪复核**(`refute.py`)：缺省只在要把 P0 判为不成立并关掉时调 `assess.refute`(盲审、模型与取证不同)；判成立的不再复核，真假交给修复后的验证。两次结论按合并表定。
 9. **归因**(`attribution.py`)与**取舍核对**(`tradeoff.py`)。
 10. **评级**(`rating.py`)：严重度以取证报告为准；粗规模档取模型的档与按文件数算的档中较大的。
 11. **去向**(`disposition.py`)：决策树给出处理方式，按顺序定去向。
@@ -67,7 +67,7 @@ problems 先由采集重放去重的变更日志(`collect/dedup/output.py` 登�
 | `assess.suppressionDays` | 30 | 判为不成立时抑制规则的有效天数 |
 | `assess.severityGuide` | null | 项目语境下的严重度说明(项目在工作区 settings 里写) |
 | `assess.dedup` | 90 天、10 个、0.9、0.5 | 查重候选的天数与个数；标题相似度：不低于 sameTitle 且位置相同直接判重复，低于 differentTitle 且位置不相交不算候选 |
-| `assess.refute` | P0、P1；security、data；authorization、data-ownership、data-correctness、credential-leak | 证伪复核的触发条件 |
+| `assess.refute` | 三项都为空 | 判成立时证伪复核的触发条件(严重度、任务类型、影响类别)；判不成立的 P0 总要复核 |
 | `assess.sizes` | small ≤ 3 个文件、medium ≤ 10 个 | 粗规模档的文件数门槛 |
 | `assess.treatment` | 七条规则 | 处理方式的决策树，最后一条不带条件 |
 | `assess.vagueWords` | 中英日的含糊词 | 结论中不许出现的词 |
