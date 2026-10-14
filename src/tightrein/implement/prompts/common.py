@@ -28,9 +28,10 @@ if TYPE_CHECKING:
     from tightrein.protocol.runtime import Runtime
 
 NONE = "无"
-# 编码只拿实施要用的方案字段；分析、证据与估算只在方案与定案时用(#8：各步不再带全量方案)
+# 编码只拿实施要用的方案字段；分析、证据与估算只在方案与定案时用(#8：各步不再带全量方案)。交给用户拍板的点
+# (userDecisions)要带：用户的决定只写了回答，没有问题本身，编码不知道回答的是什么
 PLAN_FOR_CODE = ("summary", "hypothesis", "steps", "files", "protectedTouches", "migration", "newDependencies",
-                 "deletions", "notDoing")
+                 "deletions", "notDoing", "userDecisions")
 ACCEPTANCE_HEADINGS = ("验收标准", "acceptance", "受け入れ基準", "受入基準")
 _HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
 _BULLET = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?(.*\S)\s*$")

@@ -16,6 +16,7 @@ from tightrein.protocol.handoff import Status, load_schema, schema_errors
 from tightrein.protocol.naming import format_iso
 
 FIX = {"src/orders.py": "def recent(days):\n    return days * 7\n"}
+FIX_TEST = "\n\ndef test_fix_side():\n    assert recent(7) == 49\n"
 CRITERIA = ("列表显示最近 7 天的订单", "接口 GET /api/orders 返回 200")
 INCIDENTAL = {"file": "src/users.py", "line": 1, "symbol": None, "category": "defect", "confidence": "suspected",
               "evidence": "NAME 写死为 'a'", "text": "用户名写死"}
@@ -141,6 +142,77 @@ def test_failed_acceptance_without_a_blocker_is_a_plan_gap(world: Any, monkeypat
     assert CRITERIA[0] in blocker["location"]
 
 
+def test_unfollowed_decisions_do_not_stand_for_failed_acceptance(world: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """没照用户的决定做(decision-unmet)不对应验收标准：同时有判为不满足的验收标准时照常按方案缺口记一条；
+    对应验收标准的 requirement-unmet 才抵掉它。"""
+    world.repo.write(FIX)
+    decision = _blocker(kind="decision-unmet", problem="用户定了只看 7 天，改动按方案放宽到 30 天")
+    _install(monkeypatch, implement_review=_output(blockers=(decision,), results=("fail", "pass")))
+    result = review.run(world.runtime, world.context())
+    found = [(item["kind"], item["category"]) for item in result.facts["blockers"]]
+    assert found == [("decision-unmet", LOCAL), ("requirement-unmet", PLAN_GAP)]
+    assert CRITERIA[0] in result.facts["blockers"][1]["location"] and result.facts["firstCategory"] == PLAN_GAP
+    covered = _blocker(kind="requirement-unmet", category="plan_gap")
+    _install(monkeypatch, implement_review=_output(blockers=(decision, covered), results=("fail", "pass")))
+    result = review.run(world.runtime, world.context())
+    assert [item["kind"] for item in result.facts["blockers"]] == ["decision-unmet", "requirement-unmet"]
+
+
+def _diverged(world: Any, main_tests: str) -> tuple[str, str]:
+    """修复分支在 tests/test_orders.py 末尾追加了测试并提交，main 把这个文件改成 main_tests；切回修复分支。
+    返回(修复分支的 HEAD, main)。"""
+    repo = world.repo
+    base = (repo.path / "tests/test_orders.py").read_text(encoding="utf-8")
+    repo.git("checkout", "-q", "-b", "fix/18-orders")
+    fixed = repo.commit("fix: 订单按天数查询", {**FIX, "tests/test_orders.py": base + FIX_TEST})
+    repo.git("checkout", "-q", "main")
+    main = repo.commit("test: 补主干一侧的测试", {"tests/test_orders.py": main_tests.format(base=base)})
+    repo.git("checkout", "-q", "fix/18-orders")
+    return fixed, main
+
+
+def test_both_reviews_get_what_main_brought_into_a_resolved_conflict(world: Any, settings_with: Any,
+                                                                     monkeypatch: pytest.MonkeyPatch) -> None:
+    """发布合并 main 冲突、退回编码解决：两侧都在测试文件末尾追加了测试，解决时只留了修复一侧。改动相对合并进来的
+    main 算，丢掉的 main 一侧只是一处删除；两种审查都拿到冲突文件、main 一侧的提交与改动，才认得出它。"""
+    world.runtime.settings = settings_with()  # 深度审查每次都做
+    fixed, main = _diverged(world, "{base}\n\ndef test_main_side():\n    assert recent(2) == 2\n")
+    with pytest.raises(AssertionError):
+        world.repo.git("merge", "--no-ff", "--no-edit", main)
+    resolved = (world.repo.path / "tests/test_orders.py").read_text(encoding="utf-8").split("<<<<<<<")[0] + FIX_TEST
+    world.repo.commit("Merge origin/main into fix/18-orders", {"tests/test_orders.py": resolved})
+    returned = world.handoff("release.pr", {"backTo": "implement.code", "main": main, "conflicts": ["tests/test_orders.py"],
+                                            "mainCommits": [], "report": "冲突报告", "returns": 1,
+                                            "worktreeCommit": fixed})
+    fake = _install(monkeypatch, implement_review=_output(), implement_review_deep=_output())
+    review.run(world.runtime, replace(world.context(), base_commit=main, returned=returned))
+    assert fake.points() == ["implement.review", "implement.review.deep"]
+    assert "-def test_main_side():" in fake.requests[0].variables["diff"]
+    for request in fake.requests:
+        text = request.variables["merge"]
+        assert "tests/test_orders.py" in text and f"{main[:12]} test: 补主干一侧的测试" in text
+        assert "+def test_main_side():" in text and "test_fix_side" not in text
+        assert "合并时冲突，由编码解决" in text
+
+
+def test_a_release_merge_that_touched_the_fixed_files_is_shown_too(world: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """发布合并 main 没有冲突、但 main 改到了修复的文件(退回自检)：同样给出合并信息；没有退回时为「无」。"""
+    _, main = _diverged(world, "import os\n{base}")
+    world.repo.git("merge", "--no-ff", "--no-edit", main)
+    merged = world.repo.git("rev-parse", "HEAD").strip()
+    returned = world.handoff("release.pr", {"backTo": "implement.check", "syncedMain": main, "merged": merged,
+                                            "overlap": ["tests/test_orders.py"], "resolutions": {},
+                                            "worktreeCommit": merged})
+    fake = _install(monkeypatch, implement_review=_output())
+    review.run(world.runtime, replace(world.context(), base_commit=main, returned=returned))
+    text = fake.requests[0].variables["merge"]
+    assert "发布合并时 git 自动合并或由人解决冲突" in text and "+import os" in text and "test_fix_side" not in text
+    assert f"{main[:12]} test: 补主干一侧的测试" in text
+    fake = _install(monkeypatch, implement_review=_output())
+    review.run(world.runtime, replace(world.context(), base_commit=main))
+    assert fake.requests[0].variables["merge"] == "无"
+
+
 def test_criteria_confirmed_after_deploy_are_not_judged_here(world: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     """部署后才能确认的标准不列给审查；模型仍给了结论(哪怕无法判断、不满足)也丢掉：不因它不通过、不因它等用户。"""
     observed = "部署后的观察期与之后的覆盖运行中不再出现指纹为 `orders:fp` 的问题"
@@ -165,8 +237,8 @@ def test_deep_review_runs_only_after_the_light_one_passes_and_is_blind(world: An
     assert result.facts["modes"] == ["light", "deep"] and result.facts["risk"]["high"] is True
     deep = fake.requests[1]
     # 盲审：只给验收标准、风险类别、最终改动与检查输出，不给 Issue 正文、方案与代码笔记
-    assert set(deep.variables) == {"acceptance", "decisions", "risk", "diff", "results"}
-    assert "订单列表只显示当天" not in "".join(deep.variables.values())
+    assert set(deep.variables) == {"acceptance", "decisions", "merge", "risk", "diff", "results"}
+    assert "订单列表只显示当天" not in "".join(deep.variables.values()) and deep.variables["merge"] == "无"
     assert deep.conditions == ("high_risk",)
     # 轻量没通过就不跑深度
     fake = _install(monkeypatch, implement_review=_output(blockers=(_blocker(),)), implement_review_deep=_output())

@@ -105,6 +105,16 @@ def test_every_template_gets_exactly_its_variables(world: Any) -> None:
     assert all("Issue 正文中写作 `designs/…` 的路径" in text and "不要在仓库中找" in text for text in texts.values())
 
 
+def test_coding_gets_the_questions_the_user_answered_and_resumed_sessions_put_decisions_first(world: Any) -> None:
+    """用户的决定只记了回答：方案交给用户拍板的问题随方案给编码；续接的会话也重申用户的决定高于方案(会话开始时的
+    旧规则写的是「与方案冲突时以方案为准」)。"""
+    plan = {**PLAN, "userDecisions": [{"question": "保留旧接口吗", "recommendation": "保留", "reason": "外部在用"}]}
+    assert "保留旧接口吗" in code.variables(world.runtime, world.context(), plan, [])["plan"]
+    text = build(code.CONTINUE, code.continue_variables(world.runtime, world.context(), []), language="zh",
+                 schema=load_schema(CODE_SCHEMA), tool="claude").text
+    assert "高于方案：与方案冲突时照用户的决定做" in text and "以方案为准，以这一条为准" in text
+
+
 def test_feature_issues_are_located_by_where_the_change_goes(world: Any) -> None:
     """需求不找根因：类型写进定位的提示，模板按类型说明找什么(同一份模板)。"""
     context = world.context()

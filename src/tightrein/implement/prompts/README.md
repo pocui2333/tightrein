@@ -29,7 +29,7 @@
 
 ## 设计依据
 
-- 按步骤裁剪方案字段(旧 `PLAN_FOR_EXECUTOR`、`plan_view`)：编码不带根因证据与分析；
+- 按步骤裁剪方案字段(旧 `PLAN_FOR_EXECUTOR`、`plan_view`)：编码不带根因证据与分析；编码与审查都带方案交给用户拍板的问题(`userDecisions`)，用户的决定只记了回答，没有问题本身看不懂；
 - 代码笔记与方案已在提示里，不再列交接文件的路径，免得模型再读一遍(旧 `_task_document`)；
 - 调用点按条件选模型：高风险带 `high_risk`，前端带 `frontend`，取值在 settings 的 `modelWhen`；
 - Issue 正文含外部原文(日志、报错)，经 `protocol.security.external` 整体当作数据包住，防注入。

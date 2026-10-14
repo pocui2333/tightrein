@@ -5,9 +5,13 @@ deepAlways 为假时只在高风险时做。
   沿用；合并主干后只在主干改到同一文件时哈希才变，才需要重新审查；
 - 修正轮次只审这一轮又改了的文件与上一轮的问题，不重审全部；上一轮审查没有返回结果(调用失败)时这一轮照常审全部；
 - 先轻量后深度：轻量没通过就不跑深度，省一次调用；
-- 审查意见的程序过滤：类型必须在该模式允许的范围内(轻量 6 类；深度另加 authz、data-structure、contract)；必须有
+- 审查意见的程序过滤：类型必须在该模式允许的范围内(轻量 8 类；深度另加 authz、data-structure、contract)；必须有
   `文件:行号` 且位置真实存在；必须有触发条件；不合格的丢弃并记入 discardedFindings，不计为不通过；
-- 逐条核对验收标准：判为不满足而审查没给出对应阻断项的，按方案缺口记一条；
+- 逐条核对验收标准：判为不满足而审查没给出对应阻断项(requirement-unmet、requirement-reduced)的，按方案缺口记一条；
+  没照用户的决定做(decision-unmet)、丢掉合并进来的 main 一侧(main-dropped)不对应验收标准，不抵这一条；
+- 发布合并 main 后退回实施(context.returned)、这次交付已合并进那个 main 时，两种审查都拿到合并信息：两侧都改了的
+  文件、main 一侧的相关提交与 main 一侧对这些文件的改动(从合并前修复分支与 main 的分叉点算)，据此核对解决冲突时
+  有没有丢掉 main 一侧(别的 Issue 已合入的工作)；
 - 只能在部署后确认的验收标准(assess/issue/body.post_deploy)不交给审查判断；模型仍给了结论的丢掉，不因它不通过、
   不因它等用户：它由发布的验收按关联问题的出现确认；
 - 「无法判断」交给用户：有验收标准判为 unknown 时停在待决定；用户通过后视为通过、判断原文记入 unverified，
@@ -29,26 +33,30 @@ from tightrein.agents.result import CallStatus
 from tightrein.assess.issue.body import post_deploy
 from tightrein.implement.check.changes import Changes, changed_since, collect, file_states, select_files
 from tightrein.implement.check.findings import LOCAL, PLAN_GAP, Finding, first_category
-from tightrein.implement.context import ImplementContext
+from tightrein.implement.context import BACK_TO, ImplementContext
 from tightrein.implement.design.risk import Changed, apply_risk, conditions, to_facts
 from tightrein.implement.locate.brief import location_problem
 from tightrein.implement.prompts import review as prompts
 from tightrein.implement.prompts.common import Ask, Usage, ask, failure_text
 from tightrein.protocol.documents import pending
+from tightrein.protocol.git import Git, GitError
 from tightrein.protocol.handoff import Handoff, Status
 from tightrein.protocol.naming import format_iso, parse_iso
+from tightrein.protocol.recovery import CHECKPOINT_COMMIT
 from tightrein.protocol.runtime import Runtime
 
 POINT = "implement.review"
 DEEP_POINT = "implement.review.deep"
 CHECK = "implement.check"
+CODE = "implement.code"
 DESIGN = "implement.design"
 LIGHT = "light"
 DEEP = "deep"
 SCHEMA = Path(__file__).with_name("review.schema.json")
-BASE_KINDS = frozenset({"root-cause-unfixed", "caller-broken", "hardcode", "new-error-path", "requirement-unmet",
-                        "requirement-reduced"})
+BASE_KINDS = frozenset({"root-cause-unfixed", "caller-broken", "hardcode", "new-error-path", "main-dropped",
+                        "requirement-unmet", "requirement-reduced", "decision-unmet"})
 ALLOWED_KINDS = {LIGHT: BASE_KINDS, DEEP: BASE_KINDS | {"authz", "data-structure", "contract"}}
+# 对应验收标准的问题：审查给了这类阻断项时，判为不满足的验收标准不再另记方案缺口
 REQUIREMENT_KINDS = frozenset({"requirement-unmet", "requirement-reduced"})
 UNKNOWN = "unknown"
 FAIL = "fail"
@@ -102,20 +110,54 @@ def run(runtime: Runtime, context: ImplementContext) -> Handoff:
                       context, runtime.settings)
     check = _facts(context, CHECK)
     results = prompts.results_text(check)
+    merged = merged_main(context, git)
     usage = Usage()
     previous_blockers = [Finding.from_json(item).text() for item in (previous.facts.get("blockers") or [])] \
         if incremental and previous else []
     light_review = _review(runtime, context, LIGHT, prompts.light(
         context, plan=plan, diff=changes.patch if files is None else select_files(changes.patch, files),
-        results=results, hints=check.get("hardcodeHints") or [], previous=previous_blockers, files=files),
-        usage, worktree)
+        results=results, hints=check.get("hardcodeHints") or [], previous=previous_blockers, files=files,
+        merge=merged), usage, worktree)
     reviews = [light_review]
     # 深度审查缺省每次都做(controls."implement.review".deepAlways)：实测并发取锁的修复没被判为高风险，只做了轻量
     # 审查，合并后下一轮巡检才查出它引入的竞态；成立与否的把关从评估挪到了修复之后
     if light_review.passed and (risk.high or bool(runtime.settings.control(POINT, "deepAlways"))):
         reviews.append(_review(runtime, replace(context, risk=risk), DEEP,
-                               prompts.deep(context, diff=changes.patch, results=results, risk=risk), usage, worktree))
+                               prompts.deep(context, diff=changes.patch, results=results, risk=risk, merge=merged),
+                               usage, worktree))
     return _handoff(runtime, context, started, base, diff_hash, states, changes, files, reviews, risk, usage)
+
+
+def merged_main(context: ImplementContext, git: Git) -> prompts.MergedMain | None:
+    """这次交付合并进来的 main：发布合并 main 后退回实施(context.returned)、那个 main 已在 HEAD 里时给出，否则为 None。
+
+    - 退回编码(合并冲突)：编码轮合并 main、解决冲突，两侧都改了的是冲突文件；合并前的修复分支是退回时的 HEAD；
+    - 退回自检(main 改到修复的文件，或人解决过冲突后发布完成合并)：发布已合并，两侧都改了的是交集与解决过冲突的
+      文件；合并前的修复分支是发布的合并提交的第一个父提交。
+    main 一侧的提交与改动从合并前的修复分支与 main 的分叉点算；git 读不出时只给文件与发布记下的提交。"""
+    returned = context.returned
+    if returned is None:
+        return None
+    facts = returned.facts
+    by_code = facts.get(BACK_TO) == CODE
+    if by_code:
+        main, files, before = facts.get("main"), list(facts.get("conflicts") or []), facts.get(CHECKPOINT_COMMIT)
+    else:
+        merge = facts.get("merged")
+        main, before = facts.get("syncedMain"), f"{merge}^1" if merge else None
+        files = list(dict.fromkeys([*(facts.get("overlap") or []), *(facts.get("resolutions") or {})]))
+    if not main or not files or not git.is_ancestor(str(main), "HEAD"):
+        return None
+    main, paths = str(main), tuple(str(path) for path in files)
+    commits = tuple(str(item) for item in facts.get("mainCommits") or [])
+    diff = ""
+    if before:
+        try:
+            diff = git.diff(git.merge_base(str(before), main), main, paths)
+            commits = tuple(f"{item.commit[:12]} {item.subject}" for item in git.log(f"{before}..{main}", paths))
+        except GitError:
+            pass
+    return prompts.MergedMain(main, paths, commits, diff, by_code)
 
 
 def filter_findings(output: Mapping[str, Any], worktree: Path, mode: str) -> tuple[list[Finding], list[dict[str, Any]]]:
