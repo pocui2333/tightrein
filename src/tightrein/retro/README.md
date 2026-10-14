@@ -29,7 +29,7 @@ tightrein 自身问题的记录簿。每次运行结束都检查一遍，把 tig
    | 交接状态 failed | 失败 | `step-failed` | severe(停下要用户处理) |
    | 交接状态 pending | 打扰 | `waiting-user` | trivial |
    | 交接状态 returned(按流程退回：方案要等别的 Issue 先合入、一个 PR 放不下要拆分、用户否决方案并写明原因；否决时重出已到上限、要停下的为 failed，照记) | 不记 | — | — |
-   | 交接事实中的 `bodyProblems`(新建的 Issue 正文检查没过，Issue 照常建好) | 失败 | `issue-body-check` | minor |
+   | 交接事实中的 `bodyProblems`(新建或追加到已有 Issue 的正文检查没过，Issue 照常建好或追加) | 失败 | `issue-body-check` | minor |
    | 单步 token 超过 `stepTokens` | 浪费 | `step-tokens` | 达到 `bigTokens` 为 major，否则 minor |
    | 单步耗时超过 `stepDuration` | 浪费 | `step-slow` | minor |
    | 单步轮数超过 `rounds` | 浪费 | `many-rounds` | minor |

@@ -107,7 +107,8 @@ def test_failures_waste_and_interruptions_are_found(layout: WorkspaceLayout) -> 
     assert crossed.impact is Impact.MAJOR and crossed.tokens == 1_400_000
 
 
-def test_body_problems_of_a_created_issue_are_a_minor_failure_not_a_failed_step() -> None:
+def test_body_problems_of_a_created_or_appended_issue_are_a_minor_failure_not_a_failed_step() -> None:
+    """新建的 Issue 与追加到已有 Issue 的问题，正文检查没过都只记进 bodyProblems：复盘记小问题，说明不只说新建。"""
     data = RunData(RUN, "done")
     data.handoffs = [handoff("assess.issue", "0028", facts={"bodyProblems": ["0028：用了相对日期「昨天」"]}),
                      handoff("assess.issue", "0029", facts={"bodyProblems": []})]
@@ -115,6 +116,7 @@ def test_body_problems_of_a_created_issue_are_a_minor_failure_not_a_failed_step(
     assert (found.kind, found.point, found.phenomenon, found.impact) == (
         Kind.FAILURE, "assess.issue", "issue-body-check", Impact.MINOR)
     assert found.subject == "0028" and "相对日期「昨天」" in found.detail
+    assert found.fact == "新建或追加的 Issue 正文没过检查(Issue 照常建好或追加)"
 
 
 def test_calls_finished_by_the_fallback_are_recorded(layout: WorkspaceLayout) -> None:
