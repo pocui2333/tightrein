@@ -248,25 +248,29 @@ def idempotency_key(scope: WriteScope, operation: str, content: Sequence[str]) -
 
 def once[T](scope: WriteScope, operation: str, content: Sequence[str], action: Callable[[], T],
          reconcile: Callable[[], T | None], *, expected: Mapping[str, str | None] | None = None,
-         observe: Callable[[Sequence[str]], Mapping[str, str | None]] | None = None) -> T:
+         observe: Callable[[Sequence[str]], Mapping[str, str | None]] | None = None, remember: bool = True) -> T:
     """先查后做：做过的直接返回上次结果；上次被中断的先按实际状态对账，做完了补记完成，没做完删键重做。
 
     给出 expected(做决定时观察到的状态)时，真正执行前以同样的项调 observe 重新观察，有不同即抛 Stale(键随之删去，
     状态恢复后可以再做)。复核放在查键之后：已完成与对账补记的都直接返回，不复核。
+    remember 为假时不记幂等键、每次都做(照样复核、记命令输出)：给会被程序撤回的本地操作用，做没做由调用方按 git 的
+    实际状态判断；记了键，撤回后再做会被当成已做过而跳过。
     """
     key = idempotency_key(scope, operation, content)
     token = _STEP_LOG.set((scope.raw, f"{STEP_LOG_DIR}/{segment(scope.subject)}/{segment(operation)}")) \
         if scope.raw is not None else None
     try:
+        if not remember:
+            return _checked(operation, action, expected, observe)()
         return _once(scope, key, operation, action, reconcile, expected, observe)
     finally:
         if token is not None:
             _STEP_LOG.reset(token)
 
 
-def _once[T](scope: WriteScope, key: str, operation: str, action: Callable[[], T], reconcile: Callable[[], T | None],
-             expected: Mapping[str, str | None] | None,
-             observe: Callable[[Sequence[str]], Mapping[str, str | None]] | None) -> T:
+def _checked[T](operation: str, action: Callable[[], T], expected: Mapping[str, str | None] | None,
+                observe: Callable[[Sequence[str]], Mapping[str, str | None]] | None) -> Callable[[], T]:
+    """执行前先复核前置条件的 action。"""
     def checked() -> T:
         if expected and observe is not None:
             differences = changed(expected, observe(tuple(expected)))
@@ -274,6 +278,13 @@ def _once[T](scope: WriteScope, key: str, operation: str, action: Callable[[], T
                 raise Stale(operation, differences)
         return action()
 
+    return checked
+
+
+def _once[T](scope: WriteScope, key: str, operation: str, action: Callable[[], T], reconcile: Callable[[], T | None],
+             expected: Mapping[str, str | None] | None,
+             observe: Callable[[Sequence[str]], Mapping[str, str | None]] | None) -> T:
+    checked = _checked(operation, action, expected, observe)
     try:
         return operations.run_once(scope.conn, key, checked, scope.clock, subject=scope.subject, point=scope.point)
     except operations.InProgress:
@@ -398,6 +409,15 @@ class Git:
     def merge_head(self) -> str | None:
         found = self._run("rev-parse", "--verify", "--quiet", "MERGE_HEAD", ok=(0, NOT_FOUND_EXIT))
         return found.stdout.strip() or None
+
+    def conflict_stages(self) -> dict[str, frozenset[int]]:
+        """进行中的合并里每个未合并文件在暂存区占的阶段(`ls-files -u`)：1 为共同祖先，2 为当前分支，3 为合并进来的
+        一侧；缺了哪一侧就是那一侧没有这个文件(删了或改了名)。"""
+        found: dict[str, set[int]] = {}
+        for entry in iter_nul(self._out(*NO_QUOTE, "ls-files", "--unmerged", "-z")):
+            meta, _, path = entry.partition("\t")
+            found.setdefault(path, set()).add(int(meta.split(" ")[2]))
+        return {path: frozenset(stages) for path, stages in found.items()}
 
     def diff(self, base: str, head: str | None = None, paths: Sequence[str] | None = None) -> str:
         """base 到 head(为空时为工作目录，不含未跟踪文件)的统一格式 diff 原文。"""
@@ -542,9 +562,10 @@ class Git:
         return once(scope, "branch-delete", (branch,), action, gone)
 
     def commit(self, files: Sequence[str], message: str, *, base: str, scope: WriteScope,
-               expected: Mapping[str, str | None] | None = None) -> str:
+               expected: Mapping[str, str | None] | None = None, remember: bool = True) -> str:
         """暂存 files 并以 `-F -`(提交信息从标准输入读入)提交，返回新的 HEAD。内容哈希取 base 到工作目录的 diff_hash：
-        与是否已提交无关，提交前后算出的键相同。提交信息含 AI 署名时拒绝。expected 为 state(base=base) 的结果。"""
+        与是否已提交无关，提交前后算出的键相同。提交信息含 AI 署名时拒绝。expected 为 state(base=base) 的结果。
+        remember 见 once：会被撤回的提交(编码轮完成的合并提交)不记幂等键。"""
         if not files:
             raise ValueError("提交的文件清单不能为空")
         lines = attribution_lines(message)
@@ -565,10 +586,12 @@ class Git:
             return self.head().commit or ""
 
         return once(scope, "commit", (self.diff_hash(base), *listed), action, committed, expected=expected,
-                    observe=lambda keys: self.state(keys, base=base))
+                    observe=lambda keys: self.state(keys, base=base), remember=remember)
 
-    def merge(self, ref: str, *, scope: WriteScope, expected: Mapping[str, str | None] | None = None) -> str:
-        """`merge --no-ff --no-edit`：不用 rebase、不改写已推送的历史。冲突时抛出 MergeConflict，合并停在进行中。"""
+    def merge(self, ref: str, *, scope: WriteScope, expected: Mapping[str, str | None] | None = None,
+              remember: bool = True) -> str:
+        """`merge --no-ff --no-edit`：不用 rebase、不改写已推送的历史。冲突时抛出 MergeConflict，合并停在进行中。
+        remember 见 once：会被撤回的合并(编码轮合并 main)不记幂等键。"""
         branch = self._refuse_main()
         target = self.rev_parse(ref)
 
@@ -587,10 +610,12 @@ class Git:
                 raise failure(CommandFailed, (GIT, "merge", ref), found, self._redact)
             return self.head().commit or ""
 
-        return once(scope, "merge", (branch, target), action, merged, expected=expected, observe=self.state)
+        return once(scope, "merge", (branch, target), action, merged, expected=expected, observe=self.state,
+                    remember=remember)
 
-    def fast_forward(self, ref: str, *, scope: WriteScope) -> str:
-        """`merge --ff-only`：分支上还没有自己的提交时把它移到 ref，不产生合并提交；不能快进时报错，不退而合并。"""
+    def fast_forward(self, ref: str, *, scope: WriteScope, remember: bool = True) -> str:
+        """`merge --ff-only`：分支上还没有自己的提交时把它移到 ref，不产生合并提交；不能快进时报错，不退而合并。
+        remember 见 once。"""
         branch = self._refuse_main()
         target = self.rev_parse(ref)
 
@@ -601,12 +626,33 @@ class Git:
             self._run("merge", "--ff-only", "--quiet", target, read=False)
             return self.head().commit or ""
 
-        return once(scope, "fast-forward", (branch, target), action, moved)
+        return once(scope, "fast-forward", (branch, target), action, moved, remember=remember)
 
     def merge_abort(self) -> None:
-        """放弃进行中的合并(`merge --abort`)：工作区与暂存区回到合并前；没有进行中的合并时什么都不做。"""
+        """放弃进行中的合并(`merge --abort`)：工作区与暂存区回到合并前；没有进行中的合并时什么都不做。合并后自动合并
+        并已暂存的文件又被改过时 git 会拒绝(Entry not uptodate)，这时要先恢复文件，或改用 merge_quit。"""
         if self.merge_head() is not None:
             self._run("merge", "--abort", read=False)
+
+    def merge_quit(self) -> None:
+        """只丢掉进行中合并的状态(`merge --quit`)，暂存区与工作区原样不动，文件被改过也不会失败；文件由调用方另行
+        恢复。没有进行中的合并时什么都不做。"""
+        if self.merge_head() is not None:
+            self._run("merge", "--quit", read=False)
+
+    def keep_side(self, path: str, *, theirs: bool) -> None:
+        """进行中的合并里，把未合并的文件写成一侧的版本(`checkout --ours/--theirs`)，不暂存；那一侧没有这个文件时报错。"""
+        self._run("checkout", "--theirs" if theirs else "--ours", "--", path, read=False)
+
+    def move_back(self, commit: str) -> str | None:
+        """当前分支退回 commit，只动分支，不动暂存区与工作区：只在 HEAD 是从 commit 向前走出来的(commit 是 HEAD 的
+        祖先且不同)时退，主分支与游离 HEAD 不动。返回退回前的 HEAD；没有退时为 None。"""
+        head = self.head()
+        if head.commit is None or head.commit == commit or head.branch in (None, self.main_branch) \
+                or self.is_ancestor(commit, head.commit) is not True:
+            return None
+        self._run("update-ref", "-m", "back to checkpoint", "HEAD", commit, head.commit, read=False)
+        return head.commit
 
     def revert(self, commit: str, *, scope: WriteScope, expected: Mapping[str, str | None] | None = None) -> str:
         """在当前分支上撤销 commit，返回新的 HEAD。合并提交(有第二个父提交)加 `-m 1` 取主干一侧；

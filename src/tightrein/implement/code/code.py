@@ -8,8 +8,12 @@
   交接带上越界原因；implement.py 第一次越界时带原因重做这一轮，再越界停下。改动量超上限由自检按「先收敛一次」处理；
 - 结局分类：调用失败为局部问题(下一轮重来)；模型中止(aborted)为方案缺口(带说明重出方案)；
 - 发布合并 main 冲突退回编码时(code/merge.py)：这一轮先由程序合并那个 main，冲突说明放在修正说明最前面，本轮改动
-  相对合并进来的 main 算；冲突都解决了由程序完成合并提交；没解决完或这一轮没完成就放弃合并、下一轮重来；这一轮
-  中止说明两侧是互斥实现，归为需要用户(选保留哪一侧)，不是方案缺口。
+  相对合并进来的 main 算；冲突都解决了由程序完成合并提交；没解决完或这一轮没通过(调用失败、中止、越界)就放弃合并、
+  worktree 连同分支回到合并前，下一轮重来；这一轮中止说明两侧是互斥实现，归为需要用户(选保留哪一侧)，不是方案缺口。
+  没有冲突标记、改文件解决不了的冲突(一侧删了另一侧改了、二进制文件等)不调用模型，放弃合并后归为需要用户，
+  关卡请用户选保留哪一侧；选了之后的轮次由程序先把这些文件写成那一侧；
+- 撤回(越界、放弃合并)用检查点恢复(prepare/workspace.restore)，不用 `merge --abort`：合并后自动合并并已暂存的文件
+  被 agent 改过时它会失败；恢复本身失败也不抛出，交接带上需要用户的不通过项。
 """
 
 from __future__ import annotations
@@ -30,6 +34,7 @@ from tightrein.implement.prepare import workspace
 from tightrein.implement.prompts import code as prompts
 from tightrein.implement.prompts.common import Ask, Usage, ask, design_documents, failure_text, worktree_of
 from tightrein.protocol.boundaries import FORBIDDEN, OUTSIDE, Change, Violation, check_round, counted
+from tightrein.protocol.git import GitError
 from tightrein.protocol.handoff import Handoff, Status
 
 if TYPE_CHECKING:
@@ -66,60 +71,63 @@ def run(runtime: Runtime, context: ImplementContext) -> Handoff:
         note, rolled_back = _checkpoint(runtime, context, git, worktree, base)
         if note:
             corrections.insert(0, note)
-    git.merge_abort()  # 上次中断留下的半截合并(合并 main 的这一轮被打断)
-    start = workspace.snapshot(git)
-    conflicts: tuple[str, ...] = ()
-    if sync is not None:
-        conflicts = merge.start(runtime, context.issue.id, git, sync)
-        if not conflicts:
-            start = workspace.snapshot(git)  # 没有冲突、合并已完成：撤回时退到合并之后
-        base = sync.main  # 合并完成后 review_base 就是它：本轮改动相对它算
-        corrections.insert(0, merge.note(git, sync, conflicts))
+    start = workspace.snapshot(git)  # 合并 main 之前：这一轮没通过时连同合并一起撤回
     conditions = risk.conditions(context.risk)
+    facts: dict[str, Any] = {"baseCommit": base, "sessionId": None, "conditions": list(conditions), "redo": redo,
+                             "corrections": corrections, "rolledBackTo": rolled_back}
+    merging = merge.Merging()
+    if sync is not None:
+        base = facts["baseCommit"] = sync.main  # 合并完成后 review_base 就是它：本轮改动相对它算
+        try:
+            merging = merge.start(runtime, context.issue.id, git, sync)
+            side = merge.chosen(context, sync) if merging.unmergeable else None
+            if side is not None:
+                merging = merge.choose(git, merging, side)
+        except GitError as error:
+            blocker = Finding(CHECK_NAME, "merge_failed", None, f"程序合并 main 失败，已放弃这次合并：{error}", NEEDS_USER)
+            return _failed(runtime, context, git, start, blocker, facts, Usage())
+        facts["mergedMain"] = merging.facts(sync)
+        if merging.unmergeable and merging.side is None:
+            return _unmergeable(runtime, context, git, start, sync, merging, previous, facts)
+        corrections.insert(0, merge.note(git, sync, merging))
     usage = Usage()
     result = ask(runtime, context, _request(runtime, context, design.facts, corrections, previous, conditions), usage)
+    facts["sessionId"] = result.session_id
     changes = git.numstat(base)
     violations = _violations(runtime, changes, worktree, result)
-    facts: dict[str, Any] = {"baseCommit": base, "sessionId": result.session_id, "conditions": list(conditions),
-                             "redo": redo,
-                             "corrections": corrections, "rolledBackTo": rolled_back}
-    if sync is not None:
-        facts["mergedMain"] = {"main": sync.main, "conflicts": list(conflicts), "commit": None}
     if violations:
-        git.merge_abort()
-        workspace.restore(git, start)
         blockers = [Finding(CHECK_NAME, item.kind, item.path, item.detail, NEEDS_USER) for item in violations]
         return _handoff(runtime, context, Status.FAILED, "本轮改动越界，已撤回：" + "；".join(v.detail for v in violations),
                         {**facts, "violations": [asdict(item) for item in violations],
-                         "blockers": [item.to_json() for item in blockers]}, usage)
+                         "blockers": [item.to_json() for item in blockers + _restore(git, start)]}, usage)
     if not result.ok or result.output is None:
-        _drop_merge(git, start, conflicts)
         blocker = Finding(CHECK_NAME, "executor", None, failure_text(result), LOCAL)
-        return _handoff(runtime, context, Status.FAILED, blocker.summary,
-                        {**facts, "blockers": [blocker.to_json()]}, usage)
+        return _failed(runtime, context, git, start if sync is not None else None, blocker, facts, usage)
     output = result.output
     if output["status"] == ABORTED:
-        _drop_merge(git, start, conflicts)
         big = output["bigIssue"]
         # 合并 main 的这一轮中止：两侧是互斥实现，要用户选保留哪一侧，不是方案缺口
         blocker = Finding(CHECK_NAME, "merge_conflict", "、".join(big["locations"]) or None,
-                          f"合并 main 的冲突无法兼顾两侧：{big['description']}", NEEDS_USER) if conflicts else \
+                          f"合并 main 的冲突无法兼顾两侧：{big['description']}", NEEDS_USER) if merging.conflicted else \
             Finding(CHECK_NAME, "big_issue", "、".join(big["locations"]) or None,
                     f"实施中止，方案走不通：{big['description']}", PLAN_GAP)
-        return _handoff(runtime, context, Status.FAILED, blocker.summary,
-                        {**facts, **_reported(output), "blockers": [blocker.to_json()]}, usage,
-                        notes=output["analysis"])
-    left = merge.unresolved(git, conflicts)
+        return _failed(runtime, context, git, start if sync is not None else None, blocker,
+                       {**facts, **_reported(output)}, usage, notes=output["analysis"])
+    left = merge.unresolved(git, merging)
     if left:
-        _drop_merge(git, start, conflicts)
         blocker = Finding(CHECK_NAME, "merge_conflict", "、".join(left),
                           f"合并 main 的冲突没解决完，已放弃这次合并，下一轮重新合并：{'、'.join(left)}", LOCAL)
-        return _handoff(runtime, context, Status.FAILED, blocker.summary,
-                        {**facts, **_reported(output), "blockers": [blocker.to_json()]}, usage,
-                        notes=output["analysis"])
+        return _failed(runtime, context, git, start, blocker, {**facts, **_reported(output)}, usage,
+                       notes=output["analysis"])
     if sync is not None:
-        facts["mergedMain"]["commit"] = merge.finish(runtime, context.issue.id, git, conflicts) if conflicts \
-            else git.head().commit
+        try:
+            facts["mergedMain"]["commit"] = merge.finish(runtime, context.issue.id, git, merging) \
+                if merging.conflicted else git.head().commit
+        except GitError as error:
+            blocker = Finding(CHECK_NAME, "merge_commit", None,
+                              f"完成合并提交失败，已放弃这次合并，下一轮重新合并：{error}", LOCAL)
+            return _failed(runtime, context, git, start, blocker, {**facts, **_reported(output)}, usage,
+                           notes=output["analysis"])
     files, lines = counted(changes, runtime.settings)
     facts.update(_reported(output))
     facts["changedFiles"] = [{"path": item.path, "added": item.added, "deleted": item.deleted} for item in changes]
@@ -202,11 +210,37 @@ def _violations(runtime: Runtime, changes: Sequence[Change], worktree: Path, res
     return found
 
 
-def _drop_merge(git: Git, start: str, conflicts: Sequence[str]) -> None:
-    """合并 main 的这一轮没完成：放弃合并，worktree 回到这一轮开始时(未跟踪的新文件也清掉，下一轮重新合并不被挡住)。"""
-    if conflicts:
-        git.merge_abort()
+def _failed(runtime: Runtime, context: ImplementContext, git: Git, start: str | None, blocker: Finding,
+            facts: dict[str, Any], usage: Usage, *, notes: str | None = None) -> Handoff:
+    """这一轮没通过：start 不为空时先撤回到这一轮开始时(合并 main 的这一轮连同合并一起放弃，下一轮重新合并)。"""
+    blockers = [blocker, *(_restore(git, start) if start is not None else [])]
+    return _handoff(runtime, context, Status.FAILED, blocker.summary,
+                    {**facts, "blockers": [item.to_json() for item in blockers]}, usage, notes=notes)
+
+
+def _unmergeable(runtime: Runtime, context: ImplementContext, git: Git, start: str, sync: merge.Sync,
+                 merging: merge.Merging, previous: Handoff | None, facts: dict[str, Any]) -> Handoff:
+    """合并 main 有改文件解决不了的冲突、用户还没选保留哪一侧：放弃这次合并，不调用模型，停在关卡等用户选。
+    会话接着用上一轮的，选了之后那一轮照常续接。"""
+    listed = "；".join(f"{item.path}({item.kind})" for item in merging.unmergeable)
+    blockers = [Finding(CHECK_NAME, "merge_conflict", item.path,
+                        f"合并 main 时{item.kind}，改文件解决不了，要你选保留哪一侧", NEEDS_USER)
+                for item in merging.unmergeable]
+    blockers += _restore(git, start)
+    session = previous.facts.get("sessionId") if previous is not None else None
+    return _handoff(runtime, context, Status.FAILED, f"合并 main 有改文件解决不了的冲突，已放弃这次合并，要你选保留哪一侧：{listed}",
+                    {**facts, "sessionId": session, "blockers": [item.to_json() for item in blockers],
+                     "gate": merge.gate(context.issue.id, sync, merging)}, Usage())
+
+
+def _restore(git: Git, start: str) -> list[Finding]:
+    """撤回到这一轮开始时(连同进行中或已提交的合并、agent 自己的提交)；恢复本身失败时不抛出，返回需要用户的不通过项。"""
+    try:
         workspace.restore(git, start)
+    except GitError as error:
+        return [Finding(CHECK_NAME, "restore_failed", None,
+                        f"撤回本轮改动失败，worktree 可能停在半截状态，要人看一下：{error}", NEEDS_USER)]
+    return []
 
 
 def _redo(context: ImplementContext, previous: Handoff | None) -> bool:

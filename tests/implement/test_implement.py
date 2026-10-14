@@ -403,6 +403,57 @@ def test_release_sending_the_issue_back_reopens_coding_or_checking(world: Any) -
     assert _decide(world).kind is Kind.DONE
 
 
+def _delivered_after_four_rounds(world: Any) -> None:
+    """前 3 轮都有局部问题，第 4 轮(上限内的最后一轮)通过并交付。"""
+    _planned(world)
+    for number in (1, 2, 3):
+        _round(world, number, [_blocker("local", kind=f"bug{number}")])
+    _save(world, CODE, round=4)
+    _save(world, CHECK, round=4)
+    _save(world, REVIEW, round=4)
+    _save(world, DELIVER)
+
+
+def test_after_a_return_to_checking_the_rounds_count_from_that_round(world: Any) -> None:
+    """发布退回自检时在最后一轮上接着做，退回之后没有新的编码：轮数上限从那一轮算，不从第 1 轮算。"""
+    _delivered_after_four_rounds(world)
+    _save(world, "release.pr", facts={"backTo": CHECK, "overlap": ["src/orders.py"]})
+    assert _decide(world) == implement.Next(Kind.RUN, CHECK, round=4)
+    _save(world, CHECK, Status.FAILED, {"blockers": [_blocker("local", kind="merged")]}, round=4)
+    assert _decide(world) == implement.Next(Kind.RUN, CODE, round=5)
+
+
+def test_a_failed_delivery_does_not_end_the_return(world: Any) -> None:
+    """退回之后交付没通过(自检、审查后又有改动)：退回还没处理完，轮数上限仍从这次退回算；交付通过后才不算。"""
+    _delivered_after_four_rounds(world)
+    _save(world, "release.pr", facts={"backTo": CODE, "main": "m" * 40, "conflicts": ["src/orders.py"]})
+    _save(world, CODE, round=5)
+    _save(world, CHECK, round=5)
+    _save(world, REVIEW, round=5)
+    _save(world, DELIVER, Status.FAILED, {"backTo": REVIEW})
+    assert load(world.runtime, ISSUE).returned is not None
+    assert _decide(world) == implement.Next(Kind.RUN, REVIEW, round=5)
+    _save(world, REVIEW, Status.FAILED, {"blockers": [_blocker("local")]}, round=5)
+    assert _decide(world) == implement.Next(Kind.RUN, CODE, round=6)
+    _save(world, CODE, round=6)
+    _save(world, CHECK, round=6)
+    _save(world, REVIEW, round=6)
+    _save(world, DELIVER)
+    assert load(world.runtime, ISSUE).returned is None and _decide(world).kind is Kind.DONE
+
+
+def test_a_merge_conflict_the_user_must_pick_a_side_for_uses_the_gate_of_the_handoff(world: Any) -> None:
+    """编码请用户选合并冲突保留哪一侧：停在关卡时照交接带的关卡内容写(选项是 approve --option 1/2)。"""
+    _planned(world)
+    gate = {"decision": "选保留哪一侧", "options": ["保留修复一侧", "保留 main 一侧"],
+            "command": "tightrein approve 0018 --option <1|2>"}
+    blocker = {"check": "code", "kind": "merge_conflict", "location": "src/users.py", "summary": "main 删了它",
+               "category": "needs_user"}
+    _save(world, CODE, Status.FAILED, {"blockers": [blocker], "gate": gate}, round=1)
+    found = _decide(world)
+    assert (found.kind, found.point, found.gate) == (Kind.WAIT, CODE, gate)
+
+
 def test_the_budget_and_manual_takeover_stop_it(world: Any, steps: Steps) -> None:
     world.runtime.agents.budget = Budget(used=2_000_000)
     outcome = implement.implement(world.runtime, ISSUE)

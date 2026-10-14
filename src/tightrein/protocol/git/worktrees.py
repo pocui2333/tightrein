@@ -84,7 +84,8 @@ def refresh_fix(git: Git, path: Path, *, scope: WriteScope) -> bool:
     head = tree.head().commit
     if head is None or head == target or not tree.is_ancestor(head, target):
         return False
-    tree.fast_forward(target, scope=scope)
+    # 不记幂等键：准备没做完就中断时，续跑随检查点把分支退回快进前(implement._rewind)，重来要再快进一次
+    tree.fast_forward(target, scope=scope, remember=False)
     return True
 
 

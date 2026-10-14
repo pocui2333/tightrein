@@ -5,9 +5,10 @@
 - worktree 经 protocol/git/worktrees 从 origin/<主分支> 新建；已存在就复用(中断后重来不重复建)，复用时分支上还没有
   自己的提交、也没有改动就快进到最新的主干(等前置 Issue 合入后重来，前置的改动才在里面)；回归或重开后的又一次
   修复(assess/issue/attempts)用新的目录 `worktrees/<编号>_<次>`，不接着用上一次已合并的分支与目录；
-- 检查点快照：每一步完成时把 worktree 的内容(含未跟踪的新文件)记成一个不挂在任何分支上的 commit，写进
-  handoff 的 `worktreeCommit`；中断后把 worktree 恢复到上一个检查点，不续接半截状态。只写对象库与临时索引，
-  不动 HEAD、分支与暂存区，改动照常由发布阶段提交。
+- 检查点快照：每一步完成时把 worktree 的内容(含未跟踪的新文件)记成一个不挂在任何分支上的 commit(父提交为当时的
+  HEAD)，写进 handoff 的 `worktreeCommit`；记快照只写对象库与临时索引，不动 HEAD、分支与暂存区，改动照常由发布
+  阶段提交。中断后把 worktree 恢复到上一个检查点，不续接半截状态：内容、暂存区与 HEAD 一起退回——这一步里程序做的
+  合并提交、agent 自己的提交让分支越过了检查点时，分支退回检查点时的提交，进行中的合并一并放弃。
 """
 
 from __future__ import annotations
@@ -100,12 +101,35 @@ def snapshot(git: Git) -> str:
     return _git(git, env, "commit-tree", _worktree_tree(git, head), "-p", head, stdin=SNAPSHOT_MESSAGE).strip()
 
 
-def restore(git: Git, commit: str) -> None:
-    """把 worktree 的内容恢复成检查点 commit 的样子：HEAD 不动，快照中的新文件恢复后仍为未跟踪。"""
+def restore(git: Git, commit: str) -> str | None:
+    """把 worktree 恢复成检查点 commit 的样子：内容、暂存区与 HEAD。返回因此丢掉的 HEAD(分支没退时为 None)。
+
+    - 进行中的合并只丢掉合并状态(merge_quit)，不用 `merge --abort`：合并后自动合并并已暂存的文件又被改过时它会失败；
+    - 分支越过了检查点时的提交(这一步里程序完成的合并提交、agent 自己的提交)就退回去；不是从它向前走出来的不动；
+    - 先按检查点重写暂存区与文件，再清掉检查点里没有的文件(含冲突留下、暂存区里只有未合并条目的文件)；快照中的
+      新文件恢复后仍为未跟踪。"""
     env = dict(git.env)
-    _git(git, env, "clean", "-f", "-d", "--quiet")
+    git.merge_quit()
     _git(git, env, "read-tree", "--reset", "-u", commit)
+    _git(git, env, "clean", "-f", "-d", "--quiet")
+    dropped = git.move_back(checkpoint_head(git, commit))
     _git(git, env, "read-tree", "HEAD")
+    return dropped
+
+
+def at_checkpoint(git: Git, commit: str) -> bool:
+    """worktree 与检查点一致：内容相同、没有进行中的合并、分支没有越过检查点时的提交。"""
+    if git.merge_head() is not None or current_tree(git) != tree_of(git, commit):
+        return False
+    head = checkpoint_head(git, commit)
+    return git.head().commit == head or git.is_ancestor(head, "HEAD") is not True
+
+
+def checkpoint_head(git: Git, commit: str) -> str:
+    """检查点当时的 HEAD：快照 commit 的父提交；worktree 干净时检查点就是 HEAD 本身。"""
+    email, parents, message = _git(git, dict(git.env), "show", "-s", "--format=%ce%x00%P%x00%B", commit).split("\0", 2)
+    snapshot = email == SNAPSHOT_IDENTITY["GIT_COMMITTER_EMAIL"] and message.strip() == SNAPSHOT_MESSAGE.strip()
+    return parents.split()[0] if snapshot and parents.strip() else commit
 
 
 def tree_of(git: Git, commit: str) -> str:

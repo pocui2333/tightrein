@@ -252,9 +252,9 @@ def _blocked(runtime: Runtime, context: ImplementContext, done: Sequence[Handoff
     if category == DESIGN_ISSUE:
         return _stop(last, code="design_issue", reason="根因在设计本身：" + "；".join(item.text() for item in chosen),
                      advice="决定是找代码作者讨论还是按设计层面修复(同意时 approve 并在 --note 写明)")
-    if category == NEEDS_USER:
+    if category == NEEDS_USER:  # 交接自己写了关卡内容的(编码请用户选合并冲突保留哪一侧)照它写
         return Next(Kind.WAIT, last.point, round=last.round, reason="；".join(item.text() for item in chosen),
-                    gate=_needs_user_gate(context, chosen))
+                    gate=dict(last.facts.get("gate") or {}) or _needs_user_gate(context, chosen))
     if category == PLAN_GAP:
         return _replan(runtime, context, last, "编码中发现方案没覆盖")
     return _local(runtime, context, done, last, findings)
@@ -412,14 +412,17 @@ def _settle(runtime: Runtime, context: ImplementContext, found: Next, ran: Hando
 
 
 def _rewind(runtime: Runtime, context: ImplementContext) -> None:
-    """没做完的那一步整个丢掉：worktree 与上一个检查点不一致时退回去，不续接半截状态。"""
+    """没做完的那一步整个丢掉：worktree 与上一个检查点不一致(内容不同、合并停在进行中、分支越过了检查点时的提交)
+    时退回去，不续接半截状态。分支一并退回：只退文件而 HEAD 留在这一步程序做的合并提交上，等于把合并进来的改动
+    又撤掉，下一轮还会以为已经合并过。"""
     if context.git is None:
         return
     commit = recovery.checkpoint_commit(runtime.workspace, context.issue.id)
-    if commit is None or workspace.current_tree(context.git) == workspace.tree_of(context.git, commit):
+    if commit is None or workspace.at_checkpoint(context.git, commit):
         return
-    workspace.restore(context.git, commit)
-    _emit(runtime, context.issue.id, STAGE, f"worktree 有没做完的改动，已退回检查点 {commit[:12]}")
+    dropped = workspace.restore(context.git, commit)
+    moved = f"，分支从 {dropped[:12]} 退回" if dropped else ""
+    _emit(runtime, context.issue.id, STAGE, f"worktree 有没做完的改动，已退回检查点 {commit[:12]}{moved}")
 
 
 def _mark(runtime: Runtime, issue: str, updates: dict[str, Any]) -> None:
@@ -459,12 +462,13 @@ def _current(context: ImplementContext) -> str:
 
 
 def _cycle_first_round(context: ImplementContext, done: Sequence[Handoff]) -> int:
-    """这一版方案(或用户最近一次决定、发布最近一次退回)之后的第一轮：轮数上限按它算。"""
+    """这一版方案(或用户最近一次决定、发布最近一次退回)之后的第一轮：轮数上限按它算。看编码、自检、审查三步：
+    发布退回自检时在最后一轮上接着做，退回之后还没有新的编码，第一轮就是那一轮。"""
     design = context.last(DESIGN)
     planned = (design.created_at or "") if design is not None else ""
     returned = (context.returned.created_at or "") if context.returned is not None else ""
     since = max([planned, returned, *(item.at for item in context.decisions)])
-    rounds = [item.round or 1 for item in done if item.point == CODE and (item.created_at or "") >= since]
+    rounds = [item.round or 1 for item in done if item.point in ROUND_POINTS and (item.created_at or "") >= since]
     return min(rounds, default=1)
 
 

@@ -7,7 +7,7 @@
 | 改动量超上限(不算测试、锁文件与生成文件；未跟踪的新文件全部行计为新增) | 第一次为局部问题：按方案收敛；同一次实施中再超出为需要用户 |
 | 方案外的已跟踪文件 | 方案缺口 |
 | 方案外的未跟踪文件(新写的测试除外) | 局部问题：临时文件，交付前删除 |
-| 改了方案没列出的已有测试 | 局部问题：不能为了让测试通过去改测试 |
+| 改了方案没列出的已有测试(基准里就有的；基准里没有的是新写的测试，发布提交后状态为新增 A，照样不算) | 局部问题：不能为了让测试通过去改测试 |
 | 新增行含跳过标记、匹配残留模式(调试输出等) | 局部问题 |
 
 疑似写死只提示不判失败：非测试文件新增行中长度不少于 minLiteralLength 的字面量，与本次写的测试或 Issue 中的
@@ -31,6 +31,7 @@ SIZE_GUIDANCE = "按方案收敛：撤回方案外与非必要的改动，不得
 SIZE_REPEATED = "收敛后仍超出改动量上限，交给用户决定"
 LITERAL = re.compile(r'"((?:[^"\\\n]|\\.)*)"|\'((?:[^\'\\\n]|\\.)*)\'|(?<![\w.])(\d+(?:\.\d+)?)(?![\w.])')
 DELETED = "D"
+ADDED = "A"  # 基准里没有、已经提交或暂存的新文件(发布退回后，编码新写的测试已随修复提交)
 
 
 @dataclass(frozen=True)
@@ -142,6 +143,8 @@ def _outside_plan(changes: Changes, planned: set[str], tests: Sequence[str]) -> 
             if not is_test:  # 新写的测试随改动一起提交，不算临时文件
                 findings.append(Finding(CHECK, "temporary_file", change.path,
                                         "未跟踪且不在方案中的文件(临时文件)，交付前删除", LOCAL))
+        elif is_test and change.status == ADDED:
+            continue  # 新写的测试已随修复提交(发布退回后在已提交的分支上自检)，不是改了已有测试
         elif is_test:
             action = "删除" if change.status == DELETED else "改动"
             findings.append(Finding(CHECK, "test_modified", change.path,

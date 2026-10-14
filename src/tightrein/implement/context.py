@@ -17,7 +17,7 @@ from tightrein.knowledge.entries import Entry
 from tightrein.knowledge.match import match
 from tightrein.protocol import recovery
 from tightrein.protocol.git import Git, GitError
-from tightrein.protocol.handoff import Handoff
+from tightrein.protocol.handoff import Handoff, Status
 from tightrein.store.tables import issues
 from tightrein.store.tables.issues import Issue
 
@@ -102,8 +102,8 @@ def load(runtime: Runtime, issue: str) -> ImplementContext:
         point = checkpoint.handoff.point
         if point in STEPS:
             latest[point] = checkpoint.handoff
-        if point == DELIVER:
-            returned = None  # 重新交付之后，之前的退回已处理完
+        if point == DELIVER and checkpoint.handoff.status is Status.PASSED:
+            returned = None  # 重新交付之后，之前的退回已处理完；交付没通过(回去重新自检或审查)时还在处理这次退回
         elif point == RELEASE_PR:
             returned = checkpoint.handoff if checkpoint.handoff.facts.get(BACK_TO) in STEPS else None
     prepared = latest.get(PREPARE)

@@ -26,12 +26,12 @@
                         └─ 局部问题交回编码(≤ 3 轮，没有进展即停)
 ```
 
-- **续跑点由产物推导**：最后一个完成的交接(按写入时间)与它的结论，加上之后用户有没有新决定。中断后不靠进度标记；没做完的那一步整个丢掉，worktree 退回上一个检查点(`facts.worktreeCommit`)。
-- **检查点快照**：每一步写交接时程序把 worktree 的内容记成一个不挂在分支上的 commit(`prepare/workspace.py:snapshot`，临时索引加 `commit-tree`)，不动 HEAD、分支与暂存区，提交照常由发布做。
+- **续跑点由产物推导**：最后一个完成的交接(按写入时间)与它的结论，加上之后用户有没有新决定。中断后不靠进度标记；没做完的那一步整个丢掉，worktree 退回上一个检查点(`facts.worktreeCommit`)：内容、暂存区与分支一起退，进行中的合并一并放弃；这一步里程序做的合并提交、agent 自己的提交让分支越过了检查点时分支也退回去(只退文件会把合并进来的改动又撤掉，下一轮还以为已经合并过)。
+- **检查点快照**：每一步写交接时程序把 worktree 的内容记成一个不挂在分支上的 commit(`prepare/workspace.py:snapshot`，临时索引加 `commit-tree`)，记快照不动 HEAD、分支与暂存区，提交照常由发布做。
 - **不通过项的分派**：自检、审查、编码交接中的 `blockers`(格式见 `check/findings.py`)按性质只处理最靠前的一类：设计问题停下；需要用户(含检查没跑起来)停在关卡；方案缺口重出方案；局部问题交回编码，只给这一类的项。
-- **轮数与没有进展**：局部问题交回编码最多 `controls.implement.review.rounds`(3)轮，按这一版方案(或用户最近一次决定)之后算；连续两轮阻断项(位置 + 类型)相同或本轮 diff 哈希与上一轮相同(`protocol.limits.no_progress`)立即停下。
+- **轮数与没有进展**：局部问题交回编码最多 `controls.implement.review.rounds`(3)轮，按这一版方案(或用户最近一次决定、发布最近一次退回)之后的第一轮算，编码、自检、审查哪一步都算(退回自检时就是那一轮)；交付没通过时退回还没处理完，交付通过后才不再算；连续两轮阻断项(位置 + 类型)相同或本轮 diff 哈希与上一轮相同(`protocol.limits.no_progress`)立即停下。
 - **越界**：编码一轮结束后程序检查本轮改动，越出 worktree 或碰了禁改文件即撤回本轮全部改动；第一次带原因重做这一轮，再越界停下。
-- **发布退回解决冲突**：发布合并 origin/main 冲突时放弃那次合并、退回编码(次数上限 `release.conflictReturns`)。这一轮开始前程序合并发布记下的 main，冲突留在文件里，冲突说明放在修正说明最前面；agent 只改文件、保留两侧的意图，不做 git 写操作；冲突都解决了由程序完成合并提交，没解决完或这一轮没完成就放弃合并、下一轮重来；两侧是同一功能的互斥实现时 agent 中止，归为需要用户(选保留哪一侧)。之后照常自检、审查(改动相对合并进来的 main 算)、交付。
+- **发布退回解决冲突**：发布合并 origin/main 冲突时放弃那次合并、退回编码(次数上限 `release.conflictReturns`)。这一轮开始前程序合并发布记下的 main，冲突留在文件里，冲突说明放在修正说明最前面；agent 只改文件、保留两侧的意图，不做 git 写操作；冲突都解决了由程序完成合并提交，没解决完或这一轮没通过就放弃合并(分支一起退回合并前)、下一轮重来；两侧是同一功能的互斥实现时 agent 中止，归为需要用户(选保留哪一侧)。没有冲突标记、改文件解决不了的冲突(一侧删了另一侧改了、二进制文件等)不调用模型，停在关卡请用户选保留哪一侧(`approve --option 1/2`)，选了之后由程序把这些文件写成那一侧。之后照常自检、审查(改动相对合并进来的 main 算)、交付。
 - **用户的决定高于方案**：编码照用户的决定与补充(含确认方案时的说明)做，与方案冲突的写进 `deviations`；轻量与深度审查都拿到用户的决定，没照做的报 `requirement-unmet`。
 - **超出范围**：方案发现一个 PR 放不下(`oversize`)，Issue 经 `SPLIT_BACK` 退回评估拆成几个新 Issue，实施阶段不拆子任务。
 - **前置 Issue**：方案发现要用到的代码要由别的 Issue 先合入(`blockedBy`)，不停在关卡、不问用户：Issue 经 `BLOCK` 退回待修并记下 `extra.blockedBy`(`assess/issue/blockers.py`)，调度在它们合入前不再挑它；都合入后从准备重新做起，准备把还没动过的 worktree 快进到最新主干，再定位、出方案。
@@ -69,7 +69,8 @@
 | `commands`(`name`、`result`) | 自检 | 测试命令都通过才记检查点(code/checkpoint.py) |
 | `callFailed` | 审查 | 审查没给出结果：只重跑审查一次，不重新编码 |
 | `backTo` | 交付 | 自检或审查之后又有改动：回到那一步重做一次 |
-| `gate`：`{decision, options, recommendation, reason, ifNot, command}` | 方案、定案(停在关卡时) | implement.py 写待审核文档；没给 `gate` 的步骤(自检、审查)自己写 |
+| `gate`：`{decision, options, recommendation, reason, ifNot, command}` | 方案、定案(停在关卡时)；编码(合并 main 有改文件解决不了的冲突，请用户选保留哪一侧) | implement.py 写待审核文档；没给 `gate` 的步骤(自检、审查)自己写，需要用户的不通过项没给时用通用的关卡内容 |
+| `mergedMain`：`{main, conflicts, unmergeable, side, commit}` | 编码(合并 main 的那一轮) | 下一轮沿用用户选的一侧(`code/merge.py`) |
 | `auto` | 定案(每种结局都写) | status 显示是否自动确认 |
 | `highRiskPaths` | 方案(通过时)、自检、交付 | status、watch；发布据交付的这一项决定合并是否人工 |
 | `planHash` | 方案、定案 | 编码前核对确认的就是当前方案 |

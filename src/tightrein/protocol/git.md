@@ -51,6 +51,7 @@ git 与 gh 的读写、worktree、分支提交与 PR 的格式。程序在同目
 | 评论 | 编号与正文 | 已有同样正文的评论 |
 | 建 Issue | 标题 | 远端能按标题找到刚建的打开的 Issue(正文不留标记) |
 
+- 会被程序撤回的本地操作不记幂等键(`remember=False`：编码轮合并 main 与完成合并提交，准备时把修复分支快进到最新主干)：这一轮没通过或中断后随检查点退回时它们会被撤掉，记了键再做会被当成已做过而跳过；做没做由调用方按 git 的实际状态判断(要合并的 main 是否已是 HEAD 的祖先)，复核与命令输出照常；
 - 前置条件：做决定时用 `Git.state`(分支、HEAD、相对基准的 diffHash、origin/<主分支>)或 `GitHub.pull_state`(该分支打开的 PR)记下观察到的状态，作为 `expected` 传给 commit、merge、revert、push、create_pr；真正执行前以同样的项重新观察，任何一项不同即抛 `Stale`、不执行(键删去)。复核放在查键之后：已完成与对账补记的直接返回，不复核；
 - 程序永远不直接写主分支：提交、合并、推送作用于主分支或游离 HEAD 时一律拒绝(`MainBranchRefused`)；
 - fetch 只更新远程跟踪分支，按只读处理，不记幂等键；需要 fetch 的操作在判断时 fetch，执行时不再 fetch。
@@ -61,7 +62,7 @@ git 与 gh 的读写、worktree、分支提交与 PR 的格式。程序在同目
 - 改动哈希(`diff_hash`)逐文件记「路径 + 基准中的模式与 blob + 工作目录中的模式与 blob」，未跟踪文件用 `hash-object` 计入：与改动是否已提交无关(复现测试是新文件，提交后从未跟踪变已跟踪，哈希不变)，所以既能作提交的幂等键，也能判断评审过的改动是否变了；
 - 比较基准(`review_base`)取 HEAD 与主干的最近公共祖先：合并过主干后它就是最近一次合并进来的主干版本。主干只改了别的文件时改动哈希与评审时相同，只需重新验证；改到同一文件或解决过冲突时才重新审查；
 - 同步主干一律 `merge --no-ff`，不用 rebase、`push --force`、`reset --hard`、`commit --amend`：已推送的历史不改写，PR 上的评审不失效；
-- 冲突时合并停在进行中，抛 `MergeConflict` 列出冲突文件，不自行取舍；调用方可用 `merge_abort`(`merge --abort`)放弃这次合并，回到合并前，已有提交不动；
+- 冲突时合并停在进行中，抛 `MergeConflict` 列出冲突文件，不自行取舍；调用方可用 `merge_abort`(`merge --abort`)放弃这次合并，回到合并前，已有提交不动。合并后自动合并并已暂存的文件又被改过时 `merge --abort` 会失败(Entry not uptodate)，这时用 `merge_quit`(`merge --quit`，只丢合并状态、不动文件)再另行恢复文件；`conflict_stages`(`ls-files --unmerged`)给出每个冲突文件在暂存区占的阶段，缺了哪一侧就是那一侧删了或改了名，这类冲突与二进制文件一样没有冲突标记；`keep_side` 把冲突文件写成一侧的版本；`move_back` 把当前分支退回它的某个祖先(只动分支，检查点恢复用)；
 - 推送结果按 `git push --porcelain` 的引用标记判断(`!` 为被拒，`PushRejected`)，不看错误文字；被拒时先同步主干，绝不强推；
 - 合并 PR 用 `gh pr merge --match-head-commit <判断时的 head> --delete-branch`：判断后有人再推送就合并失败而不是合进未审查的提交；带 `--repo` 时 gh 只删远程分支，本地分支与 worktree 由清理负责；
 - 必需检查按 `gh pr checks --required --json` 每项的 bucket 判断，退出码不反映结果；免费账号的私有仓库查规则集返回 403，视为没有规则集。

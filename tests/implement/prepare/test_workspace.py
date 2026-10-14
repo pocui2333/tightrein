@@ -48,6 +48,31 @@ def test_snapshot_records_changes_without_touching_head_and_restore_brings_them_
     assert git.status().clean
 
 
+def test_restore_takes_the_branch_back_and_drops_a_merge_in_progress(world: Any) -> None:
+    """检查点之后分支又向前走了(合并提交、agent 的提交)、合并停在进行中：恢复时一起退回检查点。"""
+    main = world.repo.commit("feat: main", {"src/orders.py": "def recent(days):\n    return days + 1\n",
+                                            "src/users.py": "NAME = 'main'\n"})
+    world.repo.git("checkout", "-q", "-b", "fix/18-orders", world.repo.base)
+    head = world.repo.commit("fix: week", {"src/orders.py": "def recent(days):\n    return days * 7\n"})
+    git = world.git()
+    world.repo.write({"tests/test_week.py": "def test_week():\n    pass\n"})
+    snap = workspace.snapshot(git)
+    assert workspace.checkpoint_head(git, snap) == head and workspace.checkpoint_head(git, head) == head
+    assert workspace.at_checkpoint(git, snap)
+    world.repo.commit("fix: more", {"src/users.py": "NAME = 'fix'\n"})
+    assert not workspace.at_checkpoint(git, snap)
+    with pytest.raises(AssertionError):
+        world.repo.git("merge", "--no-edit", main)  # 冲突，合并停在进行中
+    world.repo.write({"src/users.py": "NAME = 'agent'\n"})
+    dropped = workspace.restore(git, snap)
+    assert dropped is not None and dropped != head
+    assert git.head().commit == head and git.merge_head() is None and workspace.at_checkpoint(git, snap)
+    assert git.status().changed_paths == ("tests/test_week.py",) and "tests/test_week.py" in git.untracked()
+    assert (world.repo.path / "src/users.py").read_text() == "NAME = 'a'\n"
+    # 不是从检查点向前走出来的分支不动(只恢复内容)
+    assert workspace.restore(git, main) is None and git.head().commit == head
+
+
 def test_branch_names_follow_the_conventions(world: Any) -> None:
     path = world.tmp / "absent"
     assert workspace._branch(world.runtime, _issue(world), path) == "fix/18-orders"  # Issue 记下的分支
@@ -113,6 +138,10 @@ def test_an_untouched_worktree_moves_up_to_the_latest_main_when_prepared_again(w
     path = world.runtime.workspace.worktree("0018")
     assert first.facts["baseCommit"] == world.repo.base and again.facts["baseCommit"] == landed
     assert (path / "src/sort.py").is_file() and again.facts["branch"] == first.facts["branch"]
+    # 快进之后、交接写好之前被中断：续跑随检查点把分支退回快进前，重来时照样再快进(不因记过的键跳过)
+    tree = world.runtime.git.at(path)
+    assert workspace.restore(tree, first.facts[CHECKPOINT_COMMIT]) == landed and tree.head().commit == world.repo.base
+    assert workspace.run(world.runtime, world.context()).facts["baseCommit"] == landed
     # 已经有改动的不动(同步主干由发布负责)
     (path / "src/orders.py").write_text("changed\n", encoding="utf-8")
     world.repo.commit("feat: 又一个", {"src/more.py": "X = 1\n"})

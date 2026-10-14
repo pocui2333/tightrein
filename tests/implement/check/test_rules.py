@@ -41,6 +41,16 @@ def test_each_rule_has_its_category(world: Any) -> None:
     assert found[("forbidden", ".env")] == NEEDS_USER
 
 
+def test_a_new_test_already_committed_is_not_a_modified_test(world: Any) -> None:
+    """发布退回后在已提交的分支上自检：编码新写的测试(基准里没有)已随修复提交，相对基准是新增(A)而不是未跟踪，
+    仍是新写的测试；改了基准里就有的测试照样算改了已有测试。"""
+    world.repo.commit("fix: week", {"src/orders.py": "def recent(days):\n    return days * 7\n",
+                                    "tests/test_recent.py": "def test_week():\n    assert True\n",
+                                    "tests/test_orders.py": "def test_recent():\n    assert True\n"})
+    found = [(item.kind, item.location) for item in _evaluate(world, ["src/orders.py"])]
+    assert found == [("test_modified", "tests/test_orders.py")]
+
+
 def test_lines_with_protected_markers_need_the_user_unless_confirmed(world: Any) -> None:
     world.repo.write({"src/orders.py": "# @generated 不要手改\ndef recent(days):\n    return days * 7\n"})
     marked = RuleSettings(skip_markers=(), residue=(), min_literal_length=4, protected_markers=("@generated",))

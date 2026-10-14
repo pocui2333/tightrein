@@ -363,6 +363,48 @@ def test_an_interrupted_merge_that_did_nothing_runs_again(fix_branch, scope, int
     assert git.is_ancestor(upstream, head) and git.merge_head() is None
 
 
+def test_a_merge_that_may_be_taken_back_is_not_remembered(fix_branch, scope):
+    """编码轮合并 main 不记幂等键：分支退回合并前之后再合并，照样合并，不当成已做过；记了键的会被跳过。"""
+    repos, origin, git = fix_branch
+    before = repos.commit(git.repo, "fix: local", {"a.txt": "a\n"})
+    upstream = repos.upstream(origin, "feat: upstream", {"b.txt": "b\n"})
+    git.fetch()
+    merged = git.merge("origin/main", scope=scope, remember=False)
+    assert git.move_back(before) == merged and git.head().commit == before
+    assert git.move_back(upstream) is None  # 不是分支向前走出来的不动
+    repos.git(git.repo, "reset", "-q", "--hard", before)
+    assert git.merge("origin/main", scope=scope, remember=False) != before and git.is_ancestor(upstream, "HEAD")
+    repos.git(git.repo, "reset", "-q", "--hard", before)
+    first = git.merge("origin/main", scope=scope)
+    repos.git(git.repo, "reset", "-q", "--hard", before)
+    assert git.merge("origin/main", scope=scope) == first and not git.is_ancestor(upstream, "HEAD")
+
+
+def test_conflicts_without_markers_and_giving_up_a_merge_after_edits(fix_branch, scope):
+    """暂存区阶段给出冲突类型；自动合并并已暂存的文件又被改过时 merge --abort 失败，merge --quit 只丢合并状态。"""
+    repos, origin, git = fix_branch
+    repos.commit(git.repo, "fix: local", {"README.md": "local\n", "tests/OrderTests.cs": "class Fixed {}\n"})
+    repos.upstream(origin, "feat: upstream", {"README.md": "upstream\n", "src/OrderService.cs": "class OrderService {}\n"})
+    other = repos.root / "other"
+    repos.git(other, "rm", "-q", "tests/OrderTests.cs")
+    repos.git(other, "commit", "-q", "-m", "chore: drop the tests")
+    repos.git(other, "push", "-q", "origin", "main")
+    git.fetch()
+    with pytest.raises(MergeConflict):
+        git.merge("origin/main", scope=scope)
+    assert git.conflict_stages() == {"README.md": frozenset({1, 2, 3}), "tests/OrderTests.cs": frozenset({1, 2})}
+    git.keep_side("README.md", theirs=True)
+    assert (git.repo / "README.md").read_text() == "upstream\n"
+    with pytest.raises(CommandFailed):
+        git.keep_side("tests/OrderTests.cs", theirs=True)  # main 一侧没有这个文件
+    repos.write(git.repo, "src/OrderService.cs", "class Edited {}\n")
+    with pytest.raises(CommandFailed):
+        git.merge_abort()  # Entry 'src/OrderService.cs' not uptodate
+    git.merge_quit()
+    assert git.merge_head() is None and (git.repo / "src/OrderService.cs").read_text() == "class Edited {}\n"
+    git.merge_quit()  # 没有进行中的合并时什么都不做
+
+
 # 每条命令的输出按步存到 raw
 
 

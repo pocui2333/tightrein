@@ -23,7 +23,8 @@
 
 - 基准检查先跑：基准上已有的失败不能算到修复头上(旧 `FixService._prepared`)；
 - 按 commit 缓存(`data/cache/baseline/<commit>-<命令哈希>.json`)：同一基准的多个 Issue 只跑一次(44 号计划第 5 节「优化」)；起不来的命令不缓存，修好环境后会重跑；
-- 检查点快照用临时索引与 `commit-tree`：不动 HEAD、分支与暂存区，中断后能精确退回(`protocol/recovery.md`「检查点续跑」)。
+- 检查点快照用临时索引与 `commit-tree`：不动 HEAD、分支与暂存区，中断后能精确退回(`protocol/recovery.md`「检查点续跑」)；
+- 退回(`restore`)连同分支：快照的父提交就是当时的 HEAD，这一步里程序做的合并提交、agent 自己的提交让分支越过了它就退回去(只从它向前走出来的才退，主分支与游离 HEAD 不动)。进行中的合并用 `merge --quit` 只丢状态再按快照重写文件，不用 `merge --abort`：合并后自动合并并已暂存的文件又被改过时它会失败(Entry not uptodate)。
 
 ## 不做什么
 
