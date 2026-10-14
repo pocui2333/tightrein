@@ -123,7 +123,8 @@ def classify(git: Git, files: Sequence[str]) -> Merging:
 
 def chosen(context: ImplementContext, sync: Sync) -> str | None:
     """用户为这个 main 选的保留一侧：之前的轮次已按它合并过就沿用；上一次编码因改文件解决不了的冲突停下等用户，
-    之后用户 approve --option 1/2 就是这次的选择。没有选(或 approve 没带序号)时为 None。"""
+    之后用户在编码关卡上 approve --option 1/2 就是这次的选择。只认编码关卡上的决定：用户在关卡上 reject 重出方案时，
+    定案关卡上的 --option 是给需要拍板的点选的，不是选保留哪一侧。没有选(或 approve 没带序号)时为 None。"""
     previous = context.last(POINT)
     merged = (previous.facts.get("mergedMain") or {}) if previous is not None else {}
     if previous is None or merged.get("main") != sync.main:
@@ -133,7 +134,7 @@ def chosen(context: ImplementContext, sync: Sync) -> str | None:
     if not merged.get("unmergeable"):
         return None
     picked = [SIDES.get(item.option or 0) for item in context.decisions
-              if item.at > (previous.created_at or "") and item.verdict == APPROVE]
+              if item.at > (previous.created_at or "") and item.point == POINT and item.verdict == APPROVE]
     return picked[-1] if picked else None
 
 

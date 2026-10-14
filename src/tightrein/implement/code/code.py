@@ -13,7 +13,8 @@
   没有冲突标记、改文件解决不了的冲突(一侧删了另一侧改了、二进制文件等)不调用模型，放弃合并后归为需要用户，
   关卡请用户选保留哪一侧；选了之后的轮次由程序先把这些文件写成那一侧；
 - 撤回(越界、放弃合并)用检查点恢复(prepare/workspace.restore)，不用 `merge --abort`：合并后自动合并并已暂存的文件
-  被 agent 改过时它会失败；恢复本身失败也不抛出，交接带上需要用户的不通过项。
+  被 agent 改过时它会失败；恢复本身失败也不抛出，交接带上需要用户的不通过项。撤回过的交接把检查点(worktreeCommit)
+  记成这一轮开始时，不让 implement 现取快照：恢复失败时 worktree 停在半截状态，记成检查点后每次续跑都会退回它。
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ from tightrein.implement.prompts.common import Ask, Usage, ask, design_documents
 from tightrein.protocol.boundaries import FORBIDDEN, OUTSIDE, Change, Violation, check_round, counted
 from tightrein.protocol.git import GitError
 from tightrein.protocol.handoff import Handoff, Status
+from tightrein.protocol.recovery import CHECKPOINT_COMMIT
 
 if TYPE_CHECKING:
     from tightrein.implement.context import ImplementContext
@@ -98,7 +100,7 @@ def run(runtime: Runtime, context: ImplementContext) -> Handoff:
     if violations:
         blockers = [Finding(CHECK_NAME, item.kind, item.path, item.detail, NEEDS_USER) for item in violations]
         return _handoff(runtime, context, Status.FAILED, "本轮改动越界，已撤回：" + "；".join(v.detail for v in violations),
-                        {**facts, "violations": [asdict(item) for item in violations],
+                        {**facts, "violations": [asdict(item) for item in violations], CHECKPOINT_COMMIT: start,
                          "blockers": [item.to_json() for item in blockers + _restore(git, start)]}, usage)
     if not result.ok or result.output is None:
         blocker = Finding(CHECK_NAME, "executor", None, failure_text(result), LOCAL)
@@ -212,10 +214,12 @@ def _violations(runtime: Runtime, changes: Sequence[Change], worktree: Path, res
 
 def _failed(runtime: Runtime, context: ImplementContext, git: Git, start: str | None, blocker: Finding,
             facts: dict[str, Any], usage: Usage, *, notes: str | None = None) -> Handoff:
-    """这一轮没通过：start 不为空时先撤回到这一轮开始时(合并 main 的这一轮连同合并一起放弃，下一轮重新合并)。"""
+    """这一轮没通过：start 不为空时先撤回到这一轮开始时(合并 main 的这一轮连同合并一起放弃，下一轮重新合并)，
+    检查点记成 start；为空时改动留着，检查点由 implement 现取。"""
     blockers = [blocker, *(_restore(git, start) if start is not None else [])]
+    checkpoint = {CHECKPOINT_COMMIT: start} if start is not None else {}
     return _handoff(runtime, context, Status.FAILED, blocker.summary,
-                    {**facts, "blockers": [item.to_json() for item in blockers]}, usage, notes=notes)
+                    {**facts, **checkpoint, "blockers": [item.to_json() for item in blockers]}, usage, notes=notes)
 
 
 def _unmergeable(runtime: Runtime, context: ImplementContext, git: Git, start: str, sync: merge.Sync,
@@ -230,11 +234,12 @@ def _unmergeable(runtime: Runtime, context: ImplementContext, git: Git, start: s
     session = previous.facts.get("sessionId") if previous is not None else None
     return _handoff(runtime, context, Status.FAILED, f"合并 main 有改文件解决不了的冲突，已放弃这次合并，要你选保留哪一侧：{listed}",
                     {**facts, "sessionId": session, "blockers": [item.to_json() for item in blockers],
-                     "gate": merge.gate(context.issue.id, sync, merging)}, Usage())
+                     CHECKPOINT_COMMIT: start, "gate": merge.gate(context.issue.id, sync, merging)}, Usage())
 
 
 def _restore(git: Git, start: str) -> list[Finding]:
-    """撤回到这一轮开始时(连同进行中或已提交的合并、agent 自己的提交)；恢复本身失败时不抛出，返回需要用户的不通过项。"""
+    """撤回到这一轮开始时(连同进行中或已提交的合并、agent 自己的提交)；恢复本身失败时不抛出，返回需要用户的不通过项。
+    调用方把交接的检查点记成 start(见模块说明)：用户处理好之后续跑时 implement 照它再恢复一次。"""
     try:
         workspace.restore(git, start)
     except GitError as error:

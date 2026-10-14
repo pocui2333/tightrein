@@ -17,6 +17,7 @@ from tightrein.implement.check.findings import LOCAL, NEEDS_USER, PLAN_GAP
 from tightrein.implement.code import code
 from tightrein.implement.context import Decision
 from tightrein.implement.prompts.code import CONTINUE
+from tightrein.protocol.git import CommandFailed, Git
 from tightrein.protocol.handoff import Status, load_schema, schema_errors, write
 from tightrein.protocol.naming import FileName, format_iso
 from tightrein.protocol.process import Interrupted
@@ -315,6 +316,120 @@ def test_a_merge_is_dropped_even_after_cleanly_merged_files_were_edited(
     git = world.git()
     assert git.merge_head() is None and git.status().clean and git.head().commit == fixed
     assert (world.repo.path / "src/users.py").read_text() == BASE_USERS
+    assert result.facts[CHECKPOINT_COMMIT] == fixed  # 撤回过的交接：检查点是这一轮开始时
+
+
+def test_a_failed_restore_keeps_the_round_start_as_the_checkpoint(world: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """调用超时被杀、留下 index.lock：放弃合并时恢复失败。不抛出，交接带上需要用户的 restore_failed，检查点记成这一轮
+    开始时(不是半截合并的快照)；用户删掉 lock 后续跑，worktree 退回合并前，下一轮照常重新合并。"""
+    context, main = _conflicting(world)
+    fixed = world.repo.git("rev-parse", "HEAD").strip()
+    assert context.returned is not None
+    write(world.runtime.workspace.step_file("0018", FileName("release.pr", "handoff", "json")), context.returned)
+    lock = Path(world.repo.git("rev-parse", "--absolute-git-dir").strip()) / "index.lock"
+
+    def killed(*args: Any) -> CallResult:
+        lock.write_text("", encoding="utf-8")
+        return CallResult(CallStatus.TIMEOUT, "claude", "opus", error="超时，已结束进程")
+
+    monkeypatch.setattr(code, "ask", killed)
+    result = code.run(world.runtime, context)
+    assert result.status is Status.FAILED and result.facts[CHECKPOINT_COMMIT] == fixed
+    assert [(item["kind"], item["category"]) for item in result.facts["blockers"]] == [
+        ("executor", LOCAL), ("restore_failed", NEEDS_USER)]
+    world.clock.advance(timedelta(minutes=1))
+    recorded = implement._record(world.runtime, context, result, 0, None)
+    assert recorded.facts[CHECKPOINT_COMMIT] == fixed  # 不被换成半截状态的快照
+    git = world.git()
+    assert not git.status().clean  # 半截状态：冲突标记还在
+    lock.unlink()
+    implement._rewind(world.runtime, context)
+    assert git.merge_head() is None and git.status().clean and git.head().commit == fixed
+    assert (world.repo.path / "src/orders.py").read_text() == FIX_ORDERS
+    _install(monkeypatch, world, ({"src/orders.py": BOTH_ORDERS}, _output(), CallStatus.OK))
+    again = code.run(world.runtime, context)
+    assert again.status is Status.PASSED and git.is_ancestor(main, "HEAD")
+
+
+@pytest.mark.parametrize(("method", "kind", "category", "calls"), [
+    ("conflict_stages", "merge_failed", NEEDS_USER, 0),  # 合并已开始、分类冲突时 git 出错
+    ("commit", "merge_commit", LOCAL, 1),  # 冲突解决了，完成合并提交时出错
+], ids=["merge-failed", "merge-commit-failed"])
+def test_a_git_failure_in_the_merge_drops_it_before_the_handoff(
+        world: Any, monkeypatch: pytest.MonkeyPatch, method: str, kind: str, category: str, calls: int) -> None:
+    """程序合并 main 或完成合并提交时 git 出错：不抛出，先放弃合并、worktree 回到合并前，再写没通过的交接。"""
+    context, _ = _conflicting(world)
+    fixed = world.repo.git("rev-parse", "HEAD").strip()
+
+    def broken(*args: Any, **kwargs: Any) -> Any:
+        raise CommandFailed(f"git {method} 失败")
+
+    monkeypatch.setattr(Git, method, broken)
+    fake = _install(monkeypatch, world, ({"src/orders.py": BOTH_ORDERS}, _output(), CallStatus.OK))
+    result = code.run(world.runtime, context)
+    assert result.status is Status.FAILED and len(fake.requests) == calls
+    assert [(item["kind"], item["category"]) for item in result.facts["blockers"]] == [(kind, category)]
+    git = world.git()
+    assert git.merge_head() is None and git.status().clean and git.head().commit == fixed
+    assert (world.repo.path / "src/orders.py").read_text() == FIX_ORDERS
+    assert result.facts[CHECKPOINT_COMMIT] == fixed
+
+
+def test_only_a_choice_at_the_coding_gate_picks_a_side(world: Any) -> None:
+    """停在选边关卡后用户 reject 重出方案，定案关卡上的 --option 是给需要拍板的点选的，不当成选了保留哪一侧。"""
+    sync = code.merge.Sync("f" * 40, ())
+    merged = {"main": sync.main, "conflicts": [], "unmergeable": [{"path": "src/users.py", "kind": "x"}],
+              "side": None, "commit": None}
+    stopped = replace(world.handoff(code.POINT, {"mergedMain": merged}, Status.FAILED), round=2)
+    later = format_iso(world.clock.now() + timedelta(minutes=1))
+    planned = Decision(APPROVE, "approve", 1, None, later)
+    context = replace(_context(world, round=2, implement_code=stopped), decisions=[planned])
+    assert code.merge.chosen(context, sync) is None
+    picked = Decision(code.POINT, "approve", 1, None, later)
+    assert code.merge.chosen(replace(context, decisions=[planned, picked]), sync) == code.merge.FIX
+
+
+def test_the_fix_side_is_kept_as_chosen_and_reused_by_later_rounds(world: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """用户选修复一侧(--option 1)：两侧都改了的二进制文件取修复的版本，修复删了、main 改了的文件删掉；这一轮冲突
+    标记没解决完、放弃了合并，下一轮不再问用户，沿用这次的选择。"""
+    context, main = _returned(world, {"src/orders.py": MAIN_ORDERS, "src/users.py": USERS_MAIN,
+                                      "assets/logo.bin": "\0main"},
+                              {"src/orders.py": FIX_ORDERS, "src/users.py": None, "assets/logo.bin": "\0fix"})
+    fixed = world.repo.git("rev-parse", "HEAD").strip()
+    _install(monkeypatch, world)
+    stopped = code.run(world.runtime, context)
+    kinds = code.merge.KINDS
+    assert stopped.facts["mergedMain"]["unmergeable"] == [
+        {"path": "assets/logo.bin", "kind": kinds[frozenset({code.merge.OURS, code.merge.THEIRS})]},
+        {"path": "src/users.py", "kind": kinds[frozenset({code.merge.BASE, code.merge.THEIRS})]}]
+    stopped = replace(stopped, created_at=format_iso(world.clock.now()))
+    world.clock.advance(timedelta(minutes=1))
+    decision = Decision(code.POINT, "approve", 1, None, format_iso(world.clock.now()))
+    context = replace(context, round=3, decisions=[decision], latest={**context.latest, code.POINT: stopped})
+    seen: dict[str, Any] = {}
+
+    def unresolved(*args: Any) -> CallResult:  # 看一眼选边后的文件，冲突标记不解决
+        seen["logo"] = (world.repo.path / "assets/logo.bin").read_bytes()
+        seen["users"] = (world.repo.path / "src/users.py").exists()
+        return CallResult(CallStatus.OK, "claude", "opus", output=_output(), session_id="S-1")
+
+    monkeypatch.setattr(code, "ask", unresolved)
+    dropped = code.run(world.runtime, context)
+    assert seen == {"logo": b"\0fix", "users": False}
+    assert dropped.status is Status.FAILED and dropped.facts["mergedMain"]["side"] == code.merge.FIX
+    git = world.git()
+    assert git.merge_head() is None and git.status().clean and git.head().commit == fixed
+    # 下一轮：没有新的决定，沿用上一轮记下的选择，不再停下
+    world.clock.advance(timedelta(minutes=1))
+    dropped = replace(dropped, created_at=format_iso(world.clock.now()))
+    context = replace(context, round=4, latest={**context.latest, code.POINT: dropped})
+    fake = _install(monkeypatch, world, ({"src/orders.py": BOTH_ORDERS}, _output(), CallStatus.OK))
+    result = code.run(world.runtime, context)
+    assert result.status is Status.PASSED and result.facts["mergedMain"]["side"] == code.merge.FIX
+    assert "已按用户的选择写成修复一侧的版本" in fake.requests[0].variables["corrections"]
+    assert git.merge_head() is None and world.repo.git("log", "-1", "--format=%P").split() == [fixed, main]
+    assert world.repo.git("ls-files", "src/users.py") == "" and not (world.repo.path / "src/users.py").exists()
+    assert (world.repo.path / "assets/logo.bin").read_bytes() == b"\0fix"
 
 
 def test_conflicts_without_markers_go_to_the_user_and_the_chosen_side_is_merged(

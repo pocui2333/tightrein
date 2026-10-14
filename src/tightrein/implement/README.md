@@ -27,7 +27,7 @@
 ```
 
 - **续跑点由产物推导**：最后一个完成的交接(按写入时间)与它的结论，加上之后用户有没有新决定。中断后不靠进度标记；没做完的那一步整个丢掉，worktree 退回上一个检查点(`facts.worktreeCommit`)：内容、暂存区与分支一起退，进行中的合并一并放弃；这一步里程序做的合并提交、agent 自己的提交让分支越过了检查点时分支也退回去(只退文件会把合并进来的改动又撤掉，下一轮还以为已经合并过)。
-- **检查点快照**：每一步写交接时程序把 worktree 的内容记成一个不挂在分支上的 commit(`prepare/workspace.py:snapshot`，临时索引加 `commit-tree`)，记快照不动 HEAD、分支与暂存区，提交照常由发布做。
+- **检查点快照**：每一步写交接时程序把 worktree 的内容记成一个不挂在分支上的 commit(`prepare/workspace.py:snapshot`，临时索引加 `commit-tree`)，记快照不动 HEAD、分支与暂存区，提交照常由发布做。交接自己写了 `worktreeCommit` 的不另取：编码撤回过本轮改动时记的是这一轮开始时，撤回失败时 worktree 停在半截状态，取快照会把它记成检查点，之后每次续跑都退回它。
 - **不通过项的分派**：自检、审查、编码交接中的 `blockers`(格式见 `check/findings.py`)按性质只处理最靠前的一类：设计问题停下；需要用户(含检查没跑起来)停在关卡；方案缺口重出方案；局部问题交回编码，只给这一类的项。
 - **轮数与没有进展**：局部问题交回编码最多 `controls.implement.review.rounds`(3)轮，按这一版方案(或用户最近一次决定、发布最近一次退回)之后的第一轮算，编码、自检、审查哪一步都算(退回自检时就是那一轮)；交付没通过时退回还没处理完，交付通过后才不再算；连续两轮阻断项(位置 + 类型)相同或本轮 diff 哈希与上一轮相同(`protocol.limits.no_progress`)立即停下。
 - **越界**：编码一轮结束后程序检查本轮改动，越出 worktree 或碰了禁改文件即撤回本轮全部改动；第一次带原因重做这一轮，再越界停下。
@@ -62,7 +62,7 @@
 
 | 事实 | 谁写 | 谁读 |
 |---|---|---|
-| `worktreeCommit`、`reruns`、`skipped`、`knowledgeSuggestions` | implement.py(每一步落盘前补上；`skipped` 缺省为 null，`knowledgeSuggestions` 缺省为空列表) | 续跑时退回检查点；同一步同一轮重跑的次数；status 显示跳过 |
+| `worktreeCommit`、`reruns`、`skipped`、`knowledgeSuggestions` | implement.py(每一步落盘前补上，交接已写 `worktreeCommit` 的不另取(编码撤回过本轮改动时记这一轮开始时)；`skipped` 缺省为 null，`knowledgeSuggestions` 缺省为空列表) | 续跑时退回检查点；同一步同一轮重跑的次数；status 显示跳过 |
 | `blockers`：`[{check, kind, location, summary, category, trigger}]` | 编码、自检、审查 | 分派、没有进展判定、交回编码的修正说明 |
 | `violations`、`redo` | 编码 | 越界重做与停下 |
 | `diffHash`、`linesAdded`、`linesDeleted` | 编码(本轮通过时) | 没有进展判定；status、watch 显示改动量 |
