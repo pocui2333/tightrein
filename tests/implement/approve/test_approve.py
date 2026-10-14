@@ -63,6 +63,18 @@ def test_plans_needing_decisions_wait_and_the_reasons_are_recorded_once(world: A
     assert _events(world) == ["方案需要用户确认：含数据库迁移"]
 
 
+def test_full_autonomy_only_stops_for_decisions_and_protected_files(new_world: Any, settings_with: Any) -> None:
+    world = new_world(settings=settings_with({"boundaries": {"gates": {"design": "auto_all"}}}))
+    big = _design(world, migration={"entries": ["001"]}, estimate={"files": 6, "lines": 300},
+                  deletions=[{"path": "src/old.py"}], risk={"high": True, "reasons": ["schema"]})
+    assert approve.run(world.runtime, world.context(latest={DESIGN: big})).status is Status.PASSED
+    asked = _design(world, userDecisions=[{"question": "保留旧接口吗"}],
+                    protectedTouches=[{"path": "package.json", "change": "加脚本"}])
+    result = approve.run(world.runtime, world.context(latest={DESIGN: asked}))
+    assert result.status is Status.PENDING
+    assert result.facts["reasons"] == ["需要拍板：保留旧接口吗", "改动高风险文件 package.json：加脚本"]
+
+
 def test_a_manual_gate_always_waits(new_world: Any, settings_with: Any) -> None:
     world = new_world(settings=settings_with({"boundaries": {"gates": {"design": "manual"}}}))
     result = approve.run(world.runtime, world.context(latest={DESIGN: _design(world)}))

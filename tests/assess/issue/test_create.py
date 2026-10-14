@@ -95,6 +95,11 @@ def test_low_risk_issues_are_approved_automatically_and_the_rest_wait(runtime, r
     issue = issues.get(runtime.conn, gated.issues[0])
     assert issue.status == "needs_decision" and issue.gate == "issue" and not gated.auto_approved
     assert issue.extra["labels"] == [create.body.DISCUSS]
+    runtime.settings = kit.make_settings({"boundaries": {"gates": {"issue": "auto_all"}}})
+    everything = finding("P-0004", labels=(create.body.DISCUSS,))
+    everything.output["rootCauses"] = [{"file": ".github/workflows/ci.yml", "line": 1, "symbol": None}]
+    approved = write(runtime, repo, everything)
+    assert approved.auto_approved and issues.get(runtime.conn, approved.issues[0]).status == "todo"  # 全自动
 
 
 @pytest.mark.parametrize("problem, latest, expected", [

@@ -137,6 +137,9 @@ def test_mandatory_gates_can_never_be_automatic(settings):
     assert not boundaries.gate_is_auto("merge", make_settings({"boundaries": {"gates": {"merge": "manual"}}}))
     forced = make_settings({"boundaries": {"gates": {"over_cap": "auto"}}})
     assert not boundaries.gate_is_auto("over_cap", forced)
+    everything = make_settings({"boundaries": {"gates": {"issue": "auto_all"}}})
+    assert boundaries.gate_is_auto("issue", everything) and boundaries.gate_is_auto_all("issue", everything)
+    assert not boundaries.gate_is_auto_all("issue", settings)
 
 
 # 读取越界

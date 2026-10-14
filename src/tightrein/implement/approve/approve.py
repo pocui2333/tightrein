@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 from tightrein.assess.issue import files as issue_files
 from tightrein.implement.context import DECISIONS, Decision
-from tightrein.protocol.boundaries import gate_is_auto
+from tightrein.protocol.boundaries import gate_is_auto, gate_is_auto_all
 from tightrein.protocol.handoff import Handoff, Metrics, Status
 from tightrein.settings.load import Settings
 from tightrein.store.tables import issues, operations
@@ -41,7 +41,8 @@ def run(runtime: Runtime, context: ImplementContext) -> Handoff:
     decided = decision_for(context, plan_hash)
     if decided is not None:
         return _decided(runtime, context, plan_hash, decided)
-    reasons = auto_reasons(design.facts, runtime.settings)
+    reasons = (mandatory_reasons(design.facts) if gate_is_auto_all(GATE, runtime.settings)
+               else auto_reasons(design.facts, runtime.settings))
     if not reasons and gate_is_auto(GATE, runtime.settings):
         return _handoff(runtime, context, Status.PASSED, "方案在自动确认的条件内，已自动确认",
                         {"planHash": plan_hash, "auto": True, "approvedBy": "auto", "reasons": []})
@@ -51,6 +52,13 @@ def run(runtime: Runtime, context: ImplementContext) -> Handoff:
     return _handoff(runtime, context, Status.PENDING, "方案需要用户确认：" + "；".join(reasons),
                     {"planHash": plan_hash, "auto": False, "reasons": reasons,
                      "gate": _gate(context, design.facts, reasons)})
+
+
+def mandatory_reasons(facts: Mapping[str, Any]) -> list[str]:
+    """全自动(auto_all)时仍要人确认的：agent 给出需要拍板的点(needs_decision)、改动受保护文件。"""
+    reasons = [f"需要拍板：{item['question']}" for item in facts.get("userDecisions") or []]
+    reasons += [f"改动高风险文件 {item['path']}：{item['change']}" for item in facts.get("protectedTouches") or []]
+    return reasons
 
 
 def auto_reasons(facts: Mapping[str, Any], settings: Settings) -> list[str]:

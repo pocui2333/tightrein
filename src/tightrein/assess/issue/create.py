@@ -36,7 +36,7 @@ from tightrein.assess.issue.transitions import (
     apply_event,
 )
 from tightrein.assess.rating import higher
-from tightrein.protocol.boundaries import gate_is_auto
+from tightrein.protocol.boundaries import gate_is_auto, gate_is_auto_all
 from tightrein.protocol.handoff import Handoff, Metrics, Status, write
 from tightrein.protocol.naming import FileName, format_iso, issue_id
 from tightrein.store.db import transaction
@@ -321,10 +321,10 @@ def _new_record(runtime: Runtime, finding: Finding, split: bool) -> tuple[Issue,
         probe_acceptance=body.probe_acceptance(problem.source, problem.location, problem.check_type,
                                                problem.fingerprint, role, runtime.language),
         problems=((problem.id, problem.title),))
-    auto = gate_is_auto(GATE, runtime.settings) and low_risk(finding)
+    auto = gate_is_auto(GATE, runtime.settings) and (low_risk(finding) or gate_is_auto_all(GATE, runtime.settings))
     status = IssueStatus.TODO if auto else IssueStatus.NEEDS_DECISION
     causes = list(finding.output.get("rootCauses") or [])
-    note = f"由问题 {problem.id} 评估建立：{finding.treatment}" + ("；低风险，自动放行" if auto else "")
+    note = f"由问题 {problem.id} 评估建立：{finding.treatment}" + (("；低风险，自动放行" if low_risk(finding) else "；全自动，自动放行") if auto else "")
     record = Issue(
         id=identifier, status=status, title=title, kind="feature" if finding.task_type == "feature" else "bug",
         origin="problem", severity=finding.severity, gate=None if auto else GATE,

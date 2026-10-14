@@ -38,6 +38,7 @@ _PATH_SEPARATORS = re.compile(r"[\s'\"`=,;|&<>()]+")
 # 固定人工的关卡：不可逆或越权的情形，配置改不成自动
 MANDATORY_GATES: frozenset[str] = frozenset({"forbidden_changed", "high_risk_merge", "over_cap", "needs_decision"})
 AUTO_PREFIX = "auto"
+AUTO_ALL = "auto_all"  # 全自动：可配置关卡不再看风险与门槛，固定人工的关卡照旧
 
 # shlex 以 punctuation_chars 拆出的这些记号说明命令里有串联、管道、重定向或子命令
 _SHELL_OPERATORS = frozenset(";&|<>()")
@@ -163,6 +164,13 @@ def gate_is_auto(gate: str, settings: Settings) -> bool:
     if gate in MANDATORY_GATES:
         return False
     return str(settings.get(f"boundaries.gates.{gate}")).startswith(AUTO_PREFIX)
+
+
+def gate_is_auto_all(gate: str, settings: Settings) -> bool:
+    """可配置关卡写成 `auto_all`：发起方不再按风险、门槛判断，一律自动；固定人工的关卡永远为否。"""
+    if gate in MANDATORY_GATES:
+        return False
+    return str(settings.get(f"boundaries.gates.{gate}")) == AUTO_ALL
 
 
 def _matching(paths: Iterable[str], patterns: tuple[str, ...]) -> list[str]:
