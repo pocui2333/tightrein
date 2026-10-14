@@ -76,6 +76,8 @@ def test_an_unchanged_diff_reuses_the_passed_result(world: Any) -> None:
     world.runner.commands.clear()
     again = check.run(world.runtime, _context(world, round=2, latest={"implement.check": first}))
     assert again.status is Status.PASSED and again.summary.startswith("改动没变") and world.runner.others() == []
+    third = check.run(world.runtime, _context(world, round=3, latest={"implement.check": again}))
+    assert third.summary == again.summary  # 连续沿用不叠前缀
 
 
 def test_checks_that_modify_the_worktree_are_local_problems(world: Any) -> None:

@@ -51,7 +51,11 @@ def run(runtime: Runtime, context: ImplementContext, *, deps: session.SessionDep
     previous = context.last(POINT)
     if previous is not None and previous.status is Status.PASSED and previous.facts.get("diffHash") == diff_hash:
         reason = "改动没变，沿用上次结果"
-        return replace(previous, run=runtime.run, round=context.round, summary=f"{reason}：{previous.summary}",
+        # 连续沿用时不叠前缀：上一次本身就是沿用的，取它原来的摘要
+        original = previous.summary
+        while original.startswith(f"{reason}："):
+            original = original.removeprefix(f"{reason}：")
+        return replace(previous, run=runtime.run, round=context.round, summary=f"{reason}：{original}",
                        facts={**previous.facts, "skipped": reason}, created_at=format_iso(runtime.clock.now()))
     changes = collect(git, base)
     states = file_states(worktree, changes.paths)
