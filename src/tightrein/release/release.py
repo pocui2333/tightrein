@@ -27,7 +27,7 @@ import time
 from tightrein.assess.issue import body
 from tightrein.assess.issue import files as issue_files
 from tightrein.assess.issue.transitions import FIX_REJECTED, PROBLEMS, IssueEvent, IssueStatus
-from tightrein.implement.context import BACK_TO
+from tightrein.implement.context import BACK_TO, DECISIONS
 from tightrein.implement.implement import StepOutcome
 from tightrein.protocol import documents
 from tightrein.protocol.git import Git, GitError, GitHub, PullRequest, Stale, TransientError, resolve
@@ -150,7 +150,8 @@ def _ci_and_merge(runtime: Runtime, issue: Issue, found: Delivery, state: Releas
     # 交给 GitHub 合并时只看当前的检查结果、开了自动合并就交给它(不在这里等)；由本工具合并时先等 CI 结束再判断
     checks = ci.current(runtime, github, number, required=required) if native else \
         ci.wait(runtime, github, number, required=required)
-    decision = merge.decide(runtime, issue.id, number, found, state, checks, github)
+    decision = merge.decide(runtime, issue.id, number, found, state, checks, github,
+                            list(issue.extra.get(DECISIONS) or []))
     state.ci = checks.to_json()
     save_state(runtime, issue, state)
     write_handoff(runtime, issue.id, POINT_CI, Status.FAILED if checks.state == ci.FAILED else Status.PASSED,
@@ -159,7 +160,8 @@ def _ci_and_merge(runtime: Runtime, issue: Issue, found: Delivery, state: Releas
                   "已合并" if decision.merged else "已交给 GitHub 自动合并" if decision.native
                   else "未自动合并：" + "；".join(decision.reasons),
                   {"merged": decision.merged, "native": decision.native, "reasons": decision.reasons,
-                   "gate": decision.gate, "head": state.pushed}, started=started)
+                   "gate": decision.gate, "head": state.pushed,
+                   "approvals": [item.to_json() for item in decision.approvals]}, started=started)
     if decision.merged:
         return _merged(runtime, issue, state, github.pr_view(number))
     if decision.gate is not None:
@@ -242,13 +244,19 @@ def _send_back(runtime: Runtime, issue: Issue, state: ReleaseState, worktree: Gi
 
 def _to_gate(runtime: Runtime, issue: Issue, state: ReleaseState, decision: merge.MergeDecision,
              number: int) -> StepOutcome:
-    """高风险路径或人工合并关卡：写待决定文档(同一组原因只写一次)，Issue 留在发布中，等人在 GitHub 上合并。"""
+    """高风险路径或人工合并关卡：写待决定文档(同一组原因只写一次)，Issue 留在发布中，等人决定。
+
+    选项的序号与 merge.BY_TOOL、merge.SELF_MERGE 对应：approve 不带选项或选第 1 个时，下次推进由本工具合并；
+    选第 2 个时本工具不合并，人在 GitHub 上合并后照常转入验收。"""
     if decision.new_gate:
+        approve = f"tightrein approve {issue.id}"
         documents.pending(runtime, issue.id, point=POINT_MERGE, decision=f"是否合并 PR #{number}：{state.pr_url}",
-                          options=["审阅改动后在 GitHub 上合并", "要求补充审查后再合并", "关闭 PR，不采用这次修复"],
-                          recommendation="审阅列出的文件后在 GitHub 上合并",
+                          options=[f"审阅改动后由 tightrein 合并：{approve}",
+                                   f"自己在 GitHub 上合并：{approve} --option {merge.SELF_MERGE}，或直接合并",
+                                   "要求补充审查后再合并", "关闭 PR，不采用这次修复"],
+                          recommendation=f"审阅列出的文件后执行 {approve}，由 tightrein 合并",
                           reason=decision.gate_reason or "", if_not="PR 一直保持打开，修复不会上线",
-                          command=COMMAND.format(issue=issue.id))
+                          command=approve)
     issue.gate = decision.gate
     save_state(runtime, issue, state)
     return StepOutcome(issue.id, POINT_MERGE, Status.PENDING, decision.gate_reason or "等人决定是否合并", POINT_MERGE)

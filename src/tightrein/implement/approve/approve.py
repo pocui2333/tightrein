@@ -6,7 +6,9 @@
   全部原因停在关卡，同一份方案的原因只记一次事件；
 - 用户的决定由命令行经 `record` 写进 Issue(来源、时间、原文)，之后每次方案与编码都带上；approve 即通过，
   reject 必带原因，交接为退回(returned，不是失败)，implement.py 按原因重出方案(上限 controls.implement.design.rounds)；
-  重出已到上限时不会再自动重出、要停下等用户处理，这次否决的交接为没通过(failed，reason 为 replans_exceeded)。
+  重出已到上限时不会再自动重出、要停下等用户处理，这次否决的交接为没通过(failed，reason 为 replans_exceeded)；
+- 方案要改的受保护文件(protectedTouches)在关卡上逐条列给用户，用户通过即确认了这些改动：发布合并时交付只碰了
+  这些高风险路径就不再停在 high_risk_merge(release/merge.py 的 design_approval)。
 """
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ GATE = "design"
 APPROVE = "approve"
 REJECT = "reject"
 FLAGS = ("design", "dataStructure", "publicContract")
+BY_USER = "user"  # 交接的 approvedBy：用户在关卡上通过(自动确认为 auto)
 
 
 def run(runtime: Runtime, context: ImplementContext) -> Handoff:
@@ -60,6 +63,11 @@ def mandatory_reasons(facts: Mapping[str, Any]) -> list[str]:
     reasons = [f"需要拍板：{item['question']}" for item in facts.get("userDecisions") or []]
     reasons += [f"改动高风险文件 {item['path']}：{item['change']}" for item in facts.get("protectedTouches") or []]
     return reasons
+
+
+def protected_paths(facts: Mapping[str, Any]) -> tuple[str, ...]:
+    """方案要改的受保护文件(protectedTouches 的路径)：两种原因里都逐条列出，用户通过方案即确认了这些改动。"""
+    return tuple(sorted({str(item["path"]) for item in facts.get("protectedTouches") or []}))
 
 
 def auto_reasons(facts: Mapping[str, Any], settings: Settings) -> list[str]:
@@ -126,7 +134,7 @@ def _decided(runtime: Runtime, context: ImplementContext, plan_hash: str, decide
                             facts | {"reason": REPLANS_EXCEEDED})
         return _handoff(runtime, context, Status.RETURNED, summary, facts)
     return _handoff(runtime, context, Status.PASSED, "用户已确认方案",
-                    {"planHash": plan_hash, "auto": False, "approvedBy": "user", "note": note,
+                    {"planHash": plan_hash, "auto": False, "approvedBy": BY_USER, "note": note,
                      "option": decided.option})
 
 

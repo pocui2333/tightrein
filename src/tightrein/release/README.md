@@ -10,7 +10,7 @@
 
 | Issue 状态 | 做什么 | 停在哪里 |
 |---|---|---|
-| 发布中 `releasing` | `commit.py` 提交 → `sync.py` 合并最新的 origin/main → `push.py` 推送 → `pr.py` 提 PR、发审查摘要评论 → `ci.py` 等 CI 结束 → `merge.py` 判断并合并 | 合并 main 改到同一文件或解决过冲突、要推送的改动与交付时审查过的不同(diff 哈希，比如人解决冲突后自己提交了合并)：退回实施重新自检与审查；合并 main 冲突：放弃这次合并、退回编码解决(连续退回 `release.conflictReturns` 次之后再冲突才停下等人)；高风险路径或人工合并关卡：写待决定文档，等人在 GitHub 上合并；CI 未结束：下次接着等 |
+| 发布中 `releasing` | `commit.py` 提交 → `sync.py` 合并最新的 origin/main → `push.py` 推送 → `pr.py` 提 PR、发审查摘要评论 → `ci.py` 等 CI 结束 → `merge.py` 判断并合并 | 合并 main 改到同一文件或解决过冲突、要推送的改动与交付时审查过的不同(diff 哈希，比如人解决冲突后自己提交了合并)：退回实施重新自检与审查；合并 main 冲突：放弃这次合并、退回编码解决(连续退回 `release.conflictReturns` 次之后再冲突才停下等人)；高风险路径(定案时用户逐项确认过的除外)或人工合并关卡：写待决定文档等人确认，`tightrein approve` 通过后由本工具合并，选「自己在 GitHub 上合并」时等人合并；CI 未结束：下次接着等 |
 | 验收中 `accepting` | `deploy.py` 找包含合并提交的部署 → `accept/confirm.py` 按问题来源确认 → 通过时转为完成、写交付文档(`90-issue-deliver.md`)、`cleanup.py` 清理本地；回归时 `accept/revert.py` 先提撤销 PR、清理这一次的修复目录，再退回待修(开下一次修复尝试，见 assess/issue/attempts)；Issue 正文中部署后才能确认的验收标准按指纹对应到确认结论(交接的 `criteria`)；接入清单 `release.accept` 不启用时部署完成即完成，不观察 | 还没部署、观察期未满：下次接着看；部署失败：写待决定文档 |
 
 PR 已被人合并(含 GitHub 原生自动合并)的转为验收中；被关闭且未合并的以「修复未采纳」取消，PR 上最后一条评论或评审正文作为用户说明记下。
@@ -57,7 +57,7 @@ PR 已被人合并(含 GitHub 原生自动合并)的转为验收中；被关闭�
 | `release.deploy.<方法>` | 见文件 | 部署来源各方法的参数，按 `deploy_source/<方法>.yaml` 的 optionsSchema 校验 |
 | `release.accept.windows` | 运行时来源 `24h`，静态巡检与任务外发现 `0s` | 各来源的观察期，`default` 为没列出的来源 |
 
-关卡：`boundaries.gates.merge`(缺省 `auto_ci_passed`)；高风险路径取 `boundaries.protected.highRisk`，命中即固定人工(`high_risk_merge`)。
+关卡：`boundaries.gates.merge`(缺省 `auto_ci_passed`)；高风险路径取 `boundaries.protected.highRisk`，命中即固定人工(`high_risk_merge`)，除非每个命中的路径都在用户通过的那份方案的 `protectedTouches` 里(定案关卡逐条列给用户确认过)。两个关卡上用户通过后，本工具照常检查其余条件后合并；合并的交接 `43-release.merge` 的 `approvals` 记下用了哪些确认(`point`、`at`、`note`、`option`，定案的另有 `planHash`、`paths`)。
 
 ## 设计依据
 
@@ -71,7 +71,7 @@ PR 已被人合并(含 GitHub 原生自动合并)的转为验收中；被关闭�
 - 自动合并要求 PR 头部等于本工具最近一次推送的 commit，合并带 `--match-head-commit`：判断与合并之间有人推送时宁可失败，不合进没审查过的提交([gh pr merge](https://cli.github.com/manual/gh_pr_merge))。评审只看每人最后一次结论：先请求修改后批准的不算阻断。
 - 主分支要求必需检查或开了合并队列时交给 GitHub 原生自动合并，同一 head 只开一次：平台自己会等检查，重复开启没有意义([GitHub：Automatically merging a pull request](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/incorporating-changes-from-a-pull-request/automatically-merging-a-pull-request)、[merge queue](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue))。
 - 等 CI 用 `gh pr checks --watch`，结束即判断合并，而不是每次运行轮询一次：工作区暂停时 PR 原本会一直停在待合并(#7)。`--json` 时退出码不反映结果，按每项的 bucket 判断。
-- 高风险路径(CI、依赖、迁移、权限认证、密钥配置)一律交人：这些改动影响构建、数据或权限，合并前的检查覆盖不到。
+- 高风险路径(CI、依赖、迁移、权限认证、密钥配置)一律要人确认：这些改动影响构建、数据或权限，合并前的检查覆盖不到。确认在定案时给过的不再问第二次：定案关卡逐条列出要改的高风险文件，用户看过并通过，合并时再停一次只是重复；交付多碰了没列过的文件、或重新出方案后没再确认的，照旧停下。关卡上通过后由本工具合并：与自动合并同一方式(`--match-head-commit`、删除远程分支)，不让人再去 GitHub 上点一次。
 - 验收只做实施做不到的：线上环境、数据与部署本身可能不同，上线后在最初报出问题的地方确认一次。按来源设观察期：确定性来源部署后即确认，运行时来源看一段时间是否再出现。观察期从发现部署成功的时刻算起：平台记的是部署开始的时间，开始到上线之间旧代码报的错不算回归。
 - 部署来源是方法库(`deploy_source/`，每种来源一个程序加同名清单)，与采集的平台方法同一写法(collect/common/methods)：接新平台只加一对文件，参数、凭据条目名与限制写在清单里一眼看全，必填参数没写时按清单报缺少，不把 null 传给 gh 或平台。
 - 写操作带做决定时的前置条件(protocol/git.md)：判断与执行之间仓库或 PR 被别人动过时，执行旧决定可能合进或推上没判断过的状态；过期不是要人处理的事，下次重新观察即可。
@@ -84,6 +84,6 @@ PR 已被人合并(含 GitHub 原生自动合并)的转为验收中；被关闭�
 
 - 不调用模型；PR 描述、提交信息全部由程序拼出，不带任何 AI 署名；
 - 不 rebase、不强推、不 `reset --hard`、不 `commit --amend`，不直接写主分支；
-- 不自行解决冲突，不自动合并高风险路径的改动，不自动合并撤销 PR；
+- 不自行解决冲突，不在没有用户确认时合并高风险路径的改动，不自动合并撤销 PR；
 - 不另写平台对接：验收读 store 的问题与出现记录，平台由采集按自己的调度读取；
 - 不做本机运行检查(启动服务、打接口、截图)：已并入实施的自检(`implement/check/runtime/`)。

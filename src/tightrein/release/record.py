@@ -106,7 +106,8 @@ class ReleaseState:
     ci: dict[str, Any] | None = None
     merge_reasons: list[str] = field(default_factory=list)
     native_head: str | None = None  # 已为这个 head 开启 GitHub 原生自动合并
-    decision: list[str] = field(default_factory=list)  # 已为这组高风险路径(或人工合并)写过待决定文档
+    decision: list[str] = field(default_factory=list)  # 已写过待决定文档的合并关卡：[关卡, 原因, 交付的改动哈希]
+    gate_at: str | None = None  # 这个合并关卡出现的时间：之后用户在这一关的通过才算数
     entered_at: str | None = None  # 第一次进入发布的时间(没有放行时间时用于排队)
     merged_at: str | None = None
     deploy: dict[str, Any] | None = None  # {commit, id, url, status, at, source}

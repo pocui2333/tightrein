@@ -2,7 +2,7 @@
 以修复未采纳取消并记下用户说明；合并 main 改到同一文件时退回实施重新自检与审查；冲突时退回编码解决，退回次数用完后转为待决定并留下冲突文件清单；
 合并停在进行中时先处理再提交(没解决且退回次数没用完时放弃、退回编码，用户解决了就完成合并、退回自检与审查，次数用完继续等人)；
 同步干净、推送成功后退回次数清零；推送前要推送的改动与交付时审查过的不同(人自己提交了合并、交付之后另有提交)时退回自检与
-审查，合并的 main 只改了别的文件时照常推送；
+审查，合并的 main 只改了别的文件时照常推送；高风险路径停在合并关卡，用户通过后由发布合并；
 验收通过转为完成、写交付文档并清理本地；回归时先提撤销 PR(只提一次)、清理修复目录，再退回待修并开下一次修复尝试；推送撤销分支一直
 遇到服务器错误时留在验收中、这一步记为失败、下次再提；不在发布中的不碰；前置条件过期时留在发布中、下次重新观察；推送一直遇到服务器错误时
 留在发布中、下次再推送；接入清单不启用验收时部署即完成、不观察。"""
@@ -251,6 +251,38 @@ def test_main_changing_other_files_is_merged_and_pushed_without_review(kit, gith
     assert outcome.next_point == "release.deploy"
     issue = issues.get(github_runtime.conn, "0007")
     assert issue.status == "accepting" and load_state(issue).synced_main == main
+def test_approving_the_high_risk_gate_lets_release_merge_the_pr(kit, github_runtime, fake_github, repos, worktree,
+                                                                documents_written, simple_transitions):
+    from dataclasses import replace
+
+    from tightrein.implement.approve.approve import record
+    from tightrein.implement.context import Decision
+
+    repos.write(worktree, {"requirements.txt": "fastembed>=0.4.0\n"})
+    kit.deliver(github_runtime, "0007", kit.delivery_facts(worktree, ["requirements.txt"],
+                                                          highRiskPaths=["requirements.txt"]))
+    kit.new_issue(github_runtime)
+    gated = release(github_runtime, "0007")
+    issue = issues.get(github_runtime.conn, "0007")
+    assert gated.status == Status.PENDING and issue.status == "releasing" and issue.gate == "high_risk_merge"
+    [(kind, _, written)] = documents_written
+    assert kind == "pending" and written["command"] == "tightrein approve 0007"
+    assert written["options"][:2] == ["审阅改动后由 tightrein 合并：tightrein approve 0007",
+                                      "自己在 GitHub 上合并：tightrein approve 0007 --option 2，或直接合并"]
+    assert not any(call[0] == "pr-merge" for call in fake_github.calls)
+
+    # tightrein approve 0007：记下决定、清掉 gate(cli/commands/approve.py)
+    record(github_runtime, "0007", Decision("high_risk_merge", "approve", None, "只加了一个依赖", "2026-10-08T03:00:00Z"))
+    issues.save(github_runtime.conn, replace(issues.get(github_runtime.conn, "0007"), gate=None), github_runtime.clock)
+    outcome = release(github_runtime, "0007")
+    assert (outcome.status, outcome.next_point) == (Status.PASSED, "release.deploy")
+    assert issues.get(github_runtime.conn, "0007").status == "accepting"
+    pushed = repos.git(repos.origin, "rev-parse", f"refs/heads/{kit.BRANCH}").strip()
+    assert ("pr-merge", 186, pushed, "squash", False) in fake_github.calls
+    path = github_runtime.workspace.issue_dir("0007") / "43-release.merge-handoff.json"
+    facts = json.loads(path.read_text(encoding="utf-8"))["facts"]
+    assert facts["merged"] and [item["point"] for item in facts["approvals"]] == ["high_risk_merge"]
+    assert simple_transitions == [("0007", "merge", None)]
 
 
 def _handoff_facts(runtime):

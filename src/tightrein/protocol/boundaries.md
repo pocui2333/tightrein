@@ -86,7 +86,7 @@
 | 级 | 缺省路径 | 规则 |
 |---|---|---|
 | 禁改 | `.env`、`.env.*`、`*.pem`、`*.key`、`*.p12`、`*.pfx`、`secrets*.json` | agent 不能改，碰到就停下交人 |
-| 高风险 | CI 配置、依赖清单与锁文件、数据库迁移与 `*.sql`、权限认证目录、带 secret 或 permission 字样的文件 | 可以改，合并必须人工确认；同一组命中只写一次决策文档 |
+| 高风险 | CI 配置、依赖清单与锁文件、数据库迁移与 `*.sql`、权限认证目录、带 secret 或 permission 字样的文件 | 可以改，合并必须人工确认(定案时逐项确认过的也算)；同一组命中只写一次决策文档 |
 
 **在哪配置**：`boundaries.protected.forbidden`、`boundaries.protected.highRisk`，项目用 `forbidden+`、`highRisk+` 追加。
 
@@ -100,6 +100,10 @@
 | | `merge` 合并 | `auto_ci_passed`：CI 通过且没有命中高风险路径时自动 |
 
 `gate_is_auto`：可配置关卡的取值以 `auto` 开头即按条件自动(条件由发起方判断)，写 `manual` 即人工；固定人工的关卡即使配置里写成自动也不生效。
+
+固定人工指必须有人明确确认，不是必须由人动手：
+- 停在关卡上的，用户 `tightrein approve` 后由发起方接着做；`high_risk_merge`、`merge` 通过后由发布合并 PR，用户选「自己在 GitHub 上合并」时才不合并；
+- `high_risk_merge` 的确认也可以提前在定案时给出：方案的 `protectedTouches` 在定案关卡上逐条列为要确认的原因，用户通过的(不是自动确认)、交付命中的高风险路径都在其中时，合并不再为它停下，合并的交接记下用的是哪一次确认(`approvals`)；交付多出没列过的高风险路径时照旧停下，只列没确认过的。
 
 全自动：`issue`、`design` 写成 `auto_all`(`gate_is_auto_all`)时不再看风险与门槛：Issue 一律放行；方案只在 agent 给出需要拍板的点或改动受保护文件时停下。固定人工的四个关卡照旧，`merge` 本来就只在 CI 通过、没碰高风险路径时自动。
 

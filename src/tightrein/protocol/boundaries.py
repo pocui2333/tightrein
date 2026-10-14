@@ -35,7 +35,8 @@ OUTPUT_ONLY_TOOLS = frozenset({"StructuredOutput"})
 # 从工具参数中切出可能是路径的片段
 _PATH_SEPARATORS = re.compile(r"[\s'\"`=,;|&<>()]+")
 
-# 固定人工的关卡：不可逆或越权的情形，配置改不成自动
+# 固定人工的关卡：不可逆或越权的情形，配置改不成自动，必须有人明确确认。确认可以在关卡上(approve)，
+# high_risk_merge 也可以在定案时：方案逐条列出要改的高风险文件、用户通过的，交付只碰了这些文件就不再停(release/merge.py)
 MANDATORY_GATES: frozenset[str] = frozenset({"forbidden_changed", "high_risk_merge", "over_cap", "needs_decision"})
 AUTO_PREFIX = "auto"
 AUTO_ALL = "auto_all"  # 全自动：可配置关卡不再看风险与门槛，固定人工的关卡照旧

@@ -5,7 +5,9 @@
   REJECT(不修)，历史与 GitHub 同步由状态机做；
 - 实施中的关卡(定案等，issues.gate 有值)或实施中停下等用户(needs_decision 且 stage 为实施)：用户的决定(通过可带
   选项序号，不通过必带原因)经 implement/approve 的 record 持久化(写记录文件，重建不丢)，清掉 gate；停下的再经
-  APPROVE 回到继续实施。不通过不取消 Issue：停着的那一步按原因重出(计划「reject：方案按原因重出」)。
+  APPROVE 回到继续实施。不通过不取消 Issue：停着的那一步按原因重出(计划「reject：方案按原因重出」)；
+- 发布中的合并关卡(high_risk_merge、merge)同样记下决定、清掉 gate：通过后下次推进由发布合并 PR(选「自己在
+  GitHub 上合并」的除外，见 release/merge.py)。
 审核本身不推进对象，推进交给 `tightrein run --object <编号>`。
 """
 

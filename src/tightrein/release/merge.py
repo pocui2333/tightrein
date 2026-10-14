@@ -6,8 +6,14 @@
 3. 评审只看每个评审者按顺序的最后一次「批准、请求修改、撤销」：最后一次为请求修改的才阻断；
 4. PR 头部等于本工具最近一次推送的 commit(PR 上没有别人的提交)；
 5. CI 通过(或没有检查)；
-6. 改动没有命中高风险路径(protocol/boundaries 的高风险级：CI、依赖、迁移、权限认证、密钥配置)。命中时一律不自动合并，
-   写待决定文档交人，同一组命中只写一次；关卡 merge 配成人工时同样交人。
+6. 改动没有命中高风险路径(protocol/boundaries 的高风险级：CI、依赖、迁移、权限认证、密钥配置)，或命中的每一个都已在
+   定案时由用户确认：最近一次定案由用户通过、确认的就是最近一次方案，且方案的 protectedTouches 列了这个路径(定案关卡
+   逐条列给用户)。有没确认过的就交人(high_risk_merge)，写待决定文档，同一组命中、同一份交付只写一次；关卡 merge 配成
+   人工时同样交人。
+
+交人之后用户 `tightrein approve` 通过这一关(关卡出现之后的最近一次决定)，本工具照常按 1 到 5 判断后合并，与自动合并
+同一方式；选「自己在 GitHub 上合并」等其他选项的不合并，只等 PR 在 GitHub 上合并或关闭。合并用到的确认(定案或关卡上
+的)记进合并的交接(`approvals`)。
 
 合并用 `gh pr merge --match-head-commit <判断时的 head> --delete-branch`：判断后有人再推送就合并失败。主分支要求必需
 检查、或仓库开了 GitHub 自带的合并队列时，只按不看 CI 的条件判断后开启 GitHub 原生自动合并(`--auto`)，同一 head 只
@@ -20,13 +26,16 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from tightrein.implement.approve import approve
 from tightrein.protocol import boundaries
 from tightrein.protocol.git import CommandFailed, GitHub
 from tightrein.protocol.git.github import MergeFacts
+from tightrein.protocol.handoff import Handoff, Status
+from tightrein.protocol.recovery import checkpoints
 from tightrein.protocol.runtime import Runtime
 from tightrein.release import ci
 from tightrein.release.ci import CiState
-from tightrein.release.record import POINT_MERGE, Delivery, ReleaseState, emit
+from tightrein.release.record import POINT_MERGE, Delivery, ReleaseState, emit, now_iso
 
 OPEN = "OPEN"
 MERGEABLE = "MERGEABLE"
@@ -43,10 +52,29 @@ MERGE_STATE_REASONS = {
 }
 HIGH_RISK_GATE = "high_risk_merge"
 MERGE_GATE = "merge"
+APPROVE = "approve"
+BY_TOOL = 1  # 合并关卡待决定文档的选项(release.py 的 _to_gate)：第 1 个由本工具合并，没选时同样
+SELF_MERGE = 2  # 第 2 个：用户自己在 GitHub 上合并，本工具不合并
 MERGE_QUEUE_RULE = "merge_queue"
 FORBIDDEN = "HTTP 403"  # 免费账号的私有仓库没有规则集功能：视为没有
 # 一次运行内各仓库的「是否要求必需检查」「是否交给 GitHub」只查一次
 _CACHE: dict[tuple[str, str, str], bool] = {}
+
+
+@dataclass(frozen=True)
+class Approval:
+    """用户对这次合并(或其中的高风险改动)的确认：在哪一关、何时、原话；定案时的确认另有方案哈希与确认过的路径。"""
+
+    point: str  # implement.approve(定案)、high_risk_merge 或 merge(合并关卡)
+    at: str
+    note: str | None = None
+    option: int | None = None
+    plan_hash: str | None = None
+    paths: tuple[str, ...] = ()
+
+    def to_json(self) -> dict[str, Any]:
+        return {"point": self.point, "at": self.at, "note": self.note, "option": self.option,
+                "planHash": self.plan_hash, "paths": list(self.paths)}
 
 
 @dataclass
@@ -57,6 +85,7 @@ class MergeDecision:
     gate: str | None = None  # 需要人决定时的关卡：high_risk_merge 或 merge
     gate_reason: str | None = None
     new_gate: bool = False  # 这组原因是第一次出现(要写待决定文档)
+    approvals: list[Approval] = field(default_factory=list)  # 放行高风险路径、合并关卡的用户确认
 
 
 def changes_requested(reviews: Sequence[Mapping[str, Any]]) -> list[str]:
@@ -102,6 +131,37 @@ def risky_paths(runtime: Runtime, delivery: Delivery) -> list[str]:
     return sorted({*boundaries.high_risk(delivery.changed_files, runtime.settings), *delivery.high_risk_paths})
 
 
+def design_approval(runtime: Runtime, issue: str) -> Approval | None:
+    """定案时用户确认过的受保护文件：最近一次定案由用户通过(不是自动确认)、确认的就是最近一次方案时，取这份方案
+    protectedTouches 的路径(定案关卡把它们逐条列为要确认的原因，见 implement/approve 的 mandatory_reasons)。"""
+    latest: dict[str, Handoff] = {}
+    for item in checkpoints(runtime.workspace, issue):
+        if item.handoff.point in (approve.DESIGN, approve.POINT):
+            latest[item.handoff.point] = item.handoff
+    design, approved = latest.get(approve.DESIGN), latest.get(approve.POINT)
+    if design is None or approved is None or approved.status is not Status.PASSED:
+        return None
+    plan_hash = design.facts.get("planHash")
+    if approved.facts.get("approvedBy") != approve.BY_USER or approved.facts.get("planHash") != plan_hash:
+        return None
+    paths = approve.protected_paths(design.facts)
+    if not paths:
+        return None
+    return Approval(approve.POINT, approved.created_at or "", approved.facts.get("note"), plan_hash=str(plan_hash),
+                    paths=paths)
+
+
+def gate_approval(decisions: Sequence[Mapping[str, Any]], gate: str, since: str | None) -> Approval | None:
+    """关卡出现(since)之后用户在这一关的最近一次决定为通过时的确认；没有、或最近一次为不通过时为 None。"""
+    if since is None:
+        return None
+    found = [item for item in decisions if item.get("point") == gate and str(item.get("at") or "") >= since]
+    if not found or found[-1].get("verdict") != APPROVE:
+        return None
+    latest = found[-1]
+    return Approval(gate, str(latest["at"]), latest.get("note"), latest.get("option"))
+
+
 def requires_checks(runtime: Runtime, github: GitHub) -> bool:
     """主分支有分支保护或规则集要求必需检查。"""
     key = (runtime.run, github.slug, "required")
@@ -131,15 +191,22 @@ def merge_queue(runtime: Runtime, github: GitHub) -> bool:
 
 
 def decide(runtime: Runtime, issue: str, number: int, delivery: Delivery, state: ReleaseState, checks: CiState,
-           github: GitHub) -> MergeDecision:
-    """判断并在条件满足时合并(或开启 GitHub 原生自动合并)；state 中的原因、已开启的 head、已交人的原因随之更新。"""
+           github: GitHub, decisions: Sequence[Mapping[str, Any]] = ()) -> MergeDecision:
+    """判断并在条件满足时合并(或开启 GitHub 原生自动合并)；state 中的原因、已开启的 head、已交人的原因随之更新。
+
+    decisions 为 Issue 上用户的决定(issues.extra.decisions)：认出用户在合并关卡上的通过。"""
     decision = MergeDecision()
-    risky = risky_paths(runtime, delivery)
-    if risky:
-        return _to_human(runtime, issue, state, decision, HIGH_RISK_GATE,
-                         "改动涉及高风险路径，不自动合并：" + "、".join(risky))
-    if not boundaries.gate_is_auto(MERGE_GATE, runtime.settings):
-        return _to_human(runtime, issue, state, decision, MERGE_GATE, "本项目的合并关卡为人工")
+    gate, reason = _gate(runtime, issue, delivery, decision)
+    if gate is not None:
+        # 同一关卡、同一组原因、同一份交付才沿用关卡上的通过：重新交付后改动变了，要重新确认
+        signature = [gate, reason, delivery.diff_hash]
+        approved = gate_approval(decisions, gate, state.gate_at) if state.decision == signature else None
+        if approved is None:
+            return _to_human(runtime, issue, state, decision, gate, reason, signature)
+        decision.approvals.append(approved)
+        if approved.option not in (None, BY_TOOL):
+            return _unmerged(runtime, issue, state, decision, [
+                f"用户在合并关卡选了第 {approved.option} 个选项，本工具不合并，等 PR 在 GitHub 上合并或关闭"])
     facts = github.merge_facts(number)
     decision.native = native(runtime, github)
     if decision.native:
@@ -157,13 +224,37 @@ def decide(runtime: Runtime, issue: str, number: int, delivery: Delivery, state:
     github.merge_pr(number, facts.head or "", method, auto=decision.native,
                     scope=runtime.scope(issue, POINT_MERGE))
     state.merge_reasons = []
+    covered = "".join(f"；{_approval_text(item)}" for item in decision.approvals)
     if decision.native:
         state.native_head = facts.head
-        emit(runtime, issue, POINT_MERGE, "action", f"已为 PR #{number} 开启 GitHub 自动合并({method})")
+        emit(runtime, issue, POINT_MERGE, "action", f"已为 PR #{number} 开启 GitHub 自动合并({method}){covered}")
     else:
         decision.merged = True
-        emit(runtime, issue, POINT_MERGE, "action", f"已合并 PR #{number}({method})并删除远程分支")
+        emit(runtime, issue, POINT_MERGE, "action", f"已合并 PR #{number}({method})并删除远程分支{covered}")
     return decision
+
+
+def _gate(runtime: Runtime, issue: str, delivery: Delivery, decision: MergeDecision) -> tuple[str | None, str]:
+    """要人决定的关卡与原因，不要时为 (None, "")；高风险路径全部在定案时由用户确认过的不为它停下，那次确认记进 decision。"""
+    risky = risky_paths(runtime, delivery)
+    if risky:
+        confirmed = design_approval(runtime, issue)
+        known = [path for path in risky if confirmed is not None and path in confirmed.paths]
+        unknown = [path for path in risky if path not in known]
+        if unknown:
+            return HIGH_RISK_GATE, "改动涉及高风险路径，不自动合并：" + "、".join(unknown) + (
+                f"(定案时只确认了 {'、'.join(known)})" if known else "")
+        if confirmed is not None:
+            decision.approvals.append(confirmed)
+    if not boundaries.gate_is_auto(MERGE_GATE, runtime.settings):
+        return MERGE_GATE, "本项目的合并关卡为人工"
+    return None, ""
+
+
+def _approval_text(approval: Approval) -> str:
+    if approval.point == approve.POINT:
+        return f"高风险路径 {'、'.join(approval.paths)} 已在定案时由用户确认({approval.at})"
+    return f"用户已在 {approval.point} 关卡通过({approval.at})"
 
 
 def _unmerged(runtime: Runtime, issue: str, state: ReleaseState, decision: MergeDecision,
@@ -176,9 +267,9 @@ def _unmerged(runtime: Runtime, issue: str, state: ReleaseState, decision: Merge
 
 
 def _to_human(runtime: Runtime, issue: str, state: ReleaseState, decision: MergeDecision, gate: str,
-              reason: str) -> MergeDecision:
+              reason: str, signature: list[str]) -> MergeDecision:
     decision.gate, decision.gate_reason = gate, reason
-    signature = [gate, reason]
     decision.new_gate = state.decision != signature
-    state.decision = signature
+    if decision.new_gate:
+        state.decision, state.gate_at = signature, now_iso(runtime)
     return _unmerged(runtime, issue, state, decision, [reason])
