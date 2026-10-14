@@ -66,7 +66,7 @@
 - 只许追加的列表：`boundaries.protected.forbidden`、`boundaries.protected.highRisk`，上层只能写 `forbidden+`、`highRisk+`，写原键(替换)即报错，缺省项删不掉；
 - 控制字段按「小步骤 → 模块 → 阶段 → `*`」继承：`implement.design.frontend` 没写的取 `implement.design`，再取 `implement`，最后取 `*`；带条件时先查 `modelWhen` 再查 `model`。
 
-读取即校验，一次列出全部问题，每条带完整键名：控制键是否合规、字段类型、时长写法、别名是否存在、审查者与生成者是否同一模型、自动确认门槛是否超过改动量上限、下级时限是否超过上级。取不到的键报 `MissingSetting`，不悄悄给缺省值。`tightrein project config --explain <键>` 列出每一层给出的值。
+读取即校验，一次列出全部问题，每条带完整键名：控制键是否合规、字段类型、时长写法、别名是否存在、审查者与生成者是否同一模型、自动确认门槛是否超过改动量上限、下级时限是否超过上级、同时实施的 Issue 数(`resources.concurrency.sessions`)是否在 1–3 且补人的 `refillWhenFree`、`refillMax` 与它相容。取不到的键报 `MissingSetting`，不悄悄给缺省值。`tightrein project config --explain <键>` 列出每一层给出的值。
 
 ## 不能覆盖的
 
@@ -74,6 +74,7 @@
 
 - 必须人工的关卡(禁改文件被改、高风险合并、超出改动量上限、需要拍板)：`protocol/boundaries.py`；
 - 受保护文件只能追加，不能删缺省项；
+- 同时实施的 Issue 数只能是 1–3：`settings/load.py`(道理见 `protocol/resources.md`「并行实施时补人」)；
 - 子进程的环境变量白名单：`protocol/security.py`；
 - 凭据与脱敏规则：`protocol/security.py`；
 - 文件命名、编号、交接文档的格式：`protocol/naming.md`、`handoff.md`。

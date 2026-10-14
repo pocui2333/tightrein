@@ -418,6 +418,12 @@
 | `resources.issueTokens` | `2000000` |
 | `resources.cacheReadWeight` | `0.1` |
 
+读取时按范围校验，超出即报错(不截到范围内)：
+
+- `resources.concurrency.sessions`：1 到 3 的整数
+- `resources.refillWhenFree`：null 或 1 到 sessions 的整数
+- `resources.refillMax`：null 或不小于 sessions 的整数
+
 ## boundaries
 
 含义见 `src/tightrein/protocol/boundaries.md`。

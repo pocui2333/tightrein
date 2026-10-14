@@ -47,6 +47,15 @@ PROMPTS_DIR = Path(__file__).resolve().parents[1] / "prompts"
 NOT_POINTS = ("README", "TEMPLATE")
 PROJECT_FIELDS = ("repo", "mainBranch", "language", "commands", "testPatterns", "frontendPatterns")
 LANGUAGES = ("zh", "en", "ja")
+# 同时实施的 Issue 数(resources.concurrency.sessions)固定的范围，含两端：再多主要是共用文件的合并冲突与在关卡空等的位置，
+# 实际运行中 3 最划算(protocol/resources.md「并行实施时补人」)
+SESSIONS = (1, 3)
+# 读取时按范围校验的键 → 能取的值；报错与参考文档(cli/reference.py)都用这里的说法
+BOUNDED = {
+    "resources.concurrency.sessions": f"{SESSIONS[0]} 到 {SESSIONS[1]} 的整数",
+    "resources.refillWhenFree": "null 或 1 到 sessions 的整数",
+    "resources.refillMax": "null 或不小于 sessions 的整数",
+}
 
 
 class MissingSetting(KeyError):
@@ -224,6 +233,7 @@ class Settings:
             issues += _route_issues(key, values)
         issues += self._independence_issues()
         issues += self._threshold_issues()
+        issues += _resource_issues(self.merged.get("resources"))
         issues += self._price_issues()
         return issues
 
@@ -415,6 +425,33 @@ def _route_issues(key: str, values: dict[str, Any]) -> list[str]:
     hint = "、".join(allowed) if allowed else "无(该调用点不按条件选模型)"
     return [f"controls.{key}.modelWhen.{condition}：没有声明这个条件，{key} 可用的条件：{hint}"
             for condition in when if condition not in allowed]
+
+
+def _resource_issues(resources: Any) -> list[str]:
+    """同时实施的 Issue 数只能在 SESSIONS 范围内，补人的两个键要与它相容；超出的报错，不悄悄截到范围内。
+    sessions 不合格时补人的两个键无从比较，先只报它；没有 resources.concurrency.sessions 的(测试的最小配置)不查。"""
+    if not isinstance(resources, dict) or not isinstance(resources.get("concurrency"), dict) \
+            or "sessions" not in resources["concurrency"]:
+        return []
+    sessions = resources["concurrency"]["sessions"]
+    if not _integer(sessions) or not SESSIONS[0] <= sessions <= SESSIONS[1]:
+        return [_bounded("resources.concurrency.sessions", sessions)]
+    issues = []
+    when_free, most = resources.get("refillWhenFree"), resources.get("refillMax")
+    if when_free is not None and (not _integer(when_free) or not 1 <= when_free <= sessions):
+        issues.append(_bounded("resources.refillWhenFree", when_free, sessions))
+    if most is not None and (not _integer(most) or most < sessions):
+        issues.append(_bounded("resources.refillMax", most, sessions))
+    return issues
+
+
+def _bounded(key: str, value: Any, sessions: int | None = None) -> str:
+    current = "" if sessions is None else f"(sessions 为 {sessions})"
+    return f"{key}：只能是 {BOUNDED[key]}{current}，现在是 {value!r}"
+
+
+def _integer(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def _seconds(value: Any) -> float | None:

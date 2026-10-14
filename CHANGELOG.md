@@ -17,6 +17,7 @@
 
 ### 变更
 
+- 同时实施的 Issue 数(`resources.concurrency.sessions`)固定在 1–3，读取配置时超出即报错：更多的并行主要带来共用文件的合并冲突与在关卡空等的位置，实际运行中 3 最划算。`resources.refillWhenFree` 设了要在 1 到 sessions 之间，`resources.refillMax` 设了不能小于 sessions。原来写 4、5 的工作区改成 3。
 - `tightrein watch` 重新设计：并行实施的每个 Issue 各占一行(编号与 GitHub 编号、标题、步骤进度、当前步骤、在这一步多久、模型与轮数、这次调用的 token、Issue 的 token 预算)，正在评估的问题与采集、复盘也各占一行；只在有要你处理的事(待审核、出问题、评估转人工、暂停、运行中断)时出现「需要你处理」，每条给出要敲的命令；额度同时列 Claude 与 agy；事件流水淡显例行的模型调用、不列每次调用的环境清理；最后一行排队(待修、待评估、发布各环节)。行数随终端高度，同一高度下刷新时行数不变。
 - agy 的调用点(`assess.refute`、`implement.locate`、`implement.design.frontend`、`implement.check.screenshots`、`implement.review.deep`)工具调用上限由 15 次放宽到 30 次，单次输出上限由 16000 放宽到 32000 token。
 - 重新生成 `docs/reference/`(上一项去掉 `analysis` 后的 handoff.md)。

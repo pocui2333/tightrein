@@ -1,7 +1,8 @@
 """生成参考文档 docs/reference/：命令、配置字段、交接格式、平台方法，全部从程序与数据读出，不手写。
 
 - commands.md：argparse 命令树(cli/main.build_parser)，帮助文字取文案表；
-- configuration.md：settings/defaults.json 的每个键、缺省值与所在的控制键；
+- configuration.md：settings/defaults.json 的每个键、缺省值与所在的控制键，读取时按范围校验的键另列能取的值
+  (settings/load.BOUNDED)；
 - handoff.md：包内每个 `*.schema.json`(各步骤的必填事实、agent 的结构化输出、项目脚本的输出)；
 - methods.md：包内每个方法清单(`<方法>.yaml`，protocol/methods.py 加载的那种)。
 
@@ -22,6 +23,7 @@ from typing import Any
 import yaml
 
 from tightrein.cli.main import PROG, build_parser
+from tightrein.settings.load import BOUNDED
 from tightrein.store.files.atomic import write_text
 from tightrein.store.files.json import read_json
 from tightrein.store.files.layout import ToolLayout
@@ -324,6 +326,9 @@ def _plain_section(section: str, value: Any) -> list[str]:
         return lines + [_value(value), ""]
     lines += ["| 键 | 缺省值 |", "|---|---|"]
     lines += [f"| `{section}.{path}` | {_value(item)} |" for path, item in _leaves(value, "")]
+    bounded = [f"- `{key}`：{allowed}" for key, allowed in BOUNDED.items() if key.startswith(section + ".")]
+    if bounded:
+        lines += ["", "读取时按范围校验，超出即报错(不截到范围内)：", ""] + bounded
     return lines + [""]
 
 

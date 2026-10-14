@@ -328,6 +328,47 @@ def test_lower_time_limits_must_not_exceed_the_upper_ones() -> None:
     assert "controls.assess.timeout：超过一次完整运行的时限 4h" in issues
 
 
+# 同时实施的 Issue 数：固定在 1–3
+
+
+def resources(sessions: Any = 1, **refill: Any) -> dict[str, Any]:
+    return {"refillWhenFree": None, "refillMax": None, "concurrency": {"sessions": sessions}, **refill}
+
+
+@pytest.mark.parametrize("sessions", [1, 2, 3])
+def test_sessions_from_one_to_three_are_accepted(sessions: int) -> None:
+    assert Settings.from_data(base(resources=resources()), {"resources": resources(sessions)}).issues() == []
+
+
+@pytest.mark.parametrize("sessions", [0, 4, 5, "2", 2.5, True])
+def test_sessions_outside_one_to_three_fail_loading(tmp_path: Path, sessions: Any) -> None:
+    layout = workspace(tmp_path, {"resources": {"concurrency": {"sessions": sessions}}})
+    with pytest.raises(SettingsInvalid) as raised:
+        Settings.load(tool_root(tmp_path, base(resources=resources())), layout)
+    assert raised.value.issues == [f"resources.concurrency.sessions：只能是 1 到 3 的整数，现在是 {sessions!r}"]
+
+
+def test_refill_settings_are_not_compared_with_a_wrong_sessions() -> None:
+    issues = Settings.from_data(base(resources=resources()), {"resources": resources(5, refillWhenFree=4)}).issues()
+    assert issues == ["resources.concurrency.sessions：只能是 1 到 3 的整数，现在是 5"]
+
+
+@pytest.mark.parametrize("refill, issue", [
+    ({"refillWhenFree": 0}, "resources.refillWhenFree：只能是 null 或 1 到 sessions 的整数(sessions 为 2)，现在是 0"),
+    ({"refillWhenFree": 3}, "resources.refillWhenFree：只能是 null 或 1 到 sessions 的整数(sessions 为 2)，现在是 3"),
+    ({"refillWhenFree": "1"}, "resources.refillWhenFree：只能是 null 或 1 到 sessions 的整数(sessions 为 2)，现在是 '1'"),
+    ({"refillMax": 1}, "resources.refillMax：只能是 null 或不小于 sessions 的整数(sessions 为 2)，现在是 1"),
+    ({"refillMax": 4.0}, "resources.refillMax：只能是 null 或不小于 sessions 的整数(sessions 为 2)，现在是 4.0"),
+])
+def test_refill_settings_must_fit_the_sessions(refill: dict[str, Any], issue: str) -> None:
+    assert Settings.from_data(base(resources=resources()), {"resources": resources(2, **refill)}).issues() == [issue]
+
+
+def test_refill_settings_within_the_sessions_are_accepted() -> None:
+    for refill in ({"refillWhenFree": 1, "refillMax": 3}, {"refillWhenFree": 3, "refillMax": 10}):  # 含端点
+        assert Settings.from_data(base(resources=resources()), {"resources": resources(3, **refill)}).issues() == []
+
+
 def test_the_settings_hash_follows_the_merged_values() -> None:
     first, second = Settings.from_data(base()), Settings.from_data(base(), {"limits": {"lock": {"stale": "60s"}}})
     assert first.hash != second.hash and first.hash == Settings.from_data(base()).hash

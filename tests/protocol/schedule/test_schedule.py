@@ -501,19 +501,22 @@ def add_independent(runtime: Any, count: int) -> None:
                     runtime.clock)
 
 
-@pytest.mark.parametrize("sessions, when_free", [(1, 1), (2, 1), (4, 2), (5, 2)])
-def test_refill_when_free_defaults_to_half_the_sessions(make_runtime, sessions, when_free):
-    refill = schedule._Refill.of(make_runtime().settings, sessions)
-    assert (refill.when_free, refill.most) == (when_free, 2 * sessions)
+@pytest.mark.parametrize("sessions, resources, when_free, most", [
+    (1, {}, 1, 2), (2, {}, 1, 4), (3, {}, 1, 6),  # 缺省：sessions 的一半取整(至少 1)、2 倍
+    (3, {"refillWhenFree": 2, "refillMax": 3}, 2, 3),
+])
+def test_refill_settings_default_to_a_share_of_the_sessions(make_runtime, sessions, resources, when_free, most):
+    refill = schedule._Refill.of(make_runtime({"resources": resources}).settings, sessions)
+    assert (refill.when_free, refill.most) == (when_free, most)
     assert refill.count([0.0], 1.0) == (1 if when_free == 1 else 0)  # refillAfter 缺省 3m：单个空位还没等够
 
 
 def test_slots_freed_together_are_refilled_together(stages, make_runtime, monkeypatch):
-    """同时空出 refillWhenFree(缺省 sessions 的一半)个位置才一起补满；只空一个、又没等过 refillAfter 时不补。"""
+    """同时空出 refillWhenFree 个位置才一起补满；只空一个、又没等过 refillAfter 时不补。"""
     monkeypatch.setattr(schedule, "REFILL_POLL_S", 0.05)
     monkeypatch.setattr(schedule, "isolated", separate)
-    runtime = make_runtime({"resources": {"refillAfter": "1h", "concurrency": {"sessions": 4}}})
-    add_independent(runtime, 6)
+    runtime = make_runtime({"resources": {"refillWhenFree": 2, "refillAfter": "1h", "concurrency": {"sessions": 3}}})
+    add_independent(runtime, 5)
     started: list[str] = []
     lone: list[str] = []  # 只空着一个位置的那段时间结束时已开始的
     refilled = threading.Event()
@@ -523,17 +526,17 @@ def test_slots_freed_together_are_refilled_together(stages, make_runtime, monkey
         if issue == "0002":  # 0001 一开始就做完：只空一个位置，多看几次空位也不补
             threading.Event().wait(0.3)
             lone.extend(started)
-        if issue in ("0003", "0004"):  # 等补进来的两个都开始了再结束
+        if issue == "0003":  # 等补进来的两个都开始了再结束
             refilled.wait(timeout=2)
-        if {"0005", "0006"} <= set(started):
+        if {"0004", "0005"} <= set(started):
             refilled.set()
         return SimpleNamespace(subject=issue, point="implement.deliver", status="passed", summary="交付",
                                next_point=None)
 
     stages.implement = implement
     run(runtime, stage="implement")
-    assert sorted(lone) == ["0001", "0002", "0003", "0004"]
-    assert sorted(started) == ["0001", "0002", "0003", "0004", "0005", "0006"] and refilled.is_set()
+    assert sorted(lone) == ["0001", "0002", "0003"]
+    assert sorted(started) == ["0001", "0002", "0003", "0004", "0005"] and refilled.is_set()
 
 
 def test_refilling_stops_once_a_round_has_started_refill_max_issues(stages, make_runtime, monkeypatch):
