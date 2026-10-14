@@ -246,6 +246,49 @@ def test_the_side_a_person_chose_at_release_counts_like_a_user_decision(world: A
         assert f"{main[:12]} test: 补主干一侧的测试" in text
 
 
+def test_the_side_the_user_chose_at_the_coding_gate_counts_like_a_user_decision(world: Any, settings_with: Any,
+                                                                               monkeypatch: pytest.MonkeyPatch) -> None:
+    """发布合并 main 冲突、退回编码：main 删了修复改过的文件，改文件解决不了，用户在编码关卡上选保留修复一侧
+    (approve --option 1)，程序写成修复一侧、完成合并；之后的轮次照抄编码交接的 mergedMain。用户的决定里它只是
+    「implement.code，选项 1」：两种审查都拿到这是用户的决定、对应哪个文件，main 一侧对它的改动不再列给审查核对，
+    免得报 main-dropped、编码推翻用户的选择；选 main 一侧的照常列出。合并的不是这个 main 时不算。"""
+    world.runtime.settings = settings_with()  # 深度审查每次都做
+    repo = world.repo
+    repo.git("checkout", "-q", "-b", "fix/18-orders")
+    fixed = repo.commit("fix: 订单按天数查询", FIX)
+    repo.git("checkout", "-q", "main")
+    main = repo.commit("refactor: 去掉旧的订单模块", {"src/orders.py": None})
+    repo.git("checkout", "-q", "fix/18-orders")
+    with pytest.raises(AssertionError):
+        repo.git("merge", "--no-ff", "--no-edit", main)
+    repo.commit("Merge origin/main into fix/18-orders", FIX)  # 按用户的选择写成修复一侧
+    merged = repo.git("rev-parse", "HEAD").strip()
+    returned = world.handoff("release.pr", {"backTo": "implement.code", "main": main, "conflicts": ["src/orders.py"],
+                                            "mainCommits": [], "worktreeCommit": fixed})
+    unmergeable = [{"path": "src/orders.py", "kind": "修复改了这个文件，main 删了它(或改了名)"}]
+
+    def reviewed(side: str, chosen_main: str = main) -> list[str]:
+        coded = world.handoff("implement.code", {"mergedMain": {
+            "main": chosen_main, "conflicts": [], "unmergeable": unmergeable, "side": side, "commit": merged}})
+        fake = _install(monkeypatch, implement_review=_output(), implement_review_deep=_output())
+        context = world.context(latest={"implement.code": coded}, decisions=[
+            Decision("implement.code", "approve", 1 if side == "fix" else 2, None, "2026-10-08T03:00:00Z")])
+        review.run(world.runtime, replace(context, base_commit=main, returned=returned))
+        assert fake.points() == ["implement.review", "implement.review.deep"]
+        return [request.variables["merge"] for request in fake.requests]
+
+    for text in reviewed("fix"):
+        assert "改文件解决不了的按用户选的一侧写成，见下一条" in text
+        assert "用户在编码关卡上为改文件解决不了的冲突选的一侧(这是用户的决定：" in text
+        assert "src/orders.py 整份取了修复一侧" in text and "不报 `main-dropped`" in text
+        assert "-def recent" not in text and "提交：无" in text and "人在发布阶段" not in text
+    for text in reviewed("main"):
+        assert "src/orders.py 整份取了 main 一侧" in text
+        assert "-def recent(days):" in text and f"{main[:12]} refactor: 去掉旧的订单模块" in text
+    for text in reviewed("fix", chosen_main="f" * 40):  # 编码交接记的是别的 main
+        assert "用户在编码关卡上" not in text and "-def recent(days):" in text
+
+
 def test_the_deep_review_gets_the_questions_the_user_answered(world: Any, settings_with: Any,
                                                               monkeypatch: pytest.MonkeyPatch) -> None:
     """深度审查拿不到方案：方案交给用户拍板的问题与推荐随用户的决定给它，才核对得了「第二点按 B」照做没有。"""

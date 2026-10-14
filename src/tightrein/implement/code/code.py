@@ -11,7 +11,8 @@
   相对合并进来的 main 算；冲突都解决了由程序完成合并提交；没解决完或这一轮没通过(调用失败、中止、越界)就放弃合并、
   worktree 连同分支回到合并前，下一轮重来；这一轮中止说明两侧是互斥实现，归为需要用户(选保留哪一侧)，不是方案缺口。
   没有冲突标记、改文件解决不了的冲突(一侧删了另一侧改了、二进制文件等)不调用模型，放弃合并后归为需要用户，
-  关卡请用户选保留哪一侧；选了之后的轮次由程序先把这些文件写成那一侧；
+  关卡请用户选保留哪一侧；选了之后的轮次由程序先把这些文件写成那一侧；合并完成后的轮次照抄上一轮的 mergedMain，
+  审查据此知道用户选的一侧；
 - 撤回(越界、放弃合并)用检查点恢复(prepare/workspace.restore)，不用 `merge --abort`：合并后自动合并并已暂存的文件
   被 agent 改过时它会失败；恢复本身失败也不抛出，交接带上需要用户的不通过项。撤回过的交接把检查点(worktreeCommit)
   记成这一轮开始时，不让 implement 现取快照：恢复失败时 worktree 停在半截状态，记成检查点后每次续跑都会退回它。
@@ -78,6 +79,8 @@ def run(runtime: Runtime, context: ImplementContext) -> Handoff:
     facts: dict[str, Any] = {"baseCommit": base, "sessionId": None, "conditions": list(conditions), "redo": redo,
                              "corrections": corrections, "rolledBackTo": rolled_back}
     merging = merge.Merging()
+    if sync is None and (merged := merge.carried(context)) is not None:
+        facts["mergedMain"] = merged  # 合并完成后的轮次照抄：审查据此知道用户为改文件解决不了的冲突选的一侧
     if sync is not None:
         base = facts["baseCommit"] = sync.main  # 合并完成后 review_base 就是它：本轮改动相对它算
         try:

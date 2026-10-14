@@ -11,8 +11,8 @@ deepAlways 为假时只在高风险时做。
   没照用户的决定做(decision-unmet)、丢掉合并进来的 main 一侧(main-dropped)不对应验收标准，不抵这一条；
 - 发布合并 main 后退回实施(context.returned)、这次交付已合并进那个 main 时，两种审查都拿到合并信息：两侧都改了的
   文件、main 一侧的相关提交与 main 一侧对这些文件的改动(从合并前修复分支与 main 的分叉点算)，据此核对解决冲突时
-  有没有丢掉 main 一侧(别的 Issue 已合入的工作)；人在发布阶段解决过冲突的文件带上取了哪一侧，人的取舍与用户的
-  决定一样作数；
+  有没有丢掉 main 一侧(别的 Issue 已合入的工作)；人在发布阶段解决过冲突的文件、用户在编码关卡上为改文件解决不了
+  的冲突选过一侧的文件，都带上取了哪一侧，与用户的决定一样作数；
 - 深度审查拿不到方案，方案交给用户拍板的问题与推荐(userDecisions)附在用户的决定之后，回答才看得懂；
 - 只能在部署后确认的验收标准(assess/issue/body.post_deploy)不交给审查判断；模型仍给了结论的丢掉，不因它不通过、
   不因它等用户：它由发布的验收按关联问题的出现确认；
@@ -35,6 +35,7 @@ from tightrein.agents.result import CallStatus
 from tightrein.assess.issue.body import post_deploy
 from tightrein.implement.check.changes import Changes, changed_since, collect, file_states, select_files
 from tightrein.implement.check.findings import LOCAL, PLAN_GAP, Finding, first_category
+from tightrein.implement.code.merge import FIX, MAIN
 from tightrein.implement.context import BACK_TO, ImplementContext
 from tightrein.implement.design.risk import Changed, apply_risk, conditions, to_facts
 from tightrein.implement.locate.brief import location_problem
@@ -46,7 +47,7 @@ from tightrein.protocol.handoff import Handoff, Status
 from tightrein.protocol.naming import format_iso, parse_iso
 from tightrein.protocol.recovery import CHECKPOINT_COMMIT
 from tightrein.protocol.runtime import Runtime
-from tightrein.release.sync import FIX_SIDE
+from tightrein.release.sync import FIX_SIDE, MAIN_SIDE
 
 POINT = "implement.review"
 DEEP_POINT = "implement.review.deep"
@@ -61,6 +62,8 @@ BASE_KINDS = frozenset({"root-cause-unfixed", "caller-broken", "hardcode", "new-
 ALLOWED_KINDS = {LIGHT: BASE_KINDS, DEEP: BASE_KINDS | {"authz", "data-structure", "contract"}}
 # 对应验收标准的问题：审查给了这类阻断项时，判为不满足的验收标准不再另记方案缺口
 REQUIREMENT_KINDS = frozenset({"requirement-unmet", "requirement-reduced"})
+# 编码关卡上用户选的一侧(code/merge.py)对应发布记下的取舍(release.sync.resolution)
+CODE_SIDES = {FIX: FIX_SIDE, MAIN: MAIN_SIDE}
 UNKNOWN = "unknown"
 FAIL = "fail"
 APPROVE = "approve"
@@ -135,10 +138,11 @@ def run(runtime: Runtime, context: ImplementContext) -> Handoff:
 def merged_main(context: ImplementContext, git: Git) -> prompts.MergedMain | None:
     """这次交付合并进来的 main：发布合并 main 后退回实施(context.returned)、那个 main 已在 HEAD 里时给出，否则为 None。
 
-    - 退回编码(合并冲突)：编码轮合并 main、解决冲突，两侧都改了的是冲突文件；合并前的修复分支是退回时的 HEAD；
+    - 退回编码(合并冲突)：编码轮合并 main、解决冲突，两侧都改了的是冲突文件；合并前的修复分支是退回时的 HEAD。
+      改文件解决不了的冲突文件带上用户在编码关卡上选的一侧(最近一次编码交接的 mergedMain，见 chosen_at_code)；
     - 退回自检(main 改到修复的文件，或人解决过冲突后发布完成合并)：发布已合并，两侧都改了的是交集与解决过冲突的
-      文件；合并前的修复分支是发布的合并提交的第一个父提交。人解决过冲突的文件带上取了哪一侧(resolutions)：人的
-      取舍与用户的决定一样作数，整份取了修复一侧的，main 一侧对它的改动是人有意舍弃的，不列给审查核对。
+      文件；合并前的修复分支是发布的合并提交的第一个父提交。人解决过冲突的文件带上取了哪一侧(resolutions)。
+    两种取舍都与用户的决定一样作数：整份取了修复一侧的，main 一侧对它的改动是有意舍弃的，不列给审查核对。
     main 一侧的提交与改动从合并前的修复分支与 main 的分叉点算；git 读不出时只给文件与发布记下的提交。"""
     returned = context.returned
     if returned is None:
@@ -146,12 +150,14 @@ def merged_main(context: ImplementContext, git: Git) -> prompts.MergedMain | Non
     facts = returned.facts
     by_code = facts.get(BACK_TO) == CODE
     merge = None if by_code else facts.get("merged")
-    sides = {} if by_code else {str(path): str(side) for path, side in (facts.get("resolutions") or {}).items()}
     if by_code:
-        main, files, before = facts.get("main"), list(facts.get("conflicts") or []), facts.get(CHECKPOINT_COMMIT)
+        main, before = facts.get("main"), facts.get(CHECKPOINT_COMMIT)
+        listed, sides = facts.get("conflicts"), chosen_at_code(context, main)
     else:
         main, before = facts.get("syncedMain"), f"{merge}^1" if merge else None
-        files = list(dict.fromkeys([*(facts.get("overlap") or []), *sides]))
+        listed = facts.get("overlap")
+        sides = {str(path): str(side) for path, side in (facts.get("resolutions") or {}).items()}
+    files = list(dict.fromkeys([*(listed or []), *sides]))
     if not main or not files or not git.is_ancestor(str(main), "HEAD"):
         return None
     main, paths = str(main), tuple(str(path) for path in files)
@@ -167,6 +173,18 @@ def merged_main(context: ImplementContext, git: Git) -> prompts.MergedMain | Non
     elif not kept:
         commits = ()
     return prompts.MergedMain(main, paths, commits, diff, by_code, sides, str(merge) if merge else None)
+
+
+def chosen_at_code(context: ImplementContext, main: Any) -> dict[str, str]:
+    """用户在编码关卡上为改文件解决不了的冲突选的一侧(approve --option 1 修复一侧、2 main 一侧)，按发布的写法记成
+    文件 → 取了哪一侧。取自最近一次编码交接的 mergedMain：合并完成后的轮次照抄它(code/merge.py 的 carried)；
+    不是合并这个 main 的、没有选过的为空。"""
+    coded = context.last(CODE)
+    merged = (coded.facts.get("mergedMain") or {}) if coded is not None else {}
+    side = CODE_SIDES.get(str(merged.get("side")))
+    if side is None or not main or merged.get("main") != main:
+        return {}
+    return {str(item["path"]): side for item in merged.get("unmergeable") or []}
 
 
 def filter_findings(output: Mapping[str, Any], worktree: Path, mode: str) -> tuple[list[Finding], list[dict[str, Any]]]:

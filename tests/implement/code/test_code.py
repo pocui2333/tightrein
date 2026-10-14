@@ -287,8 +287,9 @@ def test_after_the_merge_later_rounds_do_not_merge_again(world: Any, monkeypatch
     world.repo.git("merge", "-q", "-s", "ours", "--no-edit", main)
     assert code.merge.pending(context, world.git()) is None
     fake = _install(monkeypatch, world, ({}, _output(), CallStatus.OK))
-    code.run(world.runtime, context)
+    result = code.run(world.runtime, context)
     assert not fake.requests[0].variables["corrections"].startswith("- 发布前合并")
+    assert "mergedMain" not in result.facts  # 前面没有记下这次合并的编码交接，没有可照抄的
 
 
 BASE_USERS = "NAME = 'a'\n"
@@ -430,6 +431,14 @@ def test_the_fix_side_is_kept_as_chosen_and_reused_by_later_rounds(world: Any, m
     assert git.merge_head() is None and world.repo.git("log", "-1", "--format=%P").split() == [fixed, main]
     assert world.repo.git("ls-files", "src/users.py") == "" and not (world.repo.path / "src/users.py").exists()
     assert (world.repo.path / "assets/logo.bin").read_bytes() == b"\0fix"
+    # 合并完成后审查交回修正：不再合并，照抄 mergedMain，审查据此知道用户选的一侧
+    world.clock.advance(timedelta(minutes=1))
+    result = replace(result, created_at=format_iso(world.clock.now()))
+    context = replace(context, round=5, latest={**context.latest, code.POINT: result})
+    fake = _install(monkeypatch, world, ({}, _output(), CallStatus.OK))
+    later = code.run(world.runtime, context)
+    assert not fake.requests[0].variables["corrections"].startswith("- 发布前合并")
+    assert later.status is Status.PASSED and later.facts["mergedMain"] == result.facts["mergedMain"]
 
 
 def test_conflicts_without_markers_go_to_the_user_and_the_chosen_side_is_merged(

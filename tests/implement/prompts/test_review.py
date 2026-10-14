@@ -88,7 +88,7 @@ def test_both_reviews_get_the_merged_main(world: Any) -> None:
     for text in (path.read_text(encoding="utf-8") for path in prompts):
         assert "## 合并进来的 main\n\n{{merge}}" in text
         assert "main 一侧的改动" in text and "必须仍然在" in text and "除非用户的决定要求取舍" in text
-        assert "人在发布阶段解决冲突时有意舍弃的(人的取舍与用户的决定一样作数)" in text
+        assert "写明是有意舍弃的(人在发布阶段解决冲突时的取舍、用户在编码关卡上选保留的一侧，都与用户的决定一样作数)" in text
         assert "报 `main-dropped`" in text
 
 
@@ -102,6 +102,18 @@ def test_the_sides_a_person_chose_at_release_are_named(world: Any) -> None:
     assert "src/b.py 整份取了 main 一侧：修复一侧原来对它的改动是人有意舍弃的" in text
     assert f"src/c.py 两侧合并：人合并的结果在提交 {'d' * 12}" in text and f"`git show {'d' * 12}:src/c.py`" in text
     assert "src/d.py" not in text.split("人在发布阶段")[1].split("\n")[0]  # git 自动合并的不算人的取舍
+
+
+def test_the_side_the_user_chose_at_the_coding_gate_is_named(world: Any) -> None:
+    """用户在编码关卡上为改文件解决不了的冲突选的一侧：用户的决定里只是「implement.code，选项 1」，这里写明它是用户的
+    决定、对应哪个文件；留了冲突标记、由编码解决的文件不在其中。"""
+    text = review.merge_text(review.MergedMain("c" * 40, ("assets/logo.bin", "src/b.py"), (), "", resolved_by_code=True,
+                                               sides={"assets/logo.bin": "fix-side"}))
+    assert "两侧都改了的文件(合并时冲突，由编码解决；改文件解决不了的按用户选的一侧写成，见下一条)" in text
+    chosen = text.split("用户在编码关卡上为改文件解决不了的冲突选的一侧")[1].split("\n")[0]
+    assert "implement.code 关卡上的选项 1 为修复一侧、2 为 main 一侧" in chosen
+    assert "assets/logo.bin 整份取了修复一侧" in chosen and "src/b.py" not in chosen
+    assert "人在发布阶段" not in text
 
 
 def test_the_deep_review_gets_only_the_questions_from_the_plan(world: Any) -> None:

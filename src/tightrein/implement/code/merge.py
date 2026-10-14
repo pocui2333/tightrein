@@ -12,7 +12,9 @@
   重来)；都解决了由程序完成合并提交(提交信息与发布阶段人工解决后完成的合并相同)；
 - 程序的合并与合并提交不记幂等键：它们会被放弃、会因中断随检查点退回，做没做以那个 main 是否已是 HEAD 的祖先为准
   (pending)，记了键再做时会被当成已做过而跳过；
-- 这一轮改动的比较基准是合并进来的 main：合并完成后 review_base 就是它，自检、审查、交付照常相对它算改动。
+- 这一轮改动的比较基准是合并进来的 main：合并完成后 review_base 就是它，自检、审查、交付照常相对它算改动；
+- 合并完成后的轮次照抄上一轮交接的 mergedMain(carried)，直到下一次退回：审查从最近一次编码交接读用户为改文件解决
+  不了的冲突选的一侧，与人在发布阶段的取舍一样作数，不把用户有意舍弃的 main 一侧报成丢掉。
 """
 
 from __future__ import annotations
@@ -101,6 +103,18 @@ def pending(context: ImplementContext, git: Git) -> Sync | None:
     if git.is_ancestor(main, "HEAD"):
         return None  # 前一轮已合并好(之后是自检或审查交回的修正)
     return Sync(main, tuple(str(item) for item in returned.facts.get("mainCommits") or []))
+
+
+def carried(context: ImplementContext) -> dict[str, Any] | None:
+    """前面的轮次已合并好的、这次退回要合并的 main(上一次编码交接的 mergedMain 记了合并提交)：那个 main 已在 HEAD
+    里(pending 为 None)时由这一轮照抄进自己的交接，审查据此知道用户选的一侧。没有时为 None。"""
+    returned, previous = context.returned, context.last(POINT)
+    if returned is None or returned.facts.get(BACK_TO) != POINT or previous is None:
+        return None
+    merged = previous.facts.get("mergedMain") or {}
+    if not merged.get("commit") or merged.get("main") != returned.facts.get("main"):
+        return None
+    return dict(merged)
 
 
 def start(runtime: Runtime, issue: str, git: Git, sync: Sync) -> Merging:
