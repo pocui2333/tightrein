@@ -82,12 +82,41 @@ def test_both_reviews_get_the_merged_main(world: Any) -> None:
                         files=None)["merge"] == "无"
     assert review.deep(world.context(), diff="", results="", risk=None)["merge"] == "无"
     auto = review.merge_text(review.MergedMain("b" * 40, ("src/a.py",), (), "", resolved_by_code=False))
-    assert "发布合并时 git 自动合并或由人解决冲突" in auto and "提交：无" in auto and "(没有改动)" in auto
+    assert "发布合并时 git 自动合并" in auto and "提交：无" in auto and "(没有改动)" in auto
+    assert "人在发布阶段" not in auto
     prompts = PROMPTS_DIR / "implement.review.md", PROMPTS_DIR / "implement.review.deep.md"
     for text in (path.read_text(encoding="utf-8") for path in prompts):
         assert "## 合并进来的 main\n\n{{merge}}" in text
         assert "main 一侧的改动" in text and "必须仍然在" in text and "除非用户的决定要求取舍" in text
+        assert "人在发布阶段解决冲突时有意舍弃的(人的取舍与用户的决定一样作数)" in text
         assert "报 `main-dropped`" in text
+
+
+def test_the_sides_a_person_chose_at_release_are_named(world: Any) -> None:
+    """人在发布阶段解决冲突时的取舍与用户的决定一样作数：逐个文件写明取了哪一侧；两侧合并的指向人的合并提交。"""
+    text = review.merge_text(review.MergedMain(
+        "c" * 40, ("tests/test_a.py", "src/b.py", "src/c.py", "src/d.py"), (), "", resolved_by_code=False,
+        sides={"tests/test_a.py": "fix-side", "src/b.py": "main-side", "src/c.py": "both"}, merged="d" * 40))
+    assert "发布合并时合并，人解决过冲突的见下一条" in text
+    assert "人在发布阶段解决冲突时的取舍(与用户的决定一样作数)：tests/test_a.py 整份取了修复一侧" in text
+    assert "src/b.py 整份取了 main 一侧：修复一侧原来对它的改动是人有意舍弃的" in text
+    assert f"src/c.py 两侧合并：人合并的结果在提交 {'d' * 12}" in text and f"`git show {'d' * 12}:src/c.py`" in text
+    assert "src/d.py" not in text.split("人在发布阶段")[1].split("\n")[0]  # git 自动合并的不算人的取舍
+
+
+def test_the_deep_review_gets_only_the_questions_from_the_plan(world: Any) -> None:
+    """深度审查拿不到方案：用户的回答(如「第二点按 B」)只有对着问题才看得懂，方案交给用户拍板的问题与推荐附在用户的
+    决定之后；方案的其他内容(推荐的理由、摘要)不给。没有用户的决定时不附。"""
+    decision = Decision("implement.approve", "approve", None, "同意，分页按 B", "2026-10-08T03:00:00Z")
+    deep = review.deep(world.context(decisions=[decision]), diff="", results="", risk=None,
+                       questions=PLAN["userDecisions"])
+    assert "同意，分页按 B" in deep["decisions"]
+    assert "- 分页要不要跟着改成每页 50 条(方案推荐：改成 50)" in deep["decisions"]
+    assert "7 天的量大" not in "".join(deep.values()) and "改为最近 7 天" not in "".join(deep.values())
+    assert review.deep(world.context(), diff="", results="", risk=None,
+                       questions=PLAN["userDecisions"])["decisions"] == "无"
+    text = (PROMPTS_DIR / "implement.review.deep.md").read_text(encoding="utf-8")
+    assert "其后附了方案当时交给用户拍板的问题与推荐" in text
 
 
 def test_unfollowed_decisions_have_their_own_kind_and_category(world: Any) -> None:

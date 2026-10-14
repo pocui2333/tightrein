@@ -206,11 +206,59 @@ def test_a_release_merge_that_touched_the_fixed_files_is_shown_too(world: Any, m
     fake = _install(monkeypatch, implement_review=_output())
     review.run(world.runtime, replace(world.context(), base_commit=main, returned=returned))
     text = fake.requests[0].variables["merge"]
-    assert "发布合并时 git 自动合并或由人解决冲突" in text and "+import os" in text and "test_fix_side" not in text
+    assert "发布合并时 git 自动合并" in text and "+import os" in text and "test_fix_side" not in text
     assert f"{main[:12]} test: 补主干一侧的测试" in text
     fake = _install(monkeypatch, implement_review=_output())
     review.run(world.runtime, replace(world.context(), base_commit=main))
     assert fake.requests[0].variables["merge"] == "无"
+
+
+def test_the_side_a_person_chose_at_release_counts_like_a_user_decision(world: Any, settings_with: Any,
+                                                                      monkeypatch: pytest.MonkeyPatch) -> None:
+    """退回编码已达上限、交给人：两侧是同一功能的互斥实现，人整份取了修复一侧(发布记下 resolutions)，退回自检后审查。
+    人的取舍与用户的决定一样作数：两种审查都拿到取了哪一侧，main 一侧对这个文件的改动不再列给它核对，免得报
+    main-dropped、编码把人舍弃的实现加回来；两侧合并的照常列 main 一侧，并指向人的合并提交。"""
+    world.runtime.settings = settings_with()  # 深度审查每次都做
+    fixed, main = _diverged(world, "{base}\n\ndef test_main_side():\n    assert recent(2) == 2\n")
+    with pytest.raises(AssertionError):
+        world.repo.git("merge", "--no-ff", "--no-edit", main)
+    world.repo.commit("Merge origin/main into fix/18-orders",
+                      {"tests/test_orders.py": world.repo.git("show", f"{fixed}:tests/test_orders.py")})
+    merged = world.repo.git("rev-parse", "HEAD").strip()
+    facts = {"backTo": "implement.check", "syncedMain": main, "merged": merged, "overlap": [], "worktreeCommit": merged}
+
+    def reviewed(side: str) -> FakeAsk:
+        fake = _install(monkeypatch, implement_review=_output(), implement_review_deep=_output())
+        returned = world.handoff("release.pr", {**facts, "resolutions": {"tests/test_orders.py": side}})
+        review.run(world.runtime, replace(world.context(), base_commit=main, returned=returned))
+        assert fake.points() == ["implement.review", "implement.review.deep"]
+        return fake
+
+    fake = reviewed("fix-side")
+    assert "-def test_main_side():" in fake.requests[0].variables["diff"]
+    for request in fake.requests:
+        text = request.variables["merge"]
+        assert "人在发布阶段解决冲突时的取舍(与用户的决定一样作数)：tests/test_orders.py 整份取了修复一侧" in text
+        assert "test_main_side" not in text and "提交：无" in text
+    for request in reviewed("both").requests:
+        text = request.variables["merge"]
+        assert f"人合并的结果在提交 {merged[:12]}" in text and "+def test_main_side():" in text
+        assert f"{main[:12]} test: 补主干一侧的测试" in text
+
+
+def test_the_deep_review_gets_the_questions_the_user_answered(world: Any, settings_with: Any,
+                                                              monkeypatch: pytest.MonkeyPatch) -> None:
+    """深度审查拿不到方案：方案交给用户拍板的问题与推荐随用户的决定给它，才核对得了「第二点按 B」照做没有。"""
+    world.runtime.settings = settings_with()  # 深度审查每次都做
+    world.repo.write(FIX)
+    plan = world.handoff("implement.design", {"summary": "改为最近 7 天", "userDecisions": [
+        {"question": "第二点：分页用 A(每页 20)还是 B(每页 50)", "recommendation": "A", "reason": "改动最小"}]})
+    decision = Decision("implement.approve", "approve", None, "同意，第二点按 B", "2026-10-08T03:00:00Z")
+    fake = _install(monkeypatch, implement_review=_output(), implement_review_deep=_output())
+    review.run(world.runtime, world.context(latest={"implement.design": plan}, decisions=[decision]))
+    text = fake.requests[1].variables["decisions"]
+    assert "同意，第二点按 B" in text and "- 第二点：分页用 A(每页 20)还是 B(每页 50)(方案推荐：A)" in text
+    assert "改动最小" not in text
 
 
 def test_criteria_confirmed_after_deploy_are_not_judged_here(world: Any, monkeypatch: pytest.MonkeyPatch) -> None:

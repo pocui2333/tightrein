@@ -38,7 +38,7 @@
       "dir": "04-implement.review-r1",
       "tool": "claude",
       "exitCode": 0,
-      "sha256": "7712f93c113918c5611b47faa307903c9584991e742aa4fb750ff386e639eb75"
+      "sha256": "226a0b402cf22c5682a09166ff9b99ad3adfbe6c82fbf81c7a5cae82e8ff2ae2"
     },
     {
       "point": "implement.review.deep",
@@ -48,7 +48,7 @@
       "dir": "05-implement.review.deep-r1",
       "tool": "claude",
       "exitCode": 0,
-      "sha256": "7a93f8be30802350c6aea88b9b0ef8ba0967e15e07c3e1d3d9657eceacd5183d"
+      "sha256": "c02045a4374cd787972dbb98ba294727462541ce0f89ec1cb4c9b14ede352869"
     }
   ]
 }

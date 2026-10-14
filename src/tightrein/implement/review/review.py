@@ -11,7 +11,9 @@ deepAlways 为假时只在高风险时做。
   没照用户的决定做(decision-unmet)、丢掉合并进来的 main 一侧(main-dropped)不对应验收标准，不抵这一条；
 - 发布合并 main 后退回实施(context.returned)、这次交付已合并进那个 main 时，两种审查都拿到合并信息：两侧都改了的
   文件、main 一侧的相关提交与 main 一侧对这些文件的改动(从合并前修复分支与 main 的分叉点算)，据此核对解决冲突时
-  有没有丢掉 main 一侧(别的 Issue 已合入的工作)；
+  有没有丢掉 main 一侧(别的 Issue 已合入的工作)；人在发布阶段解决过冲突的文件带上取了哪一侧，人的取舍与用户的
+  决定一样作数；
+- 深度审查拿不到方案，方案交给用户拍板的问题与推荐(userDecisions)附在用户的决定之后，回答才看得懂；
 - 只能在部署后确认的验收标准(assess/issue/body.post_deploy)不交给审查判断；模型仍给了结论的丢掉，不因它不通过、
   不因它等用户：它由发布的验收按关联问题的出现确认；
 - 「无法判断」交给用户：有验收标准判为 unknown 时停在待决定；用户通过后视为通过、判断原文记入 unverified，
@@ -44,6 +46,7 @@ from tightrein.protocol.handoff import Handoff, Status
 from tightrein.protocol.naming import format_iso, parse_iso
 from tightrein.protocol.recovery import CHECKPOINT_COMMIT
 from tightrein.protocol.runtime import Runtime
+from tightrein.release.sync import FIX_SIDE
 
 POINT = "implement.review"
 DEEP_POINT = "implement.review.deep"
@@ -123,7 +126,8 @@ def run(runtime: Runtime, context: ImplementContext) -> Handoff:
     # 审查，合并后下一轮巡检才查出它引入的竞态；成立与否的把关从评估挪到了修复之后
     if light_review.passed and (risk.high or bool(runtime.settings.control(POINT, "deepAlways"))):
         reviews.append(_review(runtime, replace(context, risk=risk), DEEP,
-                               prompts.deep(context, diff=changes.patch, results=results, risk=risk, merge=merged),
+                               prompts.deep(context, diff=changes.patch, results=results, risk=risk, merge=merged,
+                                            questions=plan.get("userDecisions") or []),
                                usage, worktree))
     return _handoff(runtime, context, started, base, diff_hash, states, changes, files, reviews, risk, usage)
 
@@ -133,31 +137,36 @@ def merged_main(context: ImplementContext, git: Git) -> prompts.MergedMain | Non
 
     - 退回编码(合并冲突)：编码轮合并 main、解决冲突，两侧都改了的是冲突文件；合并前的修复分支是退回时的 HEAD；
     - 退回自检(main 改到修复的文件，或人解决过冲突后发布完成合并)：发布已合并，两侧都改了的是交集与解决过冲突的
-      文件；合并前的修复分支是发布的合并提交的第一个父提交。
+      文件；合并前的修复分支是发布的合并提交的第一个父提交。人解决过冲突的文件带上取了哪一侧(resolutions)：人的
+      取舍与用户的决定一样作数，整份取了修复一侧的，main 一侧对它的改动是人有意舍弃的，不列给审查核对。
     main 一侧的提交与改动从合并前的修复分支与 main 的分叉点算；git 读不出时只给文件与发布记下的提交。"""
     returned = context.returned
     if returned is None:
         return None
     facts = returned.facts
     by_code = facts.get(BACK_TO) == CODE
+    merge = None if by_code else facts.get("merged")
+    sides = {} if by_code else {str(path): str(side) for path, side in (facts.get("resolutions") or {}).items()}
     if by_code:
         main, files, before = facts.get("main"), list(facts.get("conflicts") or []), facts.get(CHECKPOINT_COMMIT)
     else:
-        merge = facts.get("merged")
         main, before = facts.get("syncedMain"), f"{merge}^1" if merge else None
-        files = list(dict.fromkeys([*(facts.get("overlap") or []), *(facts.get("resolutions") or {})]))
+        files = list(dict.fromkeys([*(facts.get("overlap") or []), *sides]))
     if not main or not files or not git.is_ancestor(str(main), "HEAD"):
         return None
     main, paths = str(main), tuple(str(path) for path in files)
+    kept = tuple(path for path in paths if sides.get(path) != FIX_SIDE)  # main 一侧要保留的文件
     commits = tuple(str(item) for item in facts.get("mainCommits") or [])
     diff = ""
-    if before:
+    if before and kept:
         try:
-            diff = git.diff(git.merge_base(str(before), main), main, paths)
-            commits = tuple(f"{item.commit[:12]} {item.subject}" for item in git.log(f"{before}..{main}", paths))
+            diff = git.diff(git.merge_base(str(before), main), main, kept)
+            commits = tuple(f"{item.commit[:12]} {item.subject}" for item in git.log(f"{before}..{main}", kept))
         except GitError:
             pass
-    return prompts.MergedMain(main, paths, commits, diff, by_code)
+    elif not kept:
+        commits = ()
+    return prompts.MergedMain(main, paths, commits, diff, by_code, sides, str(merge) if merge else None)
 
 
 def filter_findings(output: Mapping[str, Any], worktree: Path, mode: str) -> tuple[list[Finding], list[dict[str, Any]]]:
