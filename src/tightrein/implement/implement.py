@@ -151,7 +151,7 @@ def decide(runtime: Runtime, context: ImplementContext) -> Next:
     if last.status is Status.PASSED:
         return _after_passed(context, last)
     if last.status is Status.PENDING:
-        if fresh or _now_automatic(runtime, last):
+        if fresh or _now_automatic(runtime, context, last):
             return Next(Kind.RUN, last.point, round=last.round)
         return Next(Kind.WAIT, last.point, round=last.round, reason=last.summary,
                     gate=dict(last.facts.get("gate") or {}))
@@ -160,12 +160,19 @@ def decide(runtime: Runtime, context: ImplementContext) -> Next:
     return _dispatch(runtime, context, done, last)
 
 
-def _now_automatic(runtime: Runtime, last: Handoff) -> bool:
-    """停在方案关卡之后才开了全自动(方案关卡 auto_all)：「按设计层面修」与定案不再等人，重跑那一步；
-    定案仍有固定人工的原因(要拍板、改受保护文件)时重跑后照旧停下(待办文档只写一次)。"""
+def _now_automatic(runtime: Runtime, context: ImplementContext, last: Handoff) -> bool:
+    """停在方案关卡之后才开了全自动(方案关卡 auto_all)：「按设计层面修」与定案不再等人，重跑那一步。
+    定案还有固定人工的原因(要拍板、改受保护文件)时不重跑，照常等人(否则会反复重跑、不写待办文档)。"""
     if not gate_is_auto_all(GATE_DESIGN, runtime.settings):
         return False
-    return last.point == APPROVE or (last.point == DESIGN and last.facts.get("reason") == DESIGN_ISSUE_REASON)
+    if last.point == DESIGN:
+        return last.facts.get("reason") == DESIGN_ISSUE_REASON
+    if last.point == APPROVE:
+        from tightrein.implement.approve.approve import mandatory_reasons
+
+        design = context.last(DESIGN)
+        return design is not None and not mandatory_reasons(design.facts)
+    return False
 
 
 # 推导下一步

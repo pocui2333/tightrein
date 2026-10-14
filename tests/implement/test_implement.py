@@ -137,8 +137,13 @@ def test_gates_left_pending_before_full_autonomy_are_run_again(new_world: Any, s
     world = new_world(settings=settings_with({"boundaries": {"gates": {"design": "auto_all"}}}))
     _save(world, DESIGN, Status.PENDING, {"version": 1, "reason": "design_issue", "gate": {"decision": "按设计修？"}})
     assert _decide(world) == implement.Next(Kind.RUN, DESIGN)
+    _save(world, DESIGN, facts={"version": 1, "planHash": "a" * 64, "userDecisions": []})
     _save(world, APPROVE, Status.PENDING, {"gate": {"decision": "确认方案"}})
     assert _decide(world) == implement.Next(Kind.RUN, APPROVE)
+    # 还有要拍板的点：不重跑，照常等人(写待办文档、运行报待审核)
+    _save(world, DESIGN, facts={"version": 2, "planHash": "b" * 64, "userDecisions": [{"question": "算不算满足？"}]})
+    _save(world, APPROVE, Status.PENDING, {"gate": {"decision": "确认方案"}})
+    assert _decide(world).kind is Kind.WAIT
 
 
 def test_local_problems_go_back_to_coding_until_the_rounds_run_out(world: Any) -> None:
