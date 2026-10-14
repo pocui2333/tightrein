@@ -220,6 +220,7 @@
 | `assess.refute` | `fallback` | `"opus-mid"` |
 | `assess.refute` | `turns` | `30` |
 | `assess.refute` | `outputTokens` | `32000` |
+| `assess.refute` | `timeout` | `"10m"` |
 | `assess.dedup` | `model` | `"flash"` |
 | `assess.dedup` | `fallback` | `"opus-mid"` |
 | `assess.issue` | `titleMaxLength` | `80` |

@@ -469,7 +469,8 @@
       "model": "flash-high",
       "fallback": "opus-mid",
       "turns": 30,
-      "outputTokens": 32000
+      "outputTokens": 32000,
+      "timeout": "10m"
     },
     "assess.dedup": {
       "model": "flash",
