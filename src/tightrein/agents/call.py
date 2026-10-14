@@ -619,7 +619,9 @@ class _Before:
     git: list[tuple[Path, str, TreeSnapshot]]
     roots: list[Path]
     files: dict[str, FileState]
-    workdir: Path | None = None  # 可写调用的工作目录：比对主仓库时它检出的分支照常比较，别的 worktree 的向前移动不算
+    # agent 的工作目录：它检出的分支照常比较，tightrein 给别的 Issue 建的修复 worktree 的分支向前移动不算(只读调用
+    # 的快照同样看得到各 worktree 共用的分支引用，并行实施时别的 Issue 的程序在提交、合并主干)
+    workdir: Path | None = None
 
 
 def _credentials(params: CallParams, context: AgentContext) -> list[str]:
@@ -640,13 +642,13 @@ def _snapshots(params: CallParams, context: AgentContext) -> _Before:
         targets = [] if repo is None or repo.resolve() == params.workdir.resolve() else [(repo, "outside")]
         roots = _protected(params, context)
     git = [(path, kind, snapshot(path, context.runner)) for path, kind in targets if (path / ".git").exists()]
-    return _Before(git, roots, file_snapshot(roots), None if params.access is Access.READ else params.workdir)
+    return _Before(git, roots, file_snapshot(roots), params.workdir)
 
 
 def _compare(before: _Before, context: AgentContext) -> list[str]:
     violations = [f"{kind}：{path} {change}" for path, kind, snap in before.git
                   for change in compare(snap, snapshot(path, context.runner), path, context.runner,
-                                        workdir=before.workdir)]
+                                        workdir=before.workdir, parallel=context.layout.worktrees_dir)]
     if before.roots:
         after = file_snapshot(before.roots, before.files)
         violations += [f"outside：agent 不可写的 {path} 被修改" for path in changed_files(before.files, after)]

@@ -556,6 +556,44 @@ def test_uncommitted_changes_left_by_an_earlier_round_are_not_a_boundary_violati
     assert changed.violations == [f"read_only_changed：{world.workdir} 工作树的内容有变化"]
 
 
+def test_parallel_issues_moving_their_branches_during_a_read_only_call_are_not_the_agent(make_world, monkeypatch):
+    """只读调用比对自己的工作目录，也看得到各 worktree 共用的分支引用：别的 Issue 的程序在它的修复 worktree 里提交、
+    合并 main(分支向前移动)不算这个 agent 越界；人自己建的 worktree 的分支照常算。"""
+    def git(where: Path, *args: str) -> None:
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.test", "-c", "commit.gpgsign=false",
+                        "-c", "core.hooksPath=/dev/null", *args], cwd=where, check=True, capture_output=True)
+
+    def commit(where: Path) -> Callable[[Command], None]:
+        def act(command: Command) -> None:
+            (where / "a.txt").write_text(f"{where.name}\n", encoding="utf-8")
+            git(where, "commit", "-q", "-am", where.name)
+        return act
+
+    world = make_world()
+    repo = world.workdir.parent / "repo"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    (repo / "a.txt").write_text("one\n", encoding="utf-8")
+    git(repo, "add", "a.txt")
+    git(repo, "commit", "-q", "-m", "init")
+    mine, other = world.layout.worktree("0018"), world.layout.worktree("0019")
+    human = world.workdir.parent / "by-hand"
+    for path, branch in ((mine, "fix/18"), (other, "fix/19"), (human, "by-hand")):
+        git(repo, "worktree", "add", "-q", "-b", branch, str(path))
+    real = SubprocessRunner()
+    monkeypatch.setattr(agents_call, "snapshot", lambda repo, runner: security.snapshot(repo, real))
+    monkeypatch.setattr(agents_call, "compare",
+                        lambda before, after, repo, runner, **options: security.compare(before, after, repo, real,
+                                                                                         **options))
+    monkeypatch.setattr(agents_call, "credentials_present", lambda repo, runner, patterns: [])
+    world.runner.runs += [FakeRun(claude_lines(VALID), action=commit(other)),
+                          FakeRun(claude_lines(VALID), action=commit(human))]
+    assert call(world.params(workdir=mine), world.context).status is CallStatus.OK
+    changed = call(world.params(workdir=mine), world.context)
+    assert changed.status is CallStatus.BOUNDARY
+    assert changed.violations[0].startswith(f"read_only_changed：{mine} 引用 refs/heads/by-hand 从")
+
+
 def test_credentials_in_the_worktree_stop_the_call_before_it_starts(make_world, monkeypatch):
     world = make_world(FakeRun(claude_lines(VALID)))
     (world.workdir / ".git").mkdir()

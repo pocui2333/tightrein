@@ -414,30 +414,37 @@ def test_a_person_pulling_main_during_a_call_is_not_the_agent(repo, tmp_path):
 
 
 def test_parallel_issues_committing_on_their_own_branches_are_not_the_agent(repo, tmp_path):
-    """可写调用比对主仓库：别的 worktree(并行实施的别的 Issue)的分支向前移动(程序提交、合并 main)不算；
-    agent 自己 worktree 的分支、被挪到别处的分支照常算。"""
+    """tightrein 给别的 Issue 建的修复 worktree(worktrees/ 之下)的分支向前移动(程序提交、合并 main)不算：可写调用
+    比对主仓库、只读调用比对自己的工作目录都是这样。agent 自己的分支、被挪到别处的分支、worktrees/ 之外(人自己建的)
+    worktree 的分支照常算。"""
     git(repo, "branch", "-M", "main")
-    mine, other = tmp_path / "mine", tmp_path / "other"
+    parallel = tmp_path / "workspaces" / "demo" / "worktrees"
+    mine, other, human = parallel / "0001", parallel / "0002", tmp_path / "human"
     git(repo, "worktree", "add", "-q", "-b", "fix/1", str(mine))
     git(repo, "worktree", "add", "-q", "-b", "fix/2", str(other))
+    git(repo, "worktree", "add", "-q", "-b", "mine-by-hand", str(human))
     runner = SubprocessRunner()
 
-    def found(action) -> list[str]:
-        before = snapshot(repo, runner)
+    def found(action, where: Path = repo, **options) -> list[str]:
+        before = snapshot(where, runner)
         action()
-        return compare(before, snapshot(repo, runner), repo, runner, workdir=mine)
+        return compare(before, snapshot(where, runner), where, runner, **({"workdir": mine, "parallel": parallel}
+                                                                         | options))
 
     def commit(where: Path, text: str) -> None:
         (where / "a.txt").write_text(text, encoding="utf-8")
         git(where, "commit", "-q", "-am", text)
 
-    assert found(lambda: commit(other, "other\n")) == []
+    for where in (repo, mine):  # 可写调用比对主仓库；只读调用比对自己的工作目录(分支引用各 worktree 共用)
+        assert found(lambda text=f"other {where.name}\n": commit(other, text), where) == []
+        assert found(lambda text=f"by hand {where.name}\n": commit(human, text), where)[0].startswith(
+            "引用 refs/heads/mine-by-hand 从")
     assert found(lambda: commit(mine, "mine\n"))[0].startswith("引用 refs/heads/fix/1 从")
     assert found(lambda: git(other, "reset", "-q", "--hard", "main"))[0].startswith("引用 refs/heads/fix/2 从")
-    # 没给 workdir(只读调用或旧的调用方)：不放宽
-    before = snapshot(repo, runner)
-    commit(other, "again\n")
-    assert compare(before, snapshot(repo, runner), repo, runner)[0].startswith("引用 refs/heads/fix/2 从")
+    # 没给 workdir 或 parallel(旧的调用方)：不放宽
+    for options in ({"workdir": None}, {"parallel": None}):
+        assert found(lambda text=f"again {options}\n": commit(other, text), **options)[0].startswith(
+            "引用 refs/heads/fix/2 从")
 
 
 def test_commits_on_the_branch_and_branch_switches_are_told_apart(repo):
