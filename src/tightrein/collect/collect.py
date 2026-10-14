@@ -1,7 +1,8 @@
 """采集一轮(44c `run(runtime) -> CollectOutcome`)：选出到点的来源 → 并行运行 → 去重 → 交出新发现与回归的问题。
 
 - 来源：接入清单中启用(或自定义)的 collect.* 模块，按 `tightrein.<来源>.source.collect(runtime)` 动态调用，
-  新增来源只加模块与清单，不改这里；
+  新增来源只加模块与清单，不改这里；导入 GitHub 上已有的 Issue(collect.github_issues)是例外：它不是清单里的
+  模块(加进清单会让已有的 setup.json 通不过校验)，跟着 GitHub Issue 同步(release.github_issues)启用；
 - 到点：schedule.every 的间隔从 state 表记的上次时间算起；从未跑过的立即跑；错过多个时刻只补跑一次并记下错过次数；
   依赖代码或部署的来源(on_commit、on_deploy)只在仓库 HEAD 或最近一次成功部署变了时跑；
   失败的来源不记「已跑过」，下次醒来重新触发；上次时间与标记随来源的读取位置在去重的同一个事务里保存；
@@ -25,6 +26,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+from tightrein.assess.issue import github as mirror
 from tightrein.collect.common.signals import deployments, latest_release
 from tightrein.collect.common.source import SourceResult, SourceStatus, failed, guarded
 from tightrein.collect.dedup.dedup import DedupOutcome, dedup, recover
@@ -45,6 +47,7 @@ SCHEDULE_KEY = "collect.schedule:{source}"  # state 表：{"at": 上次运行时
 SOURCE_MODULE = "tightrein.{source}.source"
 ON_COMMIT, ON_DEPLOY = "on_commit", "on_deploy"
 POLL_S = 0.05  # 等待来源结束时检查超时的间隔
+GITHUB_ISSUES = "collect.github_issues"  # 不在接入清单里：跟着 release.github_issues 启用(sources)
 
 SourceFunction = Callable[["Runtime"], SourceResult]
 Loader = Callable[[str], SourceFunction]
@@ -87,8 +90,10 @@ def run(runtime: Runtime, *, only: Sequence[str] | None = None, loader: Loader |
 
 
 def sources(runtime: Runtime) -> list[str]:
-    """接入清单中启用(或自定义)的采集来源，按 MODULES 的顺序。"""
-    return [key for key in MODULES if key.startswith(f"{STAGE}.") and runtime.setup.enabled(key)]
+    """接入清单中启用(或自定义)的采集来源，按 MODULES 的顺序；导入 GitHub 上已有的 Issue(collect.github_issues)不是
+    接入清单里的模块，跟着 GitHub Issue 同步(release.github_issues)启用，排在最后。"""
+    found = [key for key in MODULES if key.startswith(f"{STAGE}.") and runtime.setup.enabled(key)]
+    return found + ([GITHUB_ISSUES] if mirror.enabled(runtime) else [])
 
 
 def disabled_sources(runtime: Runtime) -> dict[str, str]:

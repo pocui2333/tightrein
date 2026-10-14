@@ -164,6 +164,9 @@
 | `collect.alerts` | `exclude.labels.category` | `["infrastructure", "infra", "platform"]` |
 | `collect.incidental` | `points."assess.triage"` | `"commit"` |
 | `collect.incidental` | `points.implement` | `"baseCommit"` |
+| `collect.github_issues` | `sourceTimeout` | `"10m"` |
+| `collect.github_issues` | `featureLabels` | `["enhancement", "feature"]` |
+| `collect.github_issues` | `bodyChars` | `4000` |
 | `collect.api_fuzz` | `sourceTimeout` | `"45m"` |
 | `collect.api_fuzz` | `maxExamples` | `100` |
 | `collect.api_fuzz` | `phases` | `["examples", "coverage", "fuzzing"]` |
@@ -336,6 +339,7 @@
 | `release.accept` | `windows."collect.api_fuzz"` | `"24h"` |
 | `release.accept` | `windows."collect.static"` | `"0s"` |
 | `release.accept` | `windows."collect.incidental"` | `"0s"` |
+| `release.accept` | `windows."collect.github_issues"` | `"0s"` |
 | `retro.idea` | `model` | `"opus-mid"` |
 | `retro.idea` | `turns` | `1` |
 | `retro.idea` | `timeout` | `"2m"` |
@@ -454,6 +458,7 @@
 | `schedule.every."collect.api_fuzz"` | `"on_deploy"` |
 | `schedule.every."collect.static"` | `"on_commit"` |
 | `schedule.every."collect.incidental"` | `"1h"` |
+| `schedule.every."collect.github_issues"` | `"1h"` |
 | `schedule.advanceTo` | `"release"` |
 | `schedule.logs.maxBytes` | `5242880` |
 | `schedule.logs.keep` | `3` |

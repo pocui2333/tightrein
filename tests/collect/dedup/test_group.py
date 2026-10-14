@@ -126,6 +126,16 @@ def test_same_function_from_another_source_is_merged_with_both_fingerprints(make
     assert found.by_fingerprint(fingerprint(runtime_error, "NoneType")) is merged
 
 
+def test_a_reported_github_issue_is_its_own_problem_even_at_the_same_place(make_signal):
+    found = changeset()
+    error = make_signal(source="collect.platform_errors", check_type="error", location="svc.py:40", symbol=None)
+    reported = make_signal(source="collect.github_issues", check_type="report", location="svc.py:41",
+                           message="保存时报错", group_key="github-issue:12")
+    apply(found, [error, reported], {error.id: "boom", reported.id: "保存时报错"}, PARAMS)
+    assert found.created == ["P-0001", "P-0002"] and found.merged == 0
+    assert found.known["P-0002"].title == "保存时报错"
+
+
 def test_performance_and_errors_at_the_same_place_are_not_merged(make_signal):
     found = changeset()
     error = make_signal(source="collect.static", check_type="static", location="svc.py:40", symbol="query")

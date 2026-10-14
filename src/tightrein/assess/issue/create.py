@@ -8,7 +8,9 @@
 - 一个 Issue 只做一件事：粗规模档为「大」且根因分布在几个模块的，按模块拆成几个 Issue；
 - 放行：缺省待决定；关卡 boundaries.gates.issue 配为 auto 时，低风险的(没有安全、数据、权限类标记且规模为小)直接
   放行为待修；
-- 用户自己提的需求(`tightrein new`)直接是待修，没有关联问题；验收标准超过设定条数时提示拆分。
+- 用户自己提的需求(`tightrein new`)直接是待修，没有关联问题；验收标准超过设定条数时提示拆分；
+- 从 GitHub 上已有的 Issue 导入的(remote.py)：需求同样直接是待修(关联导入它的问题)，缺陷报告照常取证后新建；两者
+  都接手原来的 GitHub 编号(镜像记成它，同步不再新建)，追加到已有 Issue 的不接手(评估之后在 GitHub 上关成重复)。
 编号用 sequences 的 issue 序列与 naming.issue_id；正文写 00-issue-body.md，记录写 00-issue-record.json 与 issues 表。
 """
 
@@ -24,7 +26,7 @@ from tightrein.assess import notes as code_notes
 from tightrein.assess import persist
 from tightrein.assess.checks import IN_TEXT, Snapshot, complete
 from tightrein.assess.claims import Claim, signal_evidence
-from tightrein.assess.issue import body, files, github
+from tightrein.assess.issue import body, files, github, remote
 from tightrein.assess.issue.transitions import (
     APPROVED_AT,
     CLOSED,
@@ -146,9 +148,12 @@ def from_problem(runtime: Runtime, finding: Finding, snapshot: Snapshot, made: C
         return made
     created = made
     groups = split_groups(causes) if finding.size == "large" else [causes]
+    imported = remote.of_problem(runtime, finding.problem.id)
     for index, group in enumerate(groups):
         part = finding if len(groups) == 1 else replace(finding, output=_subset(finding.output, group))
         record, text = _new_record(runtime, part, len(groups) > 1)
+        if index == 0 and imported is not None:  # 接手 GitHub 上已有的 Issue：同步时不再新建
+            record.extra[github.MIRROR] = remote.mirror(imported)
         created.remember(runtime.workspace, record.id)
         created.auto_approved = record.status == IssueStatus.TODO
         files.write(runtime, record, body=text)
@@ -256,6 +261,31 @@ def new_issue(runtime: Runtime, description: str, *, severity: str | None, kind:
               "failures": []})
     github.sync(runtime, record)
     return identifier
+
+
+def from_request(runtime: Runtime, problem: Problem, imported: remote.Remote, made: Created) -> Created:
+    """GitHub 上带需求标签的 Issue(collect.github_issues 导入)：不取证，直接写成待修的用户需求，关联导入它的问题；
+    镜像记成那个 GitHub 编号，同步时不再新建。调用方负责事务，回滚时调用 undo(made)。"""
+    section = runtime.settings.section(POINT)
+    number = sequences.next_value(runtime.conn, sequences.ISSUE)
+    identifier = issue_id(number)
+    title = (imported.title.strip() or problem.title)[: int(section["titleMaxLength"])]
+    record = Issue(id=identifier, status=IssueStatus.TODO, title=title, kind="feature", origin=USER, severity=None,
+                   extra={"slug": normalize(title, int(section["slugMaxLength"])) or f"issue-{imported.number}",
+                          PROBLEMS: [problem.id], "splitHint": None, "source": problem.source,
+                          APPROVED_AT: format_iso(runtime.clock.now()), github.MIRROR: remote.mirror(imported),
+                          HISTORY: [_entry(runtime, "create", f"由问题 {problem.id} 导入的需求，创建即为待修")]})
+    made.remember(runtime.workspace, identifier)
+    files.write(runtime, record, body=body.render_manual(identifier, title, imported.body.strip() or title,
+                                                          runtime.language))
+    made.issues.append(identifier)
+    return made
+
+
+def write_request_handoff(runtime: Runtime, problem: str, made: Created) -> None:
+    _handoff(runtime, made.issues[0], Status.PASSED, f"导入需求 Issue {made.issues[0]}",
+             {"issues": list(made.issues), "problems": [problem], "appended": None, "autoApproved": False,
+              "splitHint": None, "failures": []})
 
 
 def split_back(runtime: Runtime, issue: str, parts: Sequence[str]) -> list[str]:

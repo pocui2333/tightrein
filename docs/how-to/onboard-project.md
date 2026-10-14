@@ -35,7 +35,7 @@
 | `implement.check.runtime` | 要在本机启动服务查改动涉及的接口与页面时 `custom` | `script`：项目的启动脚本(输出 `launch.schema.json` 格式的启动计划)；端口等在 `controls."implement.check.runtime"` | `src/tightrein/implement/check/runtime/README.md` |
 | `release.deploy` | 有部署记录可读时 `enabled`，`method` 为 `github_actions`、`github_deployments` 或 `vercel`(方法库 `src/tightrein/release/deploy_source/`) | 参数在 `controls."release.deploy".<方法>`，按同名清单校验；Vercel 的令牌写在 secrets.json 的 `vercel.token`；不启用时合并后按 `assumeDeployedAfter` 视为已部署 | `src/tightrein/release/deploy_source/README.md` |
 | `release.accept` | 要在部署后观察回归时 `enabled`(只能 enabled 或 disabled) | 各来源的观察期在 `controls."release.accept".windows`；不启用时合并并部署即完成，不观察 | `src/tightrein/release/README.md` |
-| `release.github_issues` | 要把 Issue 镜像到 GitHub 时 `enabled`(只能 enabled 或 disabled) | 镜像只看这一项(origin 还要是 GitHub 仓库)；标签前缀在 `controls."assess.issue".github.labelPrefix` | `src/tightrein/assess/issue/README.md` |
+| `release.github_issues` | 要把 Issue 镜像到 GitHub 时 `enabled`(只能 enabled 或 disabled) | 镜像只看这一项(origin 还要是 GitHub 仓库)；启用后也导入仓库里别人提的、打开着的 Issue(`collect.github_issues`，见 `src/tightrein/collect/github_issues/README.md`)；标签前缀在 `controls."assess.issue".github.labelPrefix` | `src/tightrein/assess/issue/README.md` |
 
 每个方法要哪些参数，见 [平台方法](../reference/methods.md)。
 

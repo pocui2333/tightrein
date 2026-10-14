@@ -77,13 +77,20 @@ class FakeGh:
         return [{"name": name} for name in sorted(self.labels)]
 
     def _issue_list(self, argv, stdin):
+        state = _value(argv, "--state")
         return [{"number": number, "url": ISSUE_URL.format(number=number), "body": issue["body"],
-                 "state": issue["state"].upper(), "stateReason": ""} for number, issue in self.issues.items()]
+                 "title": issue.get("title", ""), "labels": [{"name": name} for name in issue["labels"]],
+                 "createdAt": issue.get("createdAt"), "state": issue["state"].upper(), "stateReason": ""}
+                for number, issue in self.issues.items() if state == "all" or issue["state"] == state]
 
     def _issue_create(self, argv, stdin):
         number = len(self.issues) + 1
         self.issues[number] = {"body": stdin, "state": "open", "labels": []}
         return f"Creating issue in {SLUG}\n\n{ISSUE_URL.format(number=number)}\n"
+
+    def _issue_comment(self, argv, stdin):
+        self.issues[int(argv[3])].setdefault("comments", []).append(stdin)
+        return ISSUE_URL.format(number=int(argv[3])) + "#c\n"
 
     def _issue_edit(self, argv, stdin):
         return ISSUE_URL.format(number=int(argv[3])) + "\n"
@@ -250,6 +257,34 @@ def test_an_interrupted_issue_create_is_recovered_by_the_marker(gh, scope, inter
     fake.issues[2] = {"body": f"正文\n\n{again.marker}\n", "state": "open", "labels": []}
     assert client.issue_create(again, scope=scope).number == 2
     assert len(fake.issues) == 2
+
+
+def test_open_issues_list_only_open_ones_with_labels_and_creation_time(gh):
+    client, fake, _ = gh
+    fake.issues = {
+        12: {"title": "导出报错", "body": "点导出就 500", "state": "open", "labels": ["bug"],
+             "createdAt": "2026-10-01T02:00:00Z"},
+        3: {"title": "加个暗色模式", "body": "", "state": "open", "labels": ["enhancement", "ui"], "createdAt": None},
+        5: {"title": "旧的", "body": "", "state": "closed", "labels": []},
+    }
+    found = client.open_issues()
+    assert [(item.number, item.title, item.labels) for item in found] == [
+        (3, "加个暗色模式", ("enhancement", "ui")), (12, "导出报错", ("bug",))]
+    assert found[1].url == ISSUE_URL.format(number=12) and found[1].body == "点导出就 500"
+    assert found[1].created_at is not None and found[1].created_at.isoformat() == "2026-10-01T02:00:00+00:00"
+    assert found[0].created_at is None
+    argv = fake.commands[-1].argv
+    assert argv[argv.index("--state") + 1] == "open" and argv[-2:] == ("--repo", SLUG)
+
+
+def test_issue_comments_are_posted_once(gh, scope):
+    client, fake, _ = gh
+    fake.issues[7] = {"body": "", "state": "open", "labels": [], "comments": []}
+    client.issue_comment(7, "和 #3 是同一个问题，在那边一起处理。", scope=scope)
+    client.issue_comment(7, "和 #3 是同一个问题，在那边一起处理。", scope=scope)
+    assert fake.issues[7]["comments"] == ["和 #3 是同一个问题，在那边一起处理。"]
+    argv = fake.commands[-1].argv
+    assert argv[1:4] == ("issue", "comment", "7") and argv[argv.index("--body-file") + 1] == "-"
 
 
 def test_only_labels_that_exist_in_the_repository_are_removed(gh, scope):

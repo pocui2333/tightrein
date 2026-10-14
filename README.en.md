@@ -28,7 +28,7 @@ Five stages:
 
 | Stage | Name in commands | What it does |
 |---|---|---|
-| Collect | `collect` | Gathers leads (signals) from seven sources, then deduplicates them into problems (new or regressed) |
+| Collect | `collect` | Gathers leads (signals) from eight sources, then deduplicates them into problems (new or regressed) |
 | Assess | `assess` | Decides whether a problem is real, sets severity (P0 to P3) and treatment; files the ones to fix as issues awaiting dispatch |
 | Implement | `implement` | Changes code in a worktree, self-checks, reviews, and hands over to release |
 | Release | `release` | Commits, syncs main, opens the PR, waits for CI, merges, tracks the deployment, accepts, cleans up |

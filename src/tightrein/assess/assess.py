@@ -7,7 +7,9 @@
 - 互不相关的问题并行评估(位置或文件相同的同组按顺序，见 select.related_groups)，并行数取
   resources.concurrency.modelCalls；每个并行的问题用自己的数据库连接；
 - 用户改判(override)沿用上一次的取证 commit，不调用模型；把「不成立」改判为成立时，上一次结论的实际结果回填为
-  「误判为不成立」；重新评估(retriage)时用户补充的信息跨次累积。
+  「误判为不成立」；重新评估(retriage)时用户补充的信息跨次累积；
+- GitHub 上已有的 Issue(collect.github_issues 导入的问题)：需求查重之后不取证，直接写成待修的用户需求；写成 Issue
+  时接手原编号；事务提交之后按去向在 GitHub 上回应(issue/remote.py)，GitHub 出错只记下，不让评估失败。
 """
 
 from __future__ import annotations
@@ -41,7 +43,7 @@ from tightrein.assess.cases import Case
 from tightrein.assess.checks import Snapshot
 from tightrein.assess.disposition import Decision, Destination
 from tightrein.assess.evidence import Evidence
-from tightrein.assess.issue import create, github
+from tightrein.assess.issue import create, github, remote
 from tightrein.assess.prompts.claim_verifier import CONFIRM, REFUTE, TRIAGE, Inputs
 from tightrein.assess.prompts.common import Tally
 from tightrein.assess.rating import Rating
@@ -74,6 +76,8 @@ MARKER = "readonly-assess.json"
 HANDOFF_SCHEMA = Path(__file__).with_name("handoff.schema.json")
 LOCKED = "正被其他运行处理"
 RESERVE = "额度已到给用户留的余量，留到下一次"
+CONFIRMED = "confirmed"
+REQUEST_REASON = "GitHub 上提的需求：查重之后不取证，直接写成待修的 Issue"
 new_issue = create.new_issue  # 44c 的评估入口之一(tightrein new)：用户自己提的需求直接写成待修的 Issue
 
 
@@ -285,6 +289,7 @@ def _one(runtime: Runtime, problem: Problem, git: Git, commit: str) -> AssessOut
     started = time.monotonic()
     try:
         outcome, work = _examine(runtime, problem, git, commit)
+        _respond(runtime, work, outcome)
         runtime.agents.breaker.object_progressed(problem.id)
         _write_handoff(runtime, problem.id, outcome, _facts(work, outcome, commit), work.tally,
                        _elapsed(started), work)
@@ -325,6 +330,9 @@ def _examine(runtime: Runtime, problem: Problem, git: Git, commit: str) -> tuple
         if found_dedup.target is not None and found_dedup.target != problem.id:
             work.merged_into = found_dedup.target
             return _finish_merge(runtime, work), work
+    imported = remote.of(found)
+    if imported is not None and imported.request and problem.issue is None:
+        return _request(runtime, work, imported, commit), work
     _judge(runtime, work, snapshot, commit, git)
     _decide(runtime, work)
     return _commit(runtime, work, snapshot, commit), work
@@ -484,6 +492,55 @@ def _finish_merge(runtime: Runtime, work: Work) -> AssessOutcome:
         persist.merge(runtime, work.problem, target, reason)
     return AssessOutcome(work.problem.id, "merged", None, "wont_fix", None, Status.PASSED,
                          Destination.MERGED.value, merged_into=target, reason=reason)
+
+
+def _request(runtime: Runtime, work: Work, imported: remote.Remote, commit: str) -> AssessOutcome:
+    """GitHub 上带需求标签的 Issue：查重之后不取证，直接写成待修的用户需求并接手原编号(一个事务)。"""
+    problem = work.problem
+    record = select.assessed(problem)
+    reason = REQUEST_REASON
+    work.decision = Decision(Destination.ISSUE, "fix_later")
+    assess_record: dict[str, Any] = {
+        "attempt": int(record.get("attempt", 0)) + 1, "at": format_iso(runtime.clock.now()), "run": runtime.run,
+        "commit": commit, "case": work.case.value, "verdict": CONFIRMED, "refuterVerdict": None,
+        "severity": None, "size": None, "taskType": "feature", "impactKind": None, "treatment": "fix_later",
+        "destination": Destination.ISSUE.value, "disposition": "fix_later", "reason": reason, "rootCauses": [],
+        "insufficient": 0, "manual": False, "retriage": False, "outcome": None, "request": True,
+        "previous": [*record.get("previous", []), *([_brief(record)] if record.get("verdict") else [])],
+        "userNotes": record.get("userNotes", [])}
+    made = create.Created()
+    try:
+        with persist.restoring(runtime, [problem.id]), transaction(runtime.conn):
+            create.from_request(runtime, problem, imported, made)
+            persist.update(runtime, problem, status="ongoing", assess={**assess_record, "issues": made.issues},
+                           issue=made.issues[0])
+    except BaseException:
+        create.undo(made)
+        raise
+    create.write_request_handoff(runtime, problem.id, made)
+    _after_issue(runtime, made)
+    return AssessOutcome(problem.id, CONFIRMED, None, "fix_later", made.issues[0], Status.PASSED,
+                         Destination.ISSUE.value, issues=made.issues, reason=reason)
+
+
+def _respond(runtime: Runtime, work: Work, outcome: AssessOutcome) -> None:
+    """导入的 GitHub Issue 在事务提交之后按去向回应(remote.respond)；GitHub 出错只记进评估记录与交接说明，评估照常。"""
+    imported = remote.of(work.found)
+    if imported is None:
+        return
+    output = (work.evidence.output if work.evidence else None) or {}
+    try:
+        done = remote.respond(runtime, work.problem.id, imported, destination=outcome.destination,
+                              issue_ids=outcome.issues, merged_into=outcome.merged_into, output=output)
+    except GitError as error:
+        done = {"number": imported.number, "error": str(error)}
+        work.notes.append(f"GitHub #{imported.number} 没有回应成功，留着打开：{error}")
+    if done is None:
+        return
+    found = problems.get(runtime.conn, work.problem.id)
+    if found is not None:
+        with persist.restoring(runtime, [found.id]), transaction(runtime.conn):
+            persist.update(runtime, found, assess={"github": done})
 
 
 def _after_issue(runtime: Runtime, made: create.Created) -> None:

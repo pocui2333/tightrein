@@ -13,6 +13,7 @@
 5. **放行**：缺省待决定(写 `90-issue-pending.md`)；`boundaries.gates.issue` 为 `auto…` 且低风险(没有安全、数据、权限类标记且规模为小)时直接待修。
 6. **检查**：建好后查必需小节、正文中的位置真实、日期为绝对日期；不过就保留文件、交接为 failed。
 7. **GitHub**(`github.py`)：只在新建、放行、关闭、重开时同步；是否启用只看接入清单 `release.github_issues`(enabled，且 origin 是 GitHub 仓库)。
+8. **接手 GitHub 上已有的 Issue**(`remote.py`)：采集 `collect.github_issues` 导入的问题写成 Issue 时，镜像直接记成原编号，不另建；需求不取证直接写成待修(`create.from_request`)；评估之后按去向在 GitHub 上回应(重复、不成立、不修的留一句话关掉，主干上已修的以 completed 关掉)，话像开发者自己写的，不写本地编号。
 
 ## 输入与输出
 
