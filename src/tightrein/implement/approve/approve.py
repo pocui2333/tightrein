@@ -5,7 +5,8 @@
   删除文件，风险判定不是高风险，预估在 boundaries.autoApprove 门槛内，前端设计说明与方案没有冲突；不满足时列出
   全部原因停在关卡，同一份方案的原因只记一次事件；
 - 用户的决定由命令行经 `record` 写进 Issue(来源、时间、原文)，之后每次方案与编码都带上；approve 即通过，
-  reject 必带原因，交接为退回(returned，不是失败)，implement.py 按原因重出方案(上限 controls.implement.design.rounds)。
+  reject 必带原因，交接为退回(returned，不是失败)，implement.py 按原因重出方案(上限 controls.implement.design.rounds)；
+  重出已到上限时不会再自动重出、要停下等用户处理，这次否决的交接为没通过(failed，reason 为 replans_exceeded)。
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ from dataclasses import asdict, replace
 from typing import TYPE_CHECKING, Any
 
 from tightrein.assess.issue import files as issue_files
-from tightrein.implement.context import DECISIONS, Decision
+from tightrein.implement.context import DECISIONS, REPLANS_EXCEEDED, Decision, replans
 from tightrein.protocol.boundaries import gate_is_auto, gate_is_auto_all
 from tightrein.protocol.handoff import Handoff, Metrics, Status
 from tightrein.settings.load import Settings
@@ -117,8 +118,13 @@ def record(runtime: Runtime, issue_id: str, decision: Decision) -> None:
 def _decided(runtime: Runtime, context: ImplementContext, plan_hash: str, decided: Decision) -> Handoff:
     note = decided.note
     if decided.verdict == REJECT:
-        return _handoff(runtime, context, Status.RETURNED, f"用户否决了方案：{note or '没有说明'}",
-                        {"planHash": plan_hash, "auto": False, "rejected": True, "note": note})
+        facts: dict[str, Any] = {"planHash": plan_hash, "auto": False, "rejected": True, "note": note}
+        summary = f"用户否决了方案：{note or '没有说明'}"
+        used, limit = replans(context, runtime.settings)
+        if used >= limit:  # 与 implement.py 重出的上限同一处：不再自动重出，停下等用户处理，是真没通过
+            return _handoff(runtime, context, Status.FAILED, f"{summary}；方案已重出 {used} 次，到了上限，不再自动重出",
+                            facts | {"reason": REPLANS_EXCEEDED})
+        return _handoff(runtime, context, Status.RETURNED, summary, facts)
     return _handoff(runtime, context, Status.PASSED, "用户已确认方案",
                     {"planHash": plan_hash, "auto": False, "approvedBy": "user", "note": note,
                      "option": decided.option})

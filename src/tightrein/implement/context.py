@@ -23,6 +23,7 @@ from tightrein.store.tables.issues import Issue
 
 if TYPE_CHECKING:
     from tightrein.protocol.runtime import Runtime
+    from tightrein.settings.load import Settings
 
 STEPS = (
     "implement.prepare",
@@ -85,6 +86,7 @@ CODE = "implement.code"
 DELIVER = "implement.deliver"
 RELEASE_PR = "release.pr"  # 发布的提交、同步、推送、提 PR 记在这一步；退回实施也由它记
 BACK_TO = "backTo"  # 交接中「退回到哪一步」的键(交付回到自检或审查、发布退回编码或自检)
+REPLANS_EXCEEDED = "replans_exceeded"  # 重出方案到了上限：implement.py 停下的代码，也是定案否决没通过时交接的 reason
 
 
 def load(runtime: Runtime, issue: str) -> ImplementContext:
@@ -128,6 +130,14 @@ def load(runtime: Runtime, issue: str) -> ImplementContext:
         risk=_risk(design),
         returned=returned,
     )
+
+
+def replans(context: ImplementContext, settings: Settings) -> tuple[int, int]:
+    """(方案已重出的次数, 上限 controls.implement.design.rounds)：用户否决与编码发现的方案缺口共用这一上限，已重出的
+    次数取当前方案的版本减一。implement.py 据此决定重出还是停下；定案据此决定用户的否决是退回重出还是没通过停下。"""
+    design = context.last(DESIGN)
+    used = int(design.facts.get("version", 1)) - 1 if design is not None else 0
+    return used, int(settings.control(DESIGN, "rounds"))
 
 
 def _decisions(record: Issue, latest: dict[str, Handoff]) -> list[Decision]:

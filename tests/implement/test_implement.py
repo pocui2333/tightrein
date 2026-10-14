@@ -12,11 +12,13 @@ import pytest
 
 from tightrein.assess.issue.transitions import IssueStatus, approve
 from tightrein.implement import implement
-from tightrein.implement.context import DECISIONS, load
+from tightrein.implement.approve.approve import record
+from tightrein.implement.context import DECISIONS, Decision, load
 from tightrein.implement.implement import Kind
 from tightrein.protocol import recovery
 from tightrein.protocol.handoff import Handoff, Status, read, write
 from tightrein.protocol.naming import FileName, format_iso
+from tightrein.retro.detect import Thresholds, detect, gather
 from tightrein.store.tables import issues
 
 ISSUE = "0018"
@@ -322,6 +324,47 @@ def test_a_rejection_goes_back_to_the_plan_without_stopping(world: Any, steps: S
     record = issues.get(world.runtime.conn, ISSUE)
     assert record is not None and record.status == IssueStatus.IMPLEMENTING and record.step == DESIGN
     assert implement.implement(world.runtime, ISSUE).point == DESIGN and steps.ran[-2:] == [APPROVE, DESIGN]
+
+
+def test_rejections_replan_until_the_limit_and_then_stop_as_a_real_failure(world: Any, steps: Steps,
+                                                                          monkeypatch: pytest.MonkeyPatch) -> None:
+    """用户在定案带原因否决：第一次退回重出方案，复盘不记 step-failed；重出已到上限(controls.implement.design.rounds
+    为 1)后再否决：定案交接为没通过、Issue 停下等用户处理，复盘照记 step-failed(这次真停下不能从复盘里消失)。"""
+    monkeypatch.setitem(implement.RUNNERS, APPROVE, "tightrein.implement.approve.approve")  # 定案用真的
+    for version in (1, 2):  # 方案含迁移：定案停在关卡等用户
+        steps.plan(DESIGN, Status.PASSED, {"version": version, "planHash": str(version) * 64,
+                                           "migration": {"entries": ["001"]}})
+
+    def reject(note: str) -> implement.StepOutcome:
+        world.clock.advance(timedelta(minutes=1))
+        record(world.runtime, ISSUE, Decision(APPROVE, "reject", None, note, format_iso(world.clock.now())))
+        return implement.implement(world.runtime, ISSUE)
+
+    def failed_steps() -> list[tuple[str | None, str]]:
+        data = gather(world.runtime.workspace, world.runtime.conn, RUN, cache_read_weight=0.1)
+        found = detect(data, Thresholds.from_settings(world.runtime.settings), blamed=set()).findings
+        return [(item.subject, item.point) for item in found if item.phenomenon == "step-failed"]
+
+    def approval() -> Handoff:
+        return read(world.runtime.workspace.step_file(ISSUE, FileName(APPROVE, "handoff", "json")))
+
+    for _ in range(4):
+        outcome = implement.implement(world.runtime, ISSUE)
+    assert (outcome.point, outcome.status) == (APPROVE, Status.PENDING)
+    outcome = reject("不要改接口")
+    assert (outcome.status, outcome.next_point) == (Status.PASSED, DESIGN) and approval().status is Status.RETURNED
+    assert failed_steps() == []
+    for _ in range(2):  # 第 2 版方案，定案再停在关卡
+        outcome = implement.implement(world.runtime, ISSUE)
+    assert (outcome.point, outcome.status) == (APPROVE, Status.PENDING)
+    outcome = reject("还是不要改接口")
+    assert (outcome.point, outcome.status) == (APPROVE, Status.FAILED)
+    assert (approval().status, approval().facts["reason"]) == (Status.FAILED, "replans_exceeded")
+    found = issues.get(world.runtime.conn, ISSUE)
+    assert found is not None and found.status == IssueStatus.NEEDS_DECISION and found.step == APPROVE
+    failure = world.runtime.workspace.human_document(ISSUE, "failure").read_text(encoding="utf-8")
+    assert failure.count("方案已重出 1 次") == 1 and "还是不要改接口" in failure
+    assert failed_steps() == [(ISSUE, APPROVE)]
 
 
 def test_a_gate_writes_the_pending_document(world: Any, steps: Steps) -> None:

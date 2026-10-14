@@ -16,6 +16,7 @@ handoff.json 与用户的决定接着做，没做完的那一步整个丢掉，w
 | 方案 | 退回 | 一个 PR 放不下：退回评估拆分(SPLIT_BACK)；要等别的 Issue 先合入：前置还没落地就退回待修(BLOCK)，都落地了从准备重新做起 |
 | 方案 | 没通过 | 停下 |
 | 定案 | 退回(用户否决) | 按原因重出方案，上限 controls.implement.design.rounds |
+| 定案 | 没通过(用户否决时重出已到上限) | 停下 |
 | 停下之后 | 用户给了新决定 | approve：编码类的接着开一轮，其余重做那一步；reject：重出方案 |
 
 回归或重开后的又一次修复从准备开始：开始前把上一次尝试的交接挪进 `attempt_<次>/`(assess/issue/attempts)。
@@ -38,7 +39,7 @@ from tightrein.assess.issue.stages import IMPLEMENT, stage_for
 from tightrein.assess.issue.transitions import IssueEvent, IssueStatus, apply_event
 from tightrein.implement.check.findings import DESIGN as DESIGN_ISSUE
 from tightrein.implement.check.findings import NEEDS_USER, PLAN_GAP, Finding, first_category, from_facts, keys
-from tightrein.implement.context import BACK_TO, STEPS, Decision, ImplementContext, load
+from tightrein.implement.context import BACK_TO, REPLANS_EXCEEDED, STEPS, Decision, ImplementContext, load, replans
 from tightrein.implement.prepare import workspace
 from tightrein.protocol import documents, recovery
 from tightrein.protocol.boundaries import gate_is_auto_all
@@ -293,12 +294,12 @@ def _prerequisites(runtime: Runtime, last: Handoff) -> Next:
 
 def _replan(runtime: Runtime, context: ImplementContext, last: Handoff, why: str) -> Next:
     """重出方案(复用上次通过的定位结论)；超过 controls.implement.design.rounds 就停下。"""
-    design = context.last(DESIGN)
-    used = int(design.facts.get("version", 1)) - 1 if design is not None else 0
-    limit = int(runtime.settings.control(DESIGN, "rounds"))
+    used, limit = replans(context, runtime.settings)
     if used >= limit:
-        return _stop(last, code="replans_exceeded", reason=f"{why}，方案已重出 {used} 次：{last.summary}",
-                     advice="补充说明后接着做，或缩小 Issue 范围")
+        # 定案已按同一上限把这次否决记为没通过，结论里写了重出的次数(approve.py)
+        reason = (last.summary if last.facts.get("reason") == REPLANS_EXCEEDED
+                  else f"{why}，方案已重出 {used} 次：{last.summary}")
+        return _stop(last, code=REPLANS_EXCEEDED, reason=reason, advice="补充说明后接着做，或缩小 Issue 范围")
     return Next(Kind.RUN, DESIGN)
 
 

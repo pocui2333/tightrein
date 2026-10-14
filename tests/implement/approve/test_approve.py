@@ -102,6 +102,20 @@ def test_the_users_decision_is_bound_to_the_plan_hash(world: Any) -> None:
     assert result.summary == "用户否决了方案：不要改接口"
 
 
+def test_a_rejection_once_replans_are_used_up_is_a_real_failure(world: Any) -> None:
+    """重出方案已到上限(controls.implement.design.rounds 为 1，第 2 版方案)时的否决：不会再自动重出、要停下等用户处理，
+    交接为没通过(复盘照记 step-failed)，不是退回。"""
+    design = _design(world, version=2, migration={"entries": ["001"]})
+    waiting = world.handoff(approve.POINT, {"planHash": "a" * 64, "auto": False}, Status.PENDING)
+    world.clock.advance(timedelta(minutes=5))
+    rejected = Decision(approve.POINT, "reject", None, "还是不要改接口", format_iso(world.clock.now()))
+    context = world.context(latest={DESIGN: design, approve.POINT: waiting}, decisions=[rejected])
+    result = approve.run(world.runtime, context)
+    assert result.status is Status.FAILED and result.facts["reason"] == "replans_exceeded"
+    assert result.facts["rejected"] and result.facts["note"] == "还是不要改接口"
+    assert result.summary == "用户否决了方案：还是不要改接口；方案已重出 1 次，到了上限，不再自动重出"
+
+
 def test_coding_checks_the_confirmed_plan(world: Any) -> None:
     design = _design(world)
     passed = world.handoff(approve.POINT, {"planHash": "a" * 64, "auto": True})

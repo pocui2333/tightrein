@@ -50,6 +50,7 @@
 | 方案 | 退回(`returned`) | `oversize` 退回评估；`blocked` 前置还没落地就退回待修，都落地了从准备重新做起 |
 | 方案 | 没通过 | 停下 |
 | 定案 | 退回(`returned`，用户否决) | 按原因重出方案，上限 `controls.implement.design.rounds`(1) |
+| 定案 | 没通过(用户否决时重出已到上限，`reason: replans_exceeded`) | 停下 |
 | 交付 | 没通过 | 交接写了 `backTo`(自检或审查之后又有改动)回到那一步重做一次；其余停下 |
 | 停下之后 | 用户给了新决定 | `approve`：编码类的接着开一轮，其余重做那一步；`reject`：重出方案 |
 
