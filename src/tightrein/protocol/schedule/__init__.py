@@ -587,9 +587,10 @@ def _plan(runtime: Runtime, stages: list[str], subject: str | None, trigger: str
                     "perRun"])]]
             planned += [Planned(name, problem, "待评估") for problem in found]
         elif name == "implement":
-            issue = _issue_to_implement(runtime, subject)
-            if issue is not None:
-                planned.append(Planned(name, issue.id, issue.status))
+            found_issue = _issue_to_implement(runtime, subject) if subject is not None else None
+            chosen = ([found_issue] if found_issue is not None else []) if subject is not None else \
+                _issues_to_implement(runtime, int(runtime.settings.get("resources.concurrency.sessions")))
+            planned += [Planned(name, issue.id, issue.status) for issue in chosen]
         elif name == "release":
             planned += [Planned(name, item.id, item.status) for status in FOR_RELEASE
                         for item in issues.find(runtime.conn, status=status)
