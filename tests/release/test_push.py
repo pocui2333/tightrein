@@ -1,11 +1,14 @@
 """推送：origin/main 有新提交时先同步不推送；待推送的提交以 origin/<分支>(首次为 origin/main)为基准列出；
-没有要推送的不推。"""
+没有要推送的不推；分支保护被拒时写明要人处理，不说成要同步。"""
 
 import pytest
 
 from tightrein.protocol.git import Stale
+from tightrein.protocol.process import Outcome
 from tightrein.release.push import DECISION_KEYS, push
 from tightrein.release.record import ReleaseBlocked
+
+PUSH = ("git", "-c", "http.lowSpeedLimit=1000", "-c", "http.lowSpeedTime=60", "push")
 
 
 def test_the_first_push_lists_commits_since_main(kit, runtime, repos, worktree):
@@ -42,3 +45,16 @@ def test_the_push_rechecks_the_state_seen_when_deciding(kit, runtime, repos, wor
     assert set(seen[0]) == set(DECISION_KEYS) == {"branch", "head", "originMain"}
     assert repos.git(repos.origin, "branch", "--list", kit.BRANCH).strip() == ""  # 没有推送
     assert push(runtime, "0007", kit.BRANCH, git).commit == repos.head(worktree)
+
+
+def test_a_protected_branch_needs_a_person_rather_than_a_sync(kit, runtime, repos, worktree):
+    repos.commit(worktree, "fix: page", {"src/order.py": "PAGE = 0\n"})
+    ref = f"refs/heads/{kit.BRANCH}"
+    runtime.runner.replies[PUSH] = [Outcome(
+        1, f"To https://github.com/o/r.git\n!\t{ref}:{ref}\t[remote rejected] (protected branch hook declined)\nDone\n",
+        f"remote: error: GH006: Protected branch update failed for {ref}.        \n"
+        "error: failed to push some refs to 'https://github.com/o/r.git'\n", 1, None, None)]
+    with pytest.raises(ReleaseBlocked) as caught:
+        push(runtime, "0007", kit.BRANCH, runtime.git.at(worktree))
+    reason = caught.value.reason
+    assert "(protected branch hook declined)" in reason and "需要人处理" in reason and "先同步" not in reason

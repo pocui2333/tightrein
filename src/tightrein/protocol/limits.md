@@ -36,7 +36,7 @@
 
 ## 重试与退避
 
-只在一层重试，不层层叠加：模型调用在 `agents/call.py`，只读的 git、gh 命令在 `protocol/git/`；等待时间都取 `backoff_s`。
+只在一层重试，不层层叠加：模型调用在 `agents/call.py`，只读的 git、gh 命令与推送遇到的临时错误在 `protocol/git/`；等待时间都取 `backoff_s`。
 
 **在哪配置**：`limits.retry`。
 

@@ -4,7 +4,7 @@
 同步干净、推送成功后退回次数清零；推送前要推送的改动与交付时审查过的不同(人自己提交了合并、交付之后另有提交)时退回自检与
 审查，合并的 main 只改了别的文件时照常推送；
 验收通过转为完成、写交付文档并清理本地；回归时先提撤销 PR(只提一次)、清理修复目录，再退回待修并开下一次修复尝试；不在发布中的不碰；前置条件过期时
-留在发布中、下次重新观察；接入清单不启用验收时部署即完成、不观察。"""
+留在发布中、下次重新观察；推送一直遇到服务器错误时留在发布中、下次再推送；接入清单不启用验收时部署即完成、不观察。"""
 
 import json
 from datetime import timedelta
@@ -22,6 +22,8 @@ from tightrein.release.accept.revert import Reverted
 from tightrein.release.record import load_state
 from tightrein.release.release import release
 from tightrein.store.tables import issues, occurrences, problems
+
+PUSH = ("git", "-c", "http.lowSpeedLimit=1000", "-c", "http.lowSpeedTime=60", "push")
 
 
 def _ready(kit, runtime, repos, worktree, **extra):
@@ -385,3 +387,27 @@ def test_a_stale_decision_waits_for_the_next_run(kit, github_runtime, fake_githu
     assert "前置条件已变化" in outcome.summary and "下次运行重新观察" in outcome.summary
     assert issues.get(github_runtime.conn, "0007").status == "releasing"  # 不转为待决定
     assert documents_written == [] and simple_transitions == []
+
+
+def test_a_push_that_keeps_meeting_server_errors_waits_for_the_next_run(kit, github_runtime, fake_github, repos,
+                                                                        worktree, documents_written,
+                                                                        simple_transitions):
+    """GitHub 偶发 `[remote rejected] (Internal Server Error)`：退避重试几次仍失败也不转为待决定(不是要同步 main)，
+    记事件、留在发布中，下次运行再推送。"""
+    _ready(kit, github_runtime, repos, worktree)
+    ref = f"refs/heads/{kit.BRANCH}"
+    fake_github.runner.replies[PUSH] = [Outcome(
+        1, f"To https://github.com/o/r.git\n!\t{ref}:{ref}\t[remote rejected] (Internal Server Error)\nDone\n",
+        "remote: Internal Server Error        \nremote: Request ID F164:237968:143DD4:205B2B:6ACFACA0        \n"
+        "remote: Time 2026-10-14T16:24:03Z\nerror: failed to push some refs to 'https://github.com/o/r.git'\n",
+        1, None, None)]
+    outcome = release(github_runtime, "0007")
+    assert (outcome.status, outcome.next_point) == (Status.PASSED, "release.pr")
+    assert "临时错误，共试 3 次仍失败" in outcome.summary and "下次运行再推送" in outcome.summary
+    assert "同步" not in outcome.summary
+    assert sum(command.argv[:len(PUSH)] == PUSH for command in fake_github.runner.commands) == 3
+    assert issues.get(github_runtime.conn, "0007").status == "releasing"  # 不转为待决定
+    assert documents_written == [] and simple_transitions == [] and fake_github.calls == []
+    del fake_github.runner.replies[PUSH]  # 服务器恢复：下次运行照常推送并走完
+    assert release(github_runtime, "0007").next_point == "release.deploy"
+    assert issues.get(github_runtime.conn, "0007").status == "accepting"

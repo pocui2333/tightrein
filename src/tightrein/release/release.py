@@ -12,7 +12,9 @@
   撤销 PR，再退回待修；接入清单不启用 release.accept 时部署完成即完成，不观察；
 - 停下要人处理的(退回编码次数用完后的冲突、检查未通过、交付与工作区不符、分支名不合规)写待决定文档，Issue 转为待决定；
 - 提交、同步、推送、提 PR 执行前发现前置条件已变(protocol/git 的 Stale：做决定之后仓库或 PR 被别人动过)：不执行旧决定，
-  记一条事件，Issue 留在发布中，下次运行重新观察、重新决定(这不是要人处理的事)。
+  记一条事件，Issue 留在发布中，下次运行重新观察、重新决定(这不是要人处理的事)；
+- 推送遇到远程服务器或网络的临时错误、退避重试后仍失败(protocol/git 的 TransientError)：同样记事件、留在发布中，
+  下次运行再推送。
 每一步各落盘一份 handoff.json；状态转换都经 assess/issue/transitions。
 """
 
@@ -26,7 +28,7 @@ from tightrein.assess.issue.transitions import FIX_REJECTED, PROBLEMS, IssueEven
 from tightrein.implement.context import BACK_TO
 from tightrein.implement.implement import StepOutcome
 from tightrein.protocol import documents
-from tightrein.protocol.git import Git, GitError, GitHub, PullRequest, Stale, resolve
+from tightrein.protocol.git import Git, GitError, GitHub, PullRequest, Stale, TransientError, resolve
 from tightrein.protocol.git.github import MERGED
 from tightrein.protocol.handoff import Status
 from tightrein.protocol.naming import format_iso, parse_iso
@@ -79,6 +81,8 @@ def release(runtime: Runtime, issue_id: str) -> StepOutcome:
         return _accept(runtime, issue)
     except Stale as error:
         return _stale(runtime, issue_id, error)
+    except TransientError as error:
+        return _retry_later(runtime, issue_id, error)
     except (ReleaseBlocked, DeliveryMissing) as error:
         blocked = error if isinstance(error, ReleaseBlocked) else ReleaseBlocked(POINT_PR, str(error))
         return _hold(runtime, issues.get(runtime.conn, issue_id) or issue, blocked)
@@ -391,6 +395,13 @@ def _hold(runtime: Runtime, issue: Issue, blocked: ReleaseBlocked) -> StepOutcom
 def _stale(runtime: Runtime, issue_id: str, error: Stale) -> StepOutcome:
     """前置条件已变：不执行旧决定，记事件，留在发布中等下次重新观察。"""
     summary = f"{error}；下次运行重新观察后再决定"
+    emit(runtime, issue_id, POINT_PR, "effect", summary)
+    return StepOutcome(issue_id, POINT_PR, Status.PASSED, summary, POINT_PR)
+
+
+def _retry_later(runtime: Runtime, issue_id: str, error: TransientError) -> StepOutcome:
+    """推送遇到远程服务器或网络的临时错误、重试后仍失败：不是要人决定的事，记事件，留在发布中，下次运行再推送。"""
+    summary = f"{error}；Issue 留在发布中，下次运行再推送"
     emit(runtime, issue_id, POINT_PR, "effect", summary)
     return StepOutcome(issue_id, POINT_PR, Status.PASSED, summary, POINT_PR)
 

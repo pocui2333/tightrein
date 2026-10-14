@@ -10,9 +10,11 @@ from tightrein.protocol.git.git import (
     MergeConflict,
     NetworkError,
     ProgramNotFound,
+    PushDenied,
     PushRejected,
     RefNotFound,
     Stale,
+    TransientError,
     WorktreeDirty,
     WriteScope,
 )
@@ -20,6 +22,6 @@ from tightrein.protocol.git.github import GitHub, PublicRepository, PullRequest,
 
 __all__ = [
     "AuthError", "CommandFailed", "Conventions", "Git", "GitError", "GitHub", "MainBranchRefused", "MergeConflict",
-    "NetworkError", "ProgramNotFound", "PublicRepository", "PullRequest", "PullText", "PushRejected", "RefNotFound",
-    "Stale", "WorktreeDirty", "WriteScope", "attribution_lines", "repo_slug", "resolve",
+    "NetworkError", "ProgramNotFound", "PublicRepository", "PullRequest", "PullText", "PushDenied", "PushRejected",
+    "RefNotFound", "Stale", "TransientError", "WorktreeDirty", "WriteScope", "attribution_lines", "repo_slug", "resolve",
 ]

@@ -2,7 +2,9 @@
 
 - 推送前 fetch：origin/main 有新提交就先同步(sync.py)，不推送；
 - 待推送的提交以 origin/<分支>(首次推送时 origin/main)为基准列出，没有就不推；
-- 结果按 `git push --porcelain` 的引用标记判断(protocol/git)，被拒时提示先同步主干，绝不强推；
+- 结果按 `git push --porcelain` 的引用标记与错误输出判断(protocol/git)，绝不强推：非快进时提示先同步主干；分支保护、
+  仓库规则或权限不允许时写明要人处理；远程服务器或网络的临时错误由 Git.push 退避重试，次数用完仍失败的
+  TransientError 原样抛给 release.py(不转为待决定，下次运行再推送)；
 - 做决定时(fetch 并确认 main 没动之后)记下分支、HEAD 与 origin/main(Git.state)，作为 expected 交给推送：执行前
   任何一项变了即抛 Stale、不推送(由 release.py 停到下次重新观察)；
 - 推送的 commit 记为「本工具最近一次推送的 commit」：PR 头部不等于它说明 PR 上有别人的提交，不自动合并。
@@ -12,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from tightrein.protocol.git import Git, PushRejected
+from tightrein.protocol.git import Git, PushDenied, PushRejected
 from tightrein.protocol.runtime import Runtime
 from tightrein.release.record import POINT_PR, ReleaseBlocked
 
@@ -40,4 +42,6 @@ def push(runtime: Runtime, issue: str, branch: str, worktree: Git) -> PushResult
         pushed = worktree.push(scope=runtime.scope(issue, POINT_PR), expected=decided)
     except PushRejected as error:
         raise ReleaseBlocked(POINT_PR, f"远程拒绝推送 {'、'.join(error.rejected)}：先同步 main 再发布；不强推") from error
+    except PushDenied as error:
+        raise ReleaseBlocked(POINT_PR, f"{error}；分支保护、仓库规则或权限不允许这次推送，需要人处理；不强推") from error
     return PushResult(pushed, commits)

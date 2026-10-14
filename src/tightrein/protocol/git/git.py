@@ -4,8 +4,11 @@
   `LC_ALL=C`(英文输出才能按格式解析)；访问远程的命令加低速断开 `http.lowSpeedLimit/lowSpeedTime`，整体时限取
   limits.timeouts.git：网络卡住时 fetch 不会拖死整轮。
 - 输出一律用 `-z`/`%x00` 分隔并加 `core.quotePath=false`：路径中的空格、换行与中文不需要转义处理。
-- 错误只按退出码分类，不解析错误文字：访问远程的命令退出码 128 或超时为 NetworkError，其余非零为 CommandFailed；
-  错误中的命令与错误输出先脱敏。只读的远程查询(fetch)在网络错误时按 limits.retry 退避重试，写操作绝不自动重试。
+- 错误按退出码分类，不解析错误文字：访问远程的命令退出码 128 或超时为 NetworkError，其余非零为 CommandFailed；
+  错误中的命令与错误输出先脱敏。只读的远程查询(fetch)在网络错误时按 limits.retry 退避重试，写操作不自动重试。
+  推送例外(_push_failure)：git 对非快进、远程拒绝与服务器出错给的退出码相同，只能看 porcelain 的引用摘要与错误
+  输出分成非快进(PushRejected)、分支保护或权限(PushDenied)、远程服务器或网络的临时错误(TransientError)；不强推的
+  推送重做是安全的(远程已有这个 commit 时只是 up to date)，临时错误按 limits.retry 退避重试，次数用完才抛出。
 - 写操作都经 store/tables/operations.run_once，幂等键为「对象:步骤:操作:内容哈希」；上次执行被中断(InProgress)时
   先按实际状态对账：确认做完就补记完成，否则删键重做。程序永远不直接写主分支或游离 HEAD。
 - 写操作的范围带原始输出目录(WriteScope.raw)时，这次操作期间(含复核与对账)的每条 git、gh 命令的输出(已脱敏)
@@ -56,6 +59,15 @@ UNTRACKED = "?"
 # Git.state 能观察的前置条件：分支、HEAD、相对 base 的改动哈希、远程主干的 commit
 STATE_KEYS = ("branch", "head", "diffHash", "originMain")
 _BLAME_HEADER = re.compile(r"^([0-9a-f]{40}) (\d+) (\d+)(?: (\d+))?$")
+# 推送失败的分类(_push_failure)：引用摘要中的原因来自远程(GitHub)，错误输出中 git 自己的文字因 LC_ALL=C 为英文
+_DENIED = re.compile(r"declined|denied|protected branch|returned error: 40[13]|\bhttp 40[13]\b|authentication failed"
+                     r"|could not read username", re.IGNORECASE)
+_CLIENT_ERROR = re.compile(r"returned error: 4\d\d|\bhttp 4\d\d\b", re.IGNORECASE)
+_TRANSIENT = re.compile(r"internal server error|bad gateway|service unavailable|gateway time-?out"
+                        r"|returned error: 5\d\d|\bhttp 5\d\d\b|try again|temporar|rpc failed|early eof"
+                        r"|unexpected disconnect|hung up unexpectedly|connection (?:was )?reset|connection refused"
+                        r"|timed out|could not resolve host|failed to connect|ssl_read|gnutls"
+                        r"|failed to report status", re.IGNORECASE)
 STEP_LOG_DIR = "vcs"
 # 当前写操作的命令输出存放处：(原始输出目录, 相对目录)；由 once 设置、launch 写入。用 ContextVar 而不是 Git 的属性：
 # 操作中经 Git.at 得到的另一个 Git、同一操作里的 gh 命令也记在同一处，并发的线程互不干扰。
@@ -96,8 +108,21 @@ class RefNotFound(GitError):
     """commit 或分支不存在。"""
 
 
+class TransientError(NetworkError):
+    """远程服务器或网络的临时错误(5xx、连接断开、解析不了主机等)：过一会儿再做可能就成功。"""
+
+
 class PushRejected(GitError):
-    """远程拒绝推送(porcelain 标记 `!`)；先同步主干，绝不强推。"""
+    """远程拒绝推送(porcelain 标记 `!`、摘要 `[rejected]`)：远程分支有本地没有的提交(非快进)；先同步主干，绝不强推。"""
+
+    def __init__(self, message: str, *, rejected: Sequence[str], argv: Sequence[str] = (),
+                 exit_code: int | None = None, stderr: str = "") -> None:
+        super().__init__(message, argv=argv, exit_code=exit_code, stderr=stderr)
+        self.rejected = tuple(rejected)
+
+
+class PushDenied(GitError):
+    """远程以非临时的原因拒绝推送(分支保护、仓库规则、钩子、权限)：同步主干与重试都没用，要人处理。"""
 
     def __init__(self, message: str, *, rejected: Sequence[str], argv: Sequence[str] = (),
                  exit_code: int | None = None, stderr: str = "") -> None:
@@ -231,12 +256,13 @@ def failure(kind: type[GitError], argv: Sequence[str], outcome: Outcome, redact:
                 argv=argv, exit_code=outcome.exit_code, stderr=stderr)
 
 
-def retried[T](attempt: Callable[[], T], *, retries: int, settings: Settings, sleep: Callable[[float], None]) -> T:
-    """只用于只读查询：网络错误时按 limits.backoff_s 等待后重试，最后一次的错误照常抛出。"""
+def retried[T](attempt: Callable[[], T], *, retries: int, settings: Settings, sleep: Callable[[float], None],
+               on: type[GitError] = NetworkError) -> T:
+    """只用于只读查询与推送：on 类的错误(缺省网络错误)时按 limits.backoff_s 等待后重试，最后一次的错误照常抛出。"""
     for number in range(1, retries + 1):
         try:
             return attempt()
-        except NetworkError:
+        except on:
             sleep(backoff_s(number, settings=settings))
     return attempt()
 
@@ -676,7 +702,9 @@ class Git:
                     observe=self.state)
 
     def push(self, *, scope: WriteScope, expected: Mapping[str, str | None] | None = None) -> str:
-        """`push --porcelain -u origin <当前分支>`；被拒按 porcelain 标记判断，绝不强推。返回推送的 commit。"""
+        """`push --porcelain -u origin <当前分支>`，绝不强推；返回推送的 commit。失败按 _push_failure 分类：远程服务器
+        或网络的临时错误按 limits.retry 退避重试(不强推，重做安全)，次数用完抛 TransientError；非快进抛 PushRejected，
+        分支保护或权限抛 PushDenied，都不重试。重试在幂等键之内：做成才记完成，最后仍失败则删键，下次重来。"""
         branch = self._refuse_main()
         commit = self.head().commit or ""
 
@@ -686,16 +714,20 @@ class Git:
             except RefNotFound:
                 return None
 
-        def action() -> str:
+        def attempt() -> str:
             found = self._run("push", "--porcelain", "-u", "origin", branch, ok=None, read=False)
             if found.exit_code == 0:
                 return commit
-            rejected = _rejected_refs(found.stdout)
-            if rejected:
-                raise PushRejected(f"远程拒绝推送 {'、'.join(rejected)}，先同步主干", rejected=rejected,
-                                   argv=(GIT, "push", branch), exit_code=found.exit_code)
-            kind = NetworkError if found.exit_code == FATAL_EXIT else CommandFailed
-            raise failure(kind, (GIT, "push", "origin", branch), found, self._redact)
+            raise _push_failure((GIT, "push", "origin", branch), found, self._redact)
+
+        def action() -> str:
+            try:
+                return retried(attempt, retries=self.retries, settings=self.settings, sleep=self.sleep,
+                               on=TransientError)
+            except TransientError as error:
+                raise TransientError(f"推送 {branch} 遇到远程服务器或网络的临时错误，共试 {self.retries + 1} 次仍失败："
+                                     f"{error}", argv=error.argv, exit_code=error.exit_code,
+                                     stderr=error.stderr) from error
 
         return once(scope, "push", (branch, commit), action, pushed, expected=expected, observe=self.state)
 
@@ -748,14 +780,38 @@ def _file_mode(path: Path) -> str:
     return "100755" if os.access(path, os.X_OK) else "100644"
 
 
-def _rejected_refs(text: str) -> tuple[str, ...]:
-    """`git push --porcelain` 每个引用一行：`<标记>\\t<引用>\\t<摘要>`，`!` 为被拒绝。"""
+def _push_failure(argv: Sequence[str], outcome: Outcome, redact: Callable[[str], str]) -> GitError:
+    """推送失败(退出码非 0)的分类。有 `!` 的引用时按摘要：`[rejected]` 为非快进；`[remote rejected]` 等远程给的原因
+    像临时错误(如 GitHub 的 `(Internal Server Error)`)的可以重试，其余(钩子拒绝、分支保护、权限)要人处理。没有时看
+    错误输出：权限不足要人处理，HTTP 4xx 以外的服务器与网络错误可以重试，其余照退出码。"""
+    stderr = redact(outcome.stderr_tail.strip())
+    refused = _refused_refs(outcome.stdout)
+    behind = tuple(ref for ref, summary in refused if summary.startswith("[rejected]"))
+    if behind:
+        return PushRejected(f"远程拒绝推送 {'、'.join(behind)}，先同步主干", rejected=behind, argv=argv,
+                            exit_code=outcome.exit_code, stderr=stderr)
+    if refused:
+        detail = redact("；".join(f"{ref} {summary}" for ref, summary in refused))
+        if all(_TRANSIENT.search(summary) and not _DENIED.search(summary) for _, summary in refused):
+            return TransientError(detail, argv=argv, exit_code=outcome.exit_code, stderr=stderr)
+        return PushDenied(f"远程拒绝推送 {detail}", rejected=tuple(ref for ref, _ in refused), argv=argv,
+                          exit_code=outcome.exit_code, stderr=stderr)
+    if _DENIED.search(stderr):
+        return PushDenied(f"远程拒绝推送：{stderr}", rejected=(), argv=argv, exit_code=outcome.exit_code,
+                          stderr=stderr)
+    if _TRANSIENT.search(stderr) and not _CLIENT_ERROR.search(stderr):
+        return TransientError(stderr, argv=argv, exit_code=outcome.exit_code, stderr=stderr)
+    return failure(NetworkError if outcome.exit_code == FATAL_EXIT else CommandFailed, argv, outcome, redact)
+
+
+def _refused_refs(text: str) -> tuple[tuple[str, str], ...]:
+    """`git push --porcelain` 每个引用一行：`<标记>\\t<引用>\\t<摘要>`，`!` 为被拒绝；返回被拒的 (引用, 摘要)。"""
     found = []
     for row in text.splitlines():
         if "\t" in row and not row.startswith("To "):
-            flag, ref = row.split("\t")[:2]
+            flag, ref, *rest = row.split("\t")
             if flag == "!":
-                found.append(ref)
+                found.append((ref, rest[0].strip() if rest else ""))
     return tuple(found)
 
 

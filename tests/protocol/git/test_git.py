@@ -1,4 +1,5 @@
-"""Git：固定环境与低速断开、错误按退出码分类与只读重试、输出解析、diff_hash 与比较基准、写操作的幂等与对账。"""
+"""Git：固定环境与低速断开、错误按退出码分类与只读重试、推送失败的分类与临时错误的重试、输出解析、diff_hash 与比较基准、
+写操作的幂等与对账。"""
 
 from dataclasses import replace
 
@@ -11,10 +12,13 @@ from tightrein.protocol.git.git import (
     MergeConflict,
     NetworkError,
     ProgramNotFound,
+    PushDenied,
     PushRejected,
     Stale,
+    TransientError,
     WorktreeDirty,
     _parse_numstat,
+    _push_failure,
     changed,
     idempotency_key,
 )
@@ -24,6 +28,20 @@ from tightrein.store.tables import operations
 
 ENV = {"PATH": "/usr/bin", "LANG": "zh_CN.UTF-8"}
 FATAL = (128, "", "fatal: unable to access 'https://github.com/o/r/': Could not resolve host\n")
+# GitHub 偶发的服务器错误，原样取自一次真实运行的推送日志(41-release.pr-raw/vcs/0017/push/step-5.log)；稍后重推即成功
+SERVER_ERROR = (1, ("To https://github.com/pocui2333/ai-interview-collector.git\n"
+                    "!\trefs/heads/feature-25-question-directions:refs/heads/feature-25-question-directions\t"
+                    "[remote rejected] (Internal Server Error)\nDone\n"),
+                ("remote: Internal Server Error        \n"
+                 "remote: Request ID F164:237968:143DD4:205B2B:6ACFACA0        \n"
+                 "remote: Time 2026-10-14T16:24:03Z\n"
+                 "error: failed to push some refs to 'https://github.com/pocui2333/ai-interview-collector.git'\n"))
+PROTECTED = (1, ("To https://github.com/o/r.git\n!\trefs/heads/cty/fix-order:refs/heads/cty/fix-order\t"
+                 "[remote rejected] (protected branch hook declined)\nDone\n"),
+             ("remote: error: GH006: Protected branch update failed for refs/heads/cty/fix-order.        \n"
+              "error: failed to push some refs to 'https://github.com/o/r.git'\n"))
+FORBIDDEN = (128, "", ("remote: Permission to o/r.git denied to cty.\n"
+                       "fatal: unable to access 'https://github.com/o/r.git/': The requested URL returned error: 403\n"))
 
 
 def scripted_git(tmp_path, settings, scripted, *outcomes):
@@ -34,6 +52,25 @@ def scripted_git(tmp_path, settings, scripted, *outcomes):
 
 def stopped(reason):
     return Outcome(None, "", "", 1, reason, None)
+
+
+def failing_pushes(git, reply, times):
+    """同一仓库上的另一个 Git：前 times 次推送得到 reply(不真的推送)，其余命令照常执行。返回 (Git, 等待的秒数)。"""
+    real, left, sleeps = git.runner, [times], []
+
+    class Runner:
+        def run(self, command):
+            if "push" not in command.argv or left[0] == 0:
+                return real.run(command)
+            real.commands.append(command)
+            left[0] -= 1
+            return Outcome(reply[0], reply[1], reply[2], 1, None, None)
+
+    return Git(git.repo, Runner(), git.env, git.settings, sleep=sleeps.append), sleeps
+
+
+def pushes(git):
+    return sum("push" in command.argv for command in git.runner.commands)
 
 
 # 调用方式与错误分类
@@ -120,14 +157,13 @@ def test_error_text_is_redacted(tmp_path, settings, scripted):
     assert token not in str(caught.value) and "[REDACTED:secret]" in caught.value.stderr
 
 
-def test_writes_are_not_retried(fix_branch, scope):
+def test_writes_are_not_retried_when_the_failure_is_not_transient(fix_branch, scope):
     repos, origin, git = fix_branch
     repos.git(git.repo, "remote", "set-url", "origin", str(origin.parent / "unreachable.git"))
     repos.commit(git.repo, "fix: one", {"a.txt": "a\n"})
-    with pytest.raises(NetworkError):
+    with pytest.raises(NetworkError) as caught:
         git.push(scope=scope)
-    pushes = [command for command in git.runner.commands if "push" in command.argv]
-    assert len(pushes) == 1
+    assert not isinstance(caught.value, TransientError) and pushes(git) == 1
 
 
 # 只读查询
@@ -321,9 +357,79 @@ def test_push_and_rejected_pushes(fix_branch, scope):
     repos.commit(other, "fix: elsewhere", {"b.txt": "b\n"})
     repos.git(other, "push", "-q", "origin", "cty/fix-order")
     repos.commit(git.repo, "fix: two", {"c.txt": "c\n"})
-    with pytest.raises(PushRejected) as caught:
+    before = pushes(git)
+    with pytest.raises(PushRejected, match="先同步主干") as caught:
         git.push(scope=scope)
     assert caught.value.rejected == ("refs/heads/cty/fix-order:refs/heads/cty/fix-order",)
+    assert pushes(git) == before + 1  # 非快进不重试
+
+
+def test_a_push_that_github_answers_with_a_server_error_is_retried(fix_branch, scope):
+    """GitHub 偶发 `[remote rejected] (Internal Server Error)`：不是非快进，退避后重推；不强推的推送重做是安全的。"""
+    repos, origin, git = fix_branch
+    commit = repos.commit(git.repo, "fix: one", {"a.txt": "a\n"})
+    flaky, sleeps = failing_pushes(git, SERVER_ERROR, 2)
+    assert flaky.push(scope=scope) == commit
+    assert repos.git(origin, "rev-parse", "refs/heads/cty/fix-order").strip() == commit
+    assert pushes(git) == 3 and len(sleeps) == 2 and 0 <= sleeps[0] <= 1.0 and 0 <= sleeps[1] <= 2.0
+    done = operations.get(scope.conn, idempotency_key(scope, "push", ("cty/fix-order", commit)))
+    assert done.status == operations.DONE
+
+
+def test_a_push_that_keeps_meeting_server_errors_is_reported_as_one_and_not_recorded_as_done(fix_branch, scope):
+    repos, origin, git = fix_branch
+    commit = repos.commit(git.repo, "fix: one", {"a.txt": "a\n"})
+    flaky, sleeps = failing_pushes(git, SERVER_ERROR, 3)
+    with pytest.raises(TransientError) as caught:
+        flaky.push(scope=scope)
+    message = str(caught.value)
+    assert message.startswith("推送 cty/fix-order 遇到远程服务器或网络的临时错误，共试 3 次仍失败：")
+    assert "[remote rejected] (Internal Server Error)" in message and "同步" not in message
+    assert "Request ID F164:237968:143DD4:205B2B:6ACFACA0" in caught.value.stderr
+    assert isinstance(caught.value, NetworkError) and pushes(git) == 3 and len(sleeps) == 2
+    assert operations.get(scope.conn, idempotency_key(scope, "push", ("cty/fix-order", commit))) is None
+    assert git.push(scope=scope) == commit  # 服务器恢复后照常推送
+    assert repos.git(origin, "rev-parse", "refs/heads/cty/fix-order").strip() == commit
+
+
+@pytest.mark.parametrize("reply", [PROTECTED, FORBIDDEN], ids=["protected-branch", "permission"])
+def test_protected_branches_and_missing_permissions_are_denied_without_retrying(fix_branch, scope, reply):
+    repos, _, git = fix_branch
+    repos.commit(git.repo, "fix: one", {"a.txt": "a\n"})
+    flaky, sleeps = failing_pushes(git, reply, 3)
+    with pytest.raises(PushDenied) as caught:
+        flaky.push(scope=scope)
+    assert not isinstance(caught.value, PushRejected | NetworkError) and "先同步" not in str(caught.value)
+    assert ("protected branch hook declined" if reply is PROTECTED else "denied to cty") in str(caught.value)
+    assert pushes(git) == 1 and sleeps == []
+
+
+@pytest.mark.parametrize(("reply", "kind"), [
+    (SERVER_ERROR, TransientError),
+    ((128, "", "fatal: unable to access 'https://github.com/o/r.git/': Could not resolve host: github.com\n"),
+     TransientError),
+    ((1, "", ("error: RPC failed; HTTP 502 curl 22 The requested URL returned error: 502\n"
+              "send-pack: unexpected disconnect while reading sideband packet\n"
+              "fatal: the remote end hung up unexpectedly\n")), TransientError),
+    ((1, "", ("error: RPC failed; curl 56 LibreSSL SSL_read: error:02FFF036:system library:func(4095):"
+              "Connection reset by peer, errno 54\nfatal: early EOF\n")), TransientError),
+    ((128, "", ("fatal: unable to access 'https://github.com/o/r.git/': Failed to connect to github.com port 443 "
+                "after 75003 ms: Couldn't connect to server\n")), TransientError),
+    ((1, "", ("error: RPC failed; HTTP 413 curl 22 The requested URL returned error: 413\n"
+              "send-pack: unexpected disconnect while reading sideband packet\n"
+              "fatal: the remote end hung up unexpectedly\n")), CommandFailed),
+    ((128, "", ("fatal: '/tmp/unreachable.git' does not appear to be a git repository\n"
+                "fatal: Could not read from remote repository.\n")), NetworkError),
+    (PROTECTED, PushDenied),
+    (FORBIDDEN, PushDenied),
+    ((1, "To /tmp/o.git\n!\tHEAD:refs/heads/x\t[rejected] (fetch first)\nDone\n", "error: failed to push\n"),
+     PushRejected),
+], ids=["github-500", "dns", "http-502", "reset", "connect", "http-413", "no-repo", "protected", "forbidden",
+        "fetch-first"])
+def test_push_failures_are_classified_by_the_porcelain_summary_and_the_error_output(reply, kind):
+    found = _push_failure(("git", "push", "origin", "x"), Outcome(reply[0], reply[1], reply[2], 1, None, None),
+                          lambda text: text)
+    assert type(found) is kind
 
 
 def test_an_interrupted_push_is_reconciled_against_the_remote(fix_branch, scope, interrupt):

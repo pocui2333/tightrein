@@ -12,9 +12,9 @@ git 与 gh 的读写、worktree、分支提交与 PR 的格式。程序在同目
 - 固定加 `GIT_TERMINAL_PROMPT=0`(ssh、凭证助手不会卡在等输入)与 `LC_ALL=C`(英文输出才能按格式解析)；gh 另加 `GH_PROMPT_DISABLED=1`；
 - 访问远程的 git 命令(fetch、push、pull、ls-remote)加低速断开：`-c http.lowSpeedLimit=<字节> -c http.lowSpeedTime=<秒>`，传输速度持续低于下限即断开；再加整体时限。网络卡住时 fetch 不会拖死整轮；
 - 输出一律用 `-z`/`%x00` 分隔并加 `core.quotePath=false`：路径中的空格、换行与中文不需要转义；改名与二进制文件(numstat 为 `-`)单独识别；
-- 错误只按退出码分类，不解析错误文字：访问远程的 git 命令退出码 128 或超时为 `NetworkError`；gh 退出码 4 为未登录(`AuthError`)；其余非零为 `CommandFailed`；可执行文件不存在为 `ProgramNotFound`；
+- 错误按退出码分类，不解析错误文字：访问远程的 git 命令退出码 128 或超时为 `NetworkError`；gh 退出码 4 为未登录(`AuthError`)；其余非零为 `CommandFailed`；可执行文件不存在为 `ProgramNotFound`。推送例外，见「提交、同步主干与推送」；
 - 错误里的命令与错误输出先经 `security.py` 的脱敏器(gh、git 的错误输出可能带 token 或带凭据的远程地址)，只留尾部若干行；
-- 只读查询(fetch、gh 的查询)遇到网络错误按 `limits.retry` 退避重试；写操作(push、pr create 等)绝不自动重试：重试写操作可能重复推送或重复建 PR；
+- 只读查询(fetch、gh 的查询)遇到网络错误按 `limits.retry` 退避重试；写操作(pr create 等)不自动重试：重试可能重复建 PR、重复评论。推送例外：不强推的推送重做是安全的(远程已有这个 commit 时只是 up to date)，远程服务器或网络的临时错误按 `limits.retry` 退避重试；
 - 提交信息、PR 描述、评论、Issue 正文从标准输入传入(`git commit -F -`、`gh … --body-file -`)，不放在命令行参数里：避免转义问题，正文也不出现在进程列表与日志里；
 - 所有 gh 命令都带 `--repo <owner/name>`，不依赖工作目录推断仓库；仓库从 origin 地址(https、ssh、scp 三种形式)解析(`repo_slug`)。
 
@@ -63,7 +63,11 @@ git 与 gh 的读写、worktree、分支提交与 PR 的格式。程序在同目
 - 比较基准(`review_base`)取 HEAD 与主干的最近公共祖先：合并过主干后它就是最近一次合并进来的主干版本。主干只改了别的文件时改动哈希与评审时相同，只需重新验证；改到同一文件或解决过冲突时才重新审查；
 - 同步主干一律 `merge --no-ff`，不用 rebase、`push --force`、`reset --hard`、`commit --amend`：已推送的历史不改写，PR 上的评审不失效；
 - 冲突时合并停在进行中，抛 `MergeConflict` 列出冲突文件，不自行取舍；调用方可用 `merge_abort`(`merge --abort`)放弃这次合并，回到合并前，已有提交不动。合并后自动合并并已暂存的文件又被改过时 `merge --abort` 会失败(Entry not uptodate)，这时用 `merge_quit`(`merge --quit`，只丢合并状态、不动文件)再另行恢复文件；`conflict_stages`(`ls-files --unmerged`)给出每个冲突文件在暂存区占的阶段，缺了哪一侧就是那一侧删了或改了名，这类冲突与二进制文件一样没有冲突标记；`keep_side` 把冲突文件写成一侧的版本；`move_back` 把当前分支退回它的某个祖先(只动分支，检查点恢复用)；
-- 推送结果按 `git push --porcelain` 的引用标记判断(`!` 为被拒，`PushRejected`)，不看错误文字；被拒时先同步主干，绝不强推；
+- 推送绝不强推。git 对非快进、远程拒绝与服务器出错给的退出码相同，失败按 `git push --porcelain` 的引用标记(`!` 为被拒)与摘要、再按错误输出分类(git 自己的文字因 `LC_ALL=C` 为英文)：
+  - 摘要 `[rejected]`(non-fast-forward、fetch first)：远程分支有本地没有的提交，`PushRejected`，先同步主干；
+  - 远程服务器或网络的临时错误：`[remote rejected]` 的原因像 `(Internal Server Error)`，或错误输出有 HTTP 5xx、`RPC failed`、`early EOF`、连接重置或超时、`Could not resolve host` 等(HTTP 4xx 除外)：按 `limits.retry` 退避重试，次数用完抛 `TransientError`(`NetworkError` 的子类)；重试在幂等键之内，做成才记完成，最后仍失败则删键；
+  - 其余远程拒绝(钩子拒绝、分支保护、仓库规则)与权限不足(403、`Permission denied`)：`PushDenied`，同步与重试都没用，要人处理；
+  - 都不是的照退出码(128 为 `NetworkError`，其余 `CommandFailed`)，不重试；
 - 合并 PR 用 `gh pr merge --match-head-commit <判断时的 head> --delete-branch`：判断后有人再推送就合并失败而不是合进未审查的提交；带 `--repo` 时 gh 只删远程分支，本地分支与 worktree 由清理负责；
 - 必需检查按 `gh pr checks --required --json` 每项的 bucket 判断，退出码不反映结果；免费账号的私有仓库查规则集返回 403，视为没有规则集。
 
@@ -111,9 +115,9 @@ git 与 gh 的读写、worktree、分支提交与 PR 的格式。程序在同目
 ## 设计依据
 
 - 参数数组不经 shell、正文走标准输入：路径与提交信息里的空格、引号不会被解释成命令，正文不进进程列表；
-- 只按退出码分类：错误文字随语言与版本变化，退出码稳定(gh 退出码见 [gh 文档：Exit codes](https://cli.github.com/manual/gh_help_exit-codes))；
+- 只按退出码分类：错误文字随语言与版本变化，退出码稳定(gh 退出码见 [gh 文档：Exit codes](https://cli.github.com/manual/gh_help_exit-codes))；推送的退出码分不出非快进、远程拒绝与服务器出错，只能看 porcelain 摘要与错误输出([git push：OUTPUT](https://git-scm.com/docs/git-push#_output))，`LC_ALL=C` 固定 git 自己的文字；
 - 低速断开代替只给 fetch 一个短时限：大仓库首次 fetch 本来就慢，按速度判断卡住比按总时长准([git-config：http.lowSpeedLimit](https://git-scm.com/docs/git-config#Documentation/git-config.txt-httplowSpeedLimit))；
-- 写操作不重试、带幂等键、状态不明先对账：重试写操作可能重复推送或重复建 PR([Stripe：Idempotent requests](https://docs.stripe.com/api/idempotent_requests)、[timeouts, retries and idempotency](https://aipromptgear.com/agent-systems/tool-timeouts-retries-and-idempotency-for-ai-agents/))；
+- 写操作不重试、带幂等键、状态不明先对账：重试写操作可能重复建 PR([Stripe：Idempotent requests](https://docs.stripe.com/api/idempotent_requests)、[timeouts, retries and idempotency](https://aipromptgear.com/agent-systems/tool-timeouts-retries-and-idempotency-for-ai-agents/))；推送本身幂等(不强推，同一 commit 再推只是 up to date)，GitHub 偶发的 `[remote rejected] (Internal Server Error)` 稍后重推即成功，不该当成要同步主干转给人(并行实施时几个 Issue 几乎同时推送，更容易遇到)；
 - 改动哈希与提交无关、以合并进来的主干为基准：合并主干后不必重复评审(#5)；
 - `--match-head-commit`：判断与合并之间有人推送时宁可失败([gh pr merge](https://cli.github.com/manual/gh_pr_merge))；
 - 约定的优先级与「拿不准不采用」：项目写明的约定最可靠，猜错一次提交就要人改；[Conventional Commits](https://www.conventionalcommits.org/)、[commitlint config-conventional](https://github.com/conventional-changelog/commitlint/tree/master/%40commitlint/config-conventional)。
