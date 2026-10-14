@@ -13,8 +13,11 @@
 - 新建 worktree 前先 `git worktree prune`：目录被删或挪走、登记还在时，不再因「missing but already registered」停下等人处理。
 - agy 的工具说明要求 view_file 带 `StartLine`、`EndLine` 只看命中行附近，不读工作目录以外的文件：此前证伪复核不带范围把同一个大文件从头读七八遍、还去翻 `~/.gemini` 下自己的任务日志，耗尽工具调用。证伪复核的提示词要求先打开主张给出的 `文件:行号`，再沿调用链往外找。
 
+- `status`、`watch` 的颜色在浅色背景上看不清：普通文字不再用 256 色的近白，改用终端的缺省前景色(数值加粗)；状态用跟着终端配色方案走的 16 色绿、青、黄、红；辅助文字与框线用两种背景上都有对比度的中灰。
+
 ### 变更
 
+- `tightrein watch` 重新设计：并行实施的每个 Issue 各占一行(编号与 GitHub 编号、标题、步骤进度、当前步骤、在这一步多久、模型与轮数、这次调用的 token、Issue 的 token 预算)，正在评估的问题与采集、复盘也各占一行；只在有要你处理的事(待审核、出问题、评估转人工、暂停、运行中断)时出现「需要你处理」，每条给出要敲的命令；额度同时列 Claude 与 agy；事件流水淡显例行的模型调用、不列每次调用的环境清理；最后一行排队(待修、待评估、发布各环节)。行数随终端高度，同一高度下刷新时行数不变。
 - agy 的调用点(`assess.refute`、`implement.locate`、`implement.design.frontend`、`implement.check.screenshots`、`implement.review.deep`)工具调用上限由 15 次放宽到 30 次，单次输出上限由 16000 放宽到 32000 token。
 - 重新生成 `docs/reference/`(上一项去掉 `analysis` 后的 handoff.md)。
 

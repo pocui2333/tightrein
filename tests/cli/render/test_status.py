@@ -77,8 +77,10 @@ def test_colors_can_be_turned_off_and_commands_are_underlined(world: Any):
     plain = render_status(snapshot, "zh", color=False, zone=UTC)
     colored = render_status(snapshot, "zh", color=True, zone=UTC)
     assert "\x1b[" not in plain
-    assert "\x1b[38;5;80;1;4mtightrein approve 0019\x1b[0m" in colored
-    assert not re.search(r"\x1b\[(?:[0-9;]*;)?3?4m", colored.replace("38;5;80;1;4m", ""))  # 不用暗蓝(ANSI 4)
+    assert "\x1b[36;1;4mtightrein approve 0019\x1b[0m" in colored
+    codes = [match.split(";") for match in re.findall(r"\x1b\[([0-9;]*)m", colored)]
+    assert not any("34" in params for params in codes)  # 不用暗蓝(ANSI 4)：深色背景上几乎看不见
+    assert {params[2] for params in codes if params[:2] == ["38", "5"]} == {"244"}  # 不用近白：浅色背景上看不见
     assert ANSI.sub("", colored) == plain
 
 

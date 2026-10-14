@@ -19,7 +19,8 @@ import re
 import socket
 import sqlite3
 from collections import Counter as Tally
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
@@ -31,6 +32,7 @@ from tightrein.protocol import recovery, schedule
 from tightrein.protocol.handoff import Handoff, Status, Tokens
 from tightrein.protocol.limits import no_progress
 from tightrein.protocol.naming import (
+    STAGES,
     STEP_SEQUENCE,
     Clock,
     format_iso,
@@ -52,7 +54,6 @@ FACT_SKIPPED = "skipped"            # 跳过的原因(字符串)；有值即这�
 FACT_AUTO = "auto"                  # 定案：True 为自动确认，False 为人工确认
 FACT_BLOCKERS = "blockers"          # 审查：[{location, kind, summary}]
 FACT_DIFF_HASH = "diffHash"         # 编码：提交无关的 diff 哈希
-FACT_HIGH_RISK = "highRiskPaths"    # 命中的高风险路径(合并要人工确认)
 FACT_LINES_ADDED = "linesAdded"
 FACT_LINES_DELETED = "linesDeleted"
 FACT_READ = "read"                  # 采集来源读到的条数
@@ -73,13 +74,27 @@ ACTIVE_ISSUES = ("implementing", "releasing")
 CLOSED_ISSUES = ("done", "cancelled")
 WAITING_PROBLEMS = ("new", "regressed")
 COLLECT_SOURCES = tuple(key for key in setup_file.MODULES if key.startswith("collect."))
-EVENT_LINES = 4
+LIVE_RUNS = ("running", "paused", "finishing")
+EVENT_LINES = 40  # 取最近的条数；显示几条由终端高度定
+EXTRA_GITHUB = "github"  # issues.extra 中 GitHub 镜像：{"number": 41, …}
+# 问题评估的各格(assess/assess.py 的调用点)；反证与取证同一格
+ASSESS_FLOW = ("assess.dedup", "assess.triage", "assess.confirm", "assess.issue")
+ASSESS_SLOTS = {"assess.refute": "assess.confirm"}
+CODE_POINT, REVIEW_POINT = "implement.code", "implement.review"
 _RETRO_FILE = re.compile(r"^(\d{4})-(P[0-3])-.+\.md$")
 _RETRO_STATUS = re.compile(r"^status:\s*(\S+)", re.MULTILINE)
 _RETRO_OPEN = "open"
 _ROUND_IN_PATH = re.compile(r"\.r(\d+)-")
 _CALL_STATUS = re.compile(r"^[^\s/]+/[^\s：]+：(\w+)")
 _STARTED = "*-started.json"
+_NOISE = "子进程环境去掉了："  # agents/call.py 每次调用都记的例行动作，watch 不列
+_STEP_RESULTS = {"passed": "ok", "failed": "bad", "pending": "gate"}  # 各步交接写的事件「<结果>：<摘要>」
+_SOURCE_STEP = {"done": "done", "active": "active", "waiting": "waiting", "skipped": "skipped", "failed": "failed",
+                "off": "skipped"}
+_TOKEN_FIELDS = frozenset({"input", "output", "cache_read", "cache_write"})
+_WAITING_SQL = ", ".join(f"'{name}'" for name in WAITING_PROBLEMS)
+_MANUAL_SQL = "json_extract(extra, '$.assess.manual')"
+_MERGED_SQL = "json_extract(extra, '$.mergedInto')"
 
 
 # 类型：共用
@@ -153,6 +168,7 @@ class WaitingItem:
     summary: str
     document: str  # 相对工作区的路径
     command: str
+    github: int | None = None  # 镜像到 GitHub 的编号
 
 
 @dataclass(frozen=True)
@@ -281,45 +297,26 @@ class StepMark:
 
 
 @dataclass(frozen=True)
-class ReviewInfo:
-    point: str
-    passed: bool
-    blockers: tuple[tuple[str, str], ...]  # (位置, 一句话)
+class ActiveRow:
+    """watch「进行中」的一行：并行实施的每个 Issue、正在评估的问题、运行级的采集与复盘各一行。"""
 
-
-@dataclass(frozen=True)
-class SubjectCard:
-    id: str
+    id: str  # 0025、P-0038；运行级的为阶段控制键(collect、retro)
+    kind: str  # issue、problem、collect、run
+    github: int | None  # 镜像到 GitHub 的编号
     title: str
     severity: str | None
-    kind: str  # bug、feature、problem
-    steps: tuple[StepMark, ...]
-    point: str | None
+    steps: tuple[StepMark, ...]  # 进度条的各格；采集为启用的各来源与去重
+    point: str | None  # 正在做的调用点(可带子步骤，如 implement.review.deep)
+    step: str | None  # point 所在的那一格
     round: int | None
     action: str  # model、tests、ci、program、idle
     call: CallInfo | None
     last_failure: str | None  # 这一步上一次调用没成功的结果(timeout 等)，模型重试时不像卡死
-    turns_limit: int | None
+    stalled: bool  # 与上一轮比没有进展(protocol.limits.no_progress)
     step_started: datetime | None
     step_limit_s: float | None
-    step_tokens: Tokens | None
-    review: ReviewInfo | None
-    progress: bool | None  # None：还没有上一轮可比
-    diff_changed: bool | None
-    blockers_changed: bool | None
-    calls: int
-    retries: int
-    returned: int
-    files: int | None
-    files_limit: int
-    lines: int | None
-    lines_limit: int
-    spent_s: float
-    spent_limit_s: float | None
-    tokens_used: float
-    tokens_limit: float
-    gate: str | None
-    gate_paths: tuple[str, ...]
+    tokens_used: float | None  # 只有 Issue 有 token 预算
+    tokens_limit: float | None
 
 
 @dataclass(frozen=True)
@@ -351,20 +348,30 @@ class EventLine:
 
 
 @dataclass(frozen=True)
+class QueueInfo:
+    todo: tuple[str, ...]  # 待修的 Issue，按严重度与编号
+    assess_pending: int  # 待评估的问题(转人工的不算)
+    ci: int  # 发布中：提 PR、等 CI
+    to_merge: int  # 发布中：等合并
+    deploying: int  # 发布中：等部署
+    accepting: int  # 验收观察中
+    retro_after: bool  # 本次运行结束前还要复盘
+
+
+@dataclass(frozen=True)
 class WatchSnapshot:
+    project: str
     now: datetime
     run: RunInfo | None
+    stage: str | None  # 运行正在做的阶段(最近一条事件所在的阶段)；运行已结束为 None
     control: ControlInfo
-    quota: QuotaInfo | None
-    tool: str | None
-    model: str | None
-    effort: str | None
-    subject: SubjectCard | None
+    quotas: tuple[QuotaInfo, ...]
+    active: tuple[ActiveRow, ...]
+    waiting: tuple[WaitingItem, ...]  # 等你处理的 Issue(待审核、出问题)
+    manual: tuple[str, ...]  # 评估转人工、等你看的问题
     collect: CollectCard
-    events: tuple[EventLine, ...]
-    next_point: str | None
-    queued: tuple[str, ...]
-    retro_after: bool
+    events: tuple[EventLine, ...]  # 新的在前
+    queue: QueueInfo
 
 
 # 公共函数
@@ -411,32 +418,31 @@ def status_snapshot(source: Source) -> StatusSnapshot:
 
 
 def watch_snapshot(source: Source) -> WatchSnapshot:
+    """每秒左右取一次：只读 store、进行中对象目录里的交接与 started 标记、本次运行的 events.jsonl。"""
     now = source.clock.now()
     current, last, _ = _runs(source)
     run = current or last
     events = _events(source.layout, run.id) if run is not None else []
+    stage = _current_stage(run, events)
     all_issues = issues.find(source.conn)
-    subjects = _event_subjects(events) + [item.id for item in all_issues if item.status in ACTIVE_ISSUES]
-    calls = _calls(source.layout, list(dict.fromkeys(subjects)) + ([run.id] if run else []))
-    active_call = calls[0] if calls else None
-    focus = _focus(active_call, events, all_issues, run)
-    card = _subject_card(source, focus, all_issues, active_call, now) if focus else None
-    quota = _quota_for(source, active_call[1].tool if active_call else "claude")
-    queued = _queued(all_issues, exclude=focus)
+    waiting = _waiting(source, all_issues)
+    collect = _collect_card(source, run, events, stage)
+    run_row = _run_row(source, run, stage, collect) if run is not None and stage is not None else None
+    active = ([run_row] if run_row else []) + _issue_rows(source, all_issues, {item.id for item in waiting})
+    active += _problem_rows(source, events) if stage is not None else []
     return WatchSnapshot(
+        project=source.layout.project,
         now=now,
         run=run,
+        stage=stage,
         control=_control(source.layout),
-        quota=quota,
-        tool=active_call[1].tool if active_call else None,
-        model=active_call[1].model if active_call else None,
-        effort=active_call[1].effort if active_call else None,
-        subject=card,
-        collect=_collect_card(source, run, events),
+        quotas=_quotas(source),
+        active=tuple(active),
+        waiting=tuple(waiting),
+        manual=_manual_problems(source.conn),
+        collect=collect,
         events=tuple(_event_lines(events)),
-        next_point=_next_point(card.point) if card and card.point else None,
-        queued=queued,
-        retro_after=run is not None and run.stage != "retro",
+        queue=_queue(source, all_issues, run, stage),
     )
 
 
@@ -654,6 +660,7 @@ def _waiting_item(layout: WorkspaceLayout, issue: Issue) -> WaitingItem | None:
         summary=last.handoff.summary if last else "",
         document=_relative(layout, document),
         command=command,
+        github=_github(issue),
     )
 
 
@@ -667,7 +674,7 @@ def _active(source: Source, all_issues: Sequence[Issue]) -> list[ActiveItem]:
             continue
         checkpoints = _checkpoints(source.layout, issue.id)
         point = point_of(issue.stage, issue.step)
-        call = _active_call(source.layout, issue.id)
+        call = _running(_markers(source.layout, issue.id))
         started = call.started_at if call else (_created(checkpoints[-1]) if checkpoints else None)
         changed = _changed(checkpoints)
         found.append(ActiveItem(
@@ -921,24 +928,29 @@ def _events(layout: WorkspaceLayout, run: str) -> list[dict[str, Any]]:
     found = []
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         try:
-            found.append(json.loads(line))
+            event = json.loads(line)
         except json.JSONDecodeError:
             continue  # 正在写入的最后一行，下一次刷新再读
+        if isinstance(event, dict) and event.get("at") and not str(event.get("summary") or "").startswith(_NOISE):
+            found.append(event)
     return found
 
 
-def _event_subjects(events: Sequence[dict[str, Any]]) -> list[str]:
-    return [str(event["subject"]) for event in reversed(events) if event.get("subject")]
+def _current_stage(run: RunInfo | None, events: Sequence[dict[str, Any]]) -> str | None:
+    """运行正在做的阶段：一轮之内各阶段先后进行(protocol/schedule 的 RUN_ORDER)，取最近一条事件所在的阶段。"""
+    if run is None or run.status not in LIVE_RUNS:
+        return None
+    for event in reversed(events):
+        stage = str(event.get("point") or "").split(".")[0]
+        if stage in STAGES:
+            return stage
+    return run.stage if run.stage in STAGES else None
 
 
-def _calls(layout: WorkspaceLayout, subjects: Iterable[str]) -> list[tuple[str, CallInfo]]:
-    """进行中的模型调用(started 标记的 endedAt 为空)，按开始时间新的在前。"""
-    found = []
-    for subject in subjects:
-        call = _active_call(layout, subject)
-        if call is not None:
-            found.append((subject, call))
-    return sorted(found, key=lambda item: item[1].started_at, reverse=True)
+def _github(issue: Issue) -> int | None:
+    mirror = issue.extra.get(EXTRA_GITHUB)
+    number = mirror.get("number") if isinstance(mirror, dict) else None
+    return number if isinstance(number, int) and not isinstance(number, bool) else None
 
 
 def _markers(layout: WorkspaceLayout, subject: str) -> list[dict[str, Any]]:
@@ -951,18 +963,22 @@ def _markers(layout: WorkspaceLayout, subject: str) -> list[dict[str, Any]]:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue  # 正在写入，下一次刷新再读
+        if not isinstance(data, dict) or not data.get("point") or not data.get("startedAt"):
+            continue
         round_match = _ROUND_IN_PATH.search(path.name)
         data["_round"] = int(round_match.group(1)) if round_match else None
         found.append(data)
     return sorted(found, key=lambda data: str(data.get("startedAt")))
 
 
-def _active_call(layout: WorkspaceLayout, subject: str) -> CallInfo | None:
-    running = [data for data in _markers(layout, subject) if data.get("endedAt") is None and data.get("startedAt")]
+def _running(markers: Sequence[dict[str, Any]]) -> CallInfo | None:
+    """进行中的模型调用：started 标记的 endedAt 为空；有几个时取最新开始的。"""
+    running = [data for data in markers if data.get("endedAt") is None]
     if not running:
         return None
     data = running[-1]
     tokens = data.get("tokens")
+    turns = data.get("turns")
     return CallInfo(
         point=str(data["point"]),
         round=data["_round"],
@@ -970,8 +986,9 @@ def _active_call(layout: WorkspaceLayout, subject: str) -> CallInfo | None:
         model=str(data.get("model") or ""),
         effort=data.get("effort"),
         started_at=parse_iso(str(data["startedAt"])),
-        turns=data.get("turns"),
-        tokens=(Tokens(**{_snake(key): int(value) for key, value in tokens.items()})
+        turns=turns if isinstance(turns, int) and not isinstance(turns, bool) else None,
+        tokens=(Tokens(**{_snake(key): int(value) for key, value in tokens.items()
+                          if _snake(key) in _TOKEN_FIELDS and isinstance(value, int)})
                 if isinstance(tokens, dict) else None),
     )
 
@@ -980,79 +997,135 @@ def _snake(name: str) -> str:
     return "".join(f"_{char.lower()}" if char.isupper() else char for char in name)
 
 
-def _focus(active_call: tuple[str, CallInfo] | None, events: Sequence[dict[str, Any]], all_issues: Sequence[Issue],
-           run: RunInfo | None) -> str | None:
-    """当前对象：正在调用模型的对象；否则本次运行最近一条事件的对象；否则第一个进行中的 Issue。"""
-    if active_call is not None and not active_call[0].startswith("R-"):
-        return active_call[0]
-    for subject in _event_subjects(events):
-        if not subject.startswith("R-"):
-            return subject
-    active = [issue.id for issue in all_issues if issue.status in ACTIVE_ISSUES and not issue.held_by]
-    return active[0] if active and run is not None else None
+def _last_failure(markers: Sequence[dict[str, Any]], point: str | None, call: CallInfo | None) -> str | None:
+    """这一步最近一次结束的调用没有成功时的结果；正在调用时它就是重试前的那一次。"""
+    if point is None:
+        return None
+    ended = [data for data in markers if data.get("point") == point and data.get("endedAt")]
+    if not ended or call is not None and parse_iso(str(ended[-1]["startedAt"])) >= call.started_at:
+        return None
+    status = ended[-1].get("status")
+    return str(status) if status and status != "ok" else None
 
 
-def _subject_card(source: Source, subject: str, all_issues: Sequence[Issue], active_call: tuple[str, CallInfo] | None,
-                  now: datetime) -> SubjectCard | None:
-    issue = next((item for item in all_issues if item.id == subject), None)
-    checkpoints = _checkpoints(source.layout, subject)
-    call = active_call[1] if active_call and active_call[0] == subject else None
-    if issue is not None:
-        title, severity, kind = issue.title, issue.severity, issue.kind
-        point = call.point if call else point_of(issue.stage, issue.step)
-        round_ = call.round if call and call.round else issue.round
-        gate = issue.gate
-    else:
-        row = source.conn.execute("SELECT title, extra FROM problems WHERE id = ?", (subject,)).fetchone()
-        if row is None:
-            return None
-        title, severity, kind = row[0], json.loads(row[1]).get(EXTRA_SEVERITY), "problem"
-        point = call.point if call else (checkpoints[-1].handoff.point if checkpoints else None)
-        round_, gate = call.round if call else None, None
-    stage = (point or "implement").split(".")[0]
-    steps = _step_marks(source.settings, stage, checkpoints, point if call or issue else None, round_)
+def _base_step(steps: Sequence[str], point: str | None) -> str | None:
+    """调用点所在的那一格：implement.review.deep → implement.review。"""
+    if point is None:
+        return None
+    return next((step for step in steps if point == step or point.startswith(step + ".")), None)
+
+
+def _issue_rows(source: Source, all_issues: Sequence[Issue], waiting: AbstractSet[str]) -> list[ActiveRow]:
+    """实施中的 Issue 各一行(等你处理的除外，列在等你处理)；发布中的只在有进行中的模型调用时列出。"""
     budget = IssueBudget(source.conn, source.clock, source.settings)
-    reviews = [item for item in checkpoints if isinstance(item.handoff.facts.get(FACT_BLOCKERS), list)]
-    codes = [item.handoff.facts.get(FACT_DIFF_HASH) for item in checkpoints
-             if item.handoff.facts.get(FACT_DIFF_HASH) is not None]
-    progress, diff_changed, blockers_changed = _progress(reviews, codes)
-    changed = _changed(checkpoints)
-    step_started = call.started_at if call else (_created(checkpoints[-1]) if checkpoints else None)
-    finished_tokens = _step_tokens(checkpoints, point, round_)
-    return SubjectCard(
-        id=subject,
-        title=title,
-        severity=severity,
-        kind=kind,
-        steps=steps,
+    rows = []
+    for issue in all_issues:
+        if issue.status not in ACTIVE_ISSUES or issue.held_by or issue.id in waiting:
+            continue
+        markers = _markers(source.layout, issue.id)
+        call = _running(markers)
+        if issue.status != "implementing" and call is None:
+            continue
+        rows.append(_issue_row(source, issue, markers, call, budget))
+    return rows
+
+
+def _issue_row(source: Source, issue: Issue, markers: Sequence[dict[str, Any]], call: CallInfo | None,
+               budget: IssueBudget) -> ActiveRow:
+    checkpoints = _checkpoints(source.layout, issue.id)
+    point = call.point if call else point_of(issue.stage, issue.step)
+    round_ = call.round if call and call.round else issue.round
+    stage = (point or issue.stage or "implement").split(".")[0]
+    return ActiveRow(
+        id=issue.id,
+        kind="issue",
+        github=_github(issue),
+        title=issue.title,
+        severity=issue.severity,
+        steps=_step_marks(source.settings, stage, checkpoints, point, round_),
         point=point,
+        step=_base_step(stage_steps(stage), point),
         round=round_,
         action=_action(point, call),
         call=call,
-        last_failure=_last_failure(source.layout, subject, point, call),
-        turns_limit=_control_int(source.settings, point, "turns"),
-        step_started=step_started,
+        last_failure=_last_failure(markers, point, call),
+        stalled=_stalled(checkpoints),
+        step_started=call.started_at if call else (_created(checkpoints[-1]) if checkpoints else None),
         step_limit_s=_limit_s(source.settings, point),
-        step_tokens=call.tokens if call and call.tokens else finished_tokens,
-        review=_review(reviews[-1]) if reviews else None,
-        progress=progress,
-        diff_changed=diff_changed,
-        blockers_changed=blockers_changed,
-        calls=sum(item.handoff.metrics.calls or 0 for item in checkpoints) + (1 if call else 0),
-        retries=sum(item.handoff.metrics.retries or 0 for item in checkpoints),
-        returned=sum(1 for item in reviews if item.handoff.status is Status.FAILED),
-        files=changed[0],
-        files_limit=int(source.settings.get("boundaries.changeCap.files")),
-        lines=changed[1],
-        lines_limit=int(source.settings.get("boundaries.changeCap.lines")),
-        spent_s=sum((item.handoff.metrics.duration_ms or 0) / 1000 for item in checkpoints
-                    if item.handoff.point.startswith(stage + "."))
-        + ((now - call.started_at).total_seconds() if call else 0.0),
-        spent_limit_s=_limit_s(source.settings, stage),
-        tokens_used=budget.used(subject),
+        tokens_used=budget.used(issue.id),
         tokens_limit=budget.limit,
-        gate=gate,
-        gate_paths=_gate_paths(checkpoints),
+    )
+
+
+def _problem_rows(source: Source, events: Sequence[dict[str, Any]]) -> list[ActiveRow]:
+    """本次运行里正在评估(有进行中的模型调用)的问题各一行；评估按组并行，可能同时有几个。"""
+    subjects = dict.fromkeys(str(event["subject"]) for event in events
+                             if str(event.get("subject") or "").startswith("P-"))
+    rows = []
+    for subject in sorted(subjects):
+        markers = _markers(source.layout, subject)
+        call = _running(markers)
+        if call is None:
+            continue
+        found = source.conn.execute("SELECT title, extra FROM problems WHERE id = ?", (subject,)).fetchone()
+        if found is None:
+            continue
+        extra = json.loads(found[1]) if found[1] else {}
+        severity = extra.get(EXTRA_SEVERITY) if isinstance(extra, dict) else None
+        rows.append(ActiveRow(
+            id=subject, kind="problem", github=None, title=str(found[0]),
+            severity=severity if isinstance(severity, str) else None,
+            steps=_assess_marks(markers, _checkpoints(source.layout, subject), call.point),
+            point=call.point, step=_assess_slot(call.point), round=call.round, action="model", call=call,
+            last_failure=_last_failure(markers, call.point, call), stalled=False, step_started=call.started_at,
+            step_limit_s=_limit_s(source.settings, call.point), tokens_used=None, tokens_limit=None,
+        ))
+    return rows
+
+
+def _assess_slot(point: str | None) -> str | None:
+    if point is None:
+        return None
+    base = _base_step(ASSESS_FLOW + tuple(ASSESS_SLOTS), point)
+    return ASSESS_SLOTS.get(base or "", base)
+
+
+def _assess_marks(markers: Sequence[dict[str, Any]], checkpoints: Sequence[Checkpoint],
+                  current: str | None) -> tuple[StepMark, ...]:
+    """问题评估的各格(查重 → 判定 → 取证 → 写 Issue)：有交接或调用成功结束的为做完；取证含反证。"""
+    done = {_assess_slot(item.handoff.point) for item in checkpoints if item.handoff.status is Status.PASSED}
+    done |= {_assess_slot(str(data["point"])) for data in markers if data.get("endedAt") and data.get("status") == "ok"}
+    active = _assess_slot(current)
+    return tuple(StepMark(slot, "active" if slot == active else "done" if slot in done else "waiting",
+                          None, None, None, None) for slot in ASSESS_FLOW)
+
+
+def _run_row(source: Source, run: RunInfo, stage: str, collect: CollectCard) -> ActiveRow | None:
+    """运行级的一行：采集(各来源)；复盘等记在运行目录、正在调用模型的。"""
+    markers = _markers(source.layout, run.id)
+    call = _running(markers)
+    if call is not None and call.point.split(".")[0] in STAGES:
+        stage = call.point.split(".")[0]
+    if stage == "collect":
+        steps = tuple(StepMark(mark.key, _SOURCE_STEP[mark.state], mark.duration_s, mark.reason, None, None)
+                      for mark in collect.sources if mark.state != "off")
+        steps += (StepMark("collect.dedup", "done" if collect.dedup is not None else "waiting", None, None, None, None),)
+        active = next((mark.point for mark in steps if mark.state == "active"), None)
+        point = call.point if call else active
+        started = call.started_at if call else collect.started_at
+    elif call is not None or stage == "retro":
+        steps = _step_marks(source.settings, stage, _checkpoints(source.layout, run.id),
+                            call.point if call else None, None)
+        point = call.point if call else stage
+        started = call.started_at if call else None
+    else:
+        return None
+    return ActiveRow(
+        id=stage, kind="collect" if stage == "collect" else "run", github=None, title="", severity=None,
+        steps=steps, point=point, step=_base_step([mark.point for mark in steps], point),
+        round=call.round if call else None, action=_action(point, call), call=call,
+        last_failure=_last_failure(markers, point, call), stalled=False, step_started=started,
+        step_limit_s=_limit_s(source.settings, point), tokens_used=None, tokens_limit=None,
     )
 
 
@@ -1110,70 +1183,61 @@ def _action(point: str | None, call: CallInfo | None) -> str:
     return "program"
 
 
-def _last_failure(layout: WorkspaceLayout, subject: str, point: str | None, call: CallInfo | None) -> str | None:
-    """这一步最近一次结束的调用没有成功时的结果；正在调用时它就是重试前的那一次。"""
-    if point is None:
-        return None
-    ended = [data for data in _markers(layout, subject) if data.get("point") == point and data.get("endedAt")]
-    if not ended or call is not None and parse_iso(str(ended[-1]["startedAt"])) >= call.started_at:
-        return None
-    status = ended[-1].get("status")
-    return str(status) if status and status != "ok" else None
-
-
-def _step_tokens(checkpoints: Sequence[Checkpoint], point: str | None, round_: int | None) -> Tokens | None:
-    for item in reversed(checkpoints):
-        if item.handoff.point == point and item.round == round_:
-            return item.handoff.metrics.tokens
-    return None
-
-
-def _review(item: Checkpoint) -> ReviewInfo:
-    blockers = []
-    for blocker in item.handoff.facts.get(FACT_BLOCKERS) or []:
-        if isinstance(blocker, dict):
-            blockers.append((str(blocker.get("location") or ""), str(blocker.get("summary") or "")))
-    return ReviewInfo(item.handoff.point, item.handoff.status is Status.PASSED, tuple(blockers))
-
-
-def _progress(reviews: Sequence[Checkpoint], diffs: Sequence[Any]) -> tuple[bool | None, bool | None, bool | None]:
-    """与上一轮比：阻断项(位置, 类型)是否同一批、diff 哈希是否变化；判断用 limits.no_progress，与停下的规则同一处。"""
-    if len(reviews) < 2 and len(diffs) < 2:
-        return None, None, None
-
-    def blockers(item: Checkpoint) -> list[tuple[str, str]]:
-        return [(str(entry.get("location")), str(entry.get("kind"))) for entry in item.handoff.facts[FACT_BLOCKERS]
+def _stalled(checkpoints: Sequence[Checkpoint]) -> bool:
+    """审查至少交回过两轮，且与上一轮比没有进展：编码的 diff 哈希没变，或阻断项(位置, 类型)是同一批。
+    判断用 protocol.limits.no_progress，与调度停下的规则同一处。"""
+    reviews = [[(str(entry.get("location")), str(entry.get("kind"))) for entry in item.handoff.facts[FACT_BLOCKERS]
                 if isinstance(entry, dict)]
-
-    previous = blockers(reviews[-2]) if len(reviews) >= 2 else []
-    current = blockers(reviews[-1]) if len(reviews) >= 2 else []
-    previous_diff = str(diffs[-2]) if len(diffs) >= 2 else None
-    current_diff = str(diffs[-1]) if len(diffs) >= 2 else None
-    stuck = no_progress(previous, current, previous_diff, current_diff)
-    diff_changed = None if previous_diff is None else previous_diff != current_diff
-    blockers_changed = None if len(reviews) < 2 else set(previous) != set(current)
-    return not stuck, diff_changed, blockers_changed
-
-
-def _gate_paths(checkpoints: Sequence[Checkpoint]) -> tuple[str, ...]:
-    for item in reversed(checkpoints):
-        paths = item.handoff.facts.get(FACT_HIGH_RISK)
-        if isinstance(paths, list):
-            return tuple(str(path) for path in paths)
-    return ()
+               for item in checkpoints
+               if item.handoff.point == REVIEW_POINT and isinstance(item.handoff.facts.get(FACT_BLOCKERS), list)]
+    if len(reviews) < 2:
+        return False
+    diffs = [str(item.handoff.facts[FACT_DIFF_HASH]) for item in checkpoints
+             if item.handoff.point == CODE_POINT and item.handoff.facts.get(FACT_DIFF_HASH) is not None]
+    previous_diff, current_diff = (diffs[-2], diffs[-1]) if len(diffs) >= 2 else (None, None)
+    return no_progress(reviews[-2], reviews[-1], previous_diff, current_diff)
 
 
-def _collect_card(source: Source, run: RunInfo | None, events: Sequence[dict[str, Any]]) -> CollectCard:
-    """采集看板：本次运行目录中每个来源的交接；还没有交接、但已有事件的来源为进行中。"""
+def _manual_problems(conn: sqlite3.Connection) -> tuple[str, ...]:
+    """评估转人工的问题(状态不变、带 manual 标记，不再自动评估)：等你看了再改判或请求重新评估。"""
+    rows = conn.execute(
+        f"SELECT id FROM problems WHERE status IN ({_WAITING_SQL}) AND {_MANUAL_SQL} = 1 AND {_MERGED_SQL} IS NULL "
+        "ORDER BY id").fetchall()
+    return tuple(str(row[0]) for row in rows)
+
+
+def _queue(source: Source, all_issues: Sequence[Issue], run: RunInfo | None, stage: str | None) -> QueueInfo:
+    releasing = [point_of(issue.stage, issue.step) for issue in all_issues
+                 if issue.status == "releasing" and not issue.held_by]
+    pending = source.conn.execute(
+        f"SELECT COUNT(*) FROM problems WHERE status IN ({_WAITING_SQL}) AND COALESCE({_MANUAL_SQL}, 0) = 0 "
+        f"AND {_MERGED_SQL} IS NULL").fetchone()[0]
+    return QueueInfo(
+        todo=_queued(all_issues),
+        assess_pending=int(pending),
+        ci=sum(1 for point in releasing if point in ("release.pr", "release.ci")),
+        to_merge=sum(1 for point in releasing if point == "release.merge"),
+        deploying=sum(1 for point in releasing if point == "release.deploy"),
+        accepting=sum(1 for issue in all_issues if issue.status == "accepting"),
+        retro_after=run is not None and run.stage == "run" and stage is not None and stage != "retro",
+    )
+
+
+def _collect_card(source: Source, run: RunInfo | None, events: Sequence[dict[str, Any]],
+                  stage: str | None) -> CollectCard:
+    """采集看板：运行目录中每个来源的交接；正在采集时，还没有交接、但已有事件的来源为进行中。"""
     try:
         setup: Setup | None = setup_file.load(source.layout)
     except SetupInvalid:
         setup = None
-    collecting = run is not None and run.stage == "collect"
-    done = {item.handoff.point: item for item in _checkpoints(source.layout, run.id)} if collecting and run else {}
+    collecting = run is not None and stage == "collect"
+    done = {item.handoff.point: item for item in _checkpoints(source.layout, run.id)} if run else {}
     first_event: dict[str, datetime] = {}
     for event in events:
-        first_event.setdefault(str(event.get("point")), parse_iso(str(event["at"])))
+        point = str(event.get("point") or "")
+        key = _base_step(COLLECT_SOURCES, point)
+        if key is not None:
+            first_event.setdefault(key, parse_iso(str(event["at"])))
     now = source.clock.now()
     marks = []
     for key in COLLECT_SOURCES:
@@ -1189,14 +1253,15 @@ def _collect_card(source: Source, run: RunInfo | None, events: Sequence[dict[str
                 key, state_, _int(handoff.facts.get(FACT_READ)), (handoff.metrics.produced or {}).get(PRODUCED_SIGNALS),
                 handoff.metrics.duration_ms / 1000 if handoff.metrics.duration_ms is not None else None,
                 str(skipped) if skipped else None))
-        elif collecting and key in first_event and run is not None and run.status in ("running", "paused"):
+        elif collecting and key in first_event:
             marks.append(SourceMark(key, "active", None, None, (now - first_event[key]).total_seconds(), None))
         else:
             marks.append(SourceMark(key, "waiting", None, None, None, None))
     dedup_item = done.get("collect.dedup")
     breakers = _breakers(source)
+    started = min(first_event.values(), default=None) if first_event else None
     return CollectCard(
-        started_at=run.started_at if collecting and run else None,
+        started_at=started or (run.started_at if collecting and run else None),
         sources=tuple(marks),
         dedup=_dedup(dedup_item.handoff) if dedup_item else None,
         breaker=breakers[0] if breakers else None,
@@ -1214,54 +1279,56 @@ def _event_lines(events: Sequence[dict[str, Any]]) -> list[EventLine]:
         refs = event.get("refs") or {}
         round_match = next((match for match in (_ROUND_IN_PATH.search(str(value)) for value in refs.values()) if match),
                            None)
+        mark, summary = _mark(event)
+        subject = event.get("subject")
         lines.append(EventLine(
             at=parse_iso(str(event["at"])),
-            subject=event.get("subject"),
+            subject=None if not subject or str(subject).startswith("R-") else str(subject),
             point=str(event.get("point") or ""),
             round=int(round_match.group(1)) if round_match else None,
-            mark=_mark(event),
-            summary=str(event.get("summary") or ""),
+            mark=mark,
+            summary=summary,
         ))
     return lines
 
 
-def _mark(event: dict[str, Any]) -> str:
-    """异常(越界、熔断、超时、重试)记为 effect，单独标出；模型调用按结果；其余为普通。"""
-    if event.get("kind") == "effect":
-        return "warn"
+def _mark(event: dict[str, Any]) -> tuple[str, str]:
+    """(标记, 摘要)：一步的结果(passed、failed、pending)按结果标出并去掉前缀；模型调用成功是例行的(routine)，
+    失败为 bad；其余异常(越界、熔断、超时、重试)为 warn；决定为 info；程序做完的动作为 ok。"""
+    summary = str(event.get("summary") or "")
+    kind = event.get("kind")
+    head, separator, rest = summary.partition("：")
+    if kind == "effect" and separator and head in _STEP_RESULTS:
+        return _STEP_RESULTS[head], rest
+    if kind == "effect" and separator and head.endswith("失败"):
+        return "bad", summary
     status = (event.get("refs") or {}).get("status")
-    match = _CALL_STATUS.match(str(event.get("summary") or ""))
+    match = _CALL_STATUS.match(summary)
     status = status or (match.group(1) if match else None)
-    if status is None:
-        return "ok" if event.get("kind") == "action" else "info"
-    return "ok" if status in ("ok", "passed", "done") else "bad"
-
-
-def _next_point(point: str) -> str | None:
-    steps = stage_steps(point.split(".")[0])
-    base = next((step for step in steps if point == step or point.startswith(step + ".")), None)
-    if base is None or steps.index(base) + 1 >= len(steps):
-        return None
-    return steps[steps.index(base) + 1]
+    if status is not None:
+        return ("routine" if status == "ok" else "ok" if status in ("passed", "done") else "bad"), summary
+    if kind == "effect":
+        return "warn", summary
+    return ("ok" if kind == "action" else "info"), summary
 
 
 __all__ = [
     "ActiveItem",
+    "ActiveRow",
     "BreakerInfo",
     "CallInfo",
     "CollectCard",
     "ControlInfo",
     "EventLine",
     "Health",
+    "QueueInfo",
     "QuotaInfo",
-    "ReviewInfo",
     "RunInfo",
     "Source",
     "SourceMark",
     "StatusSnapshot",
     "StepMark",
     "Stock",
-    "SubjectCard",
     "Totals",
     "WaitingItem",
     "WatchSnapshot",

@@ -1,6 +1,8 @@
-"""status 与 watch 的样式：ANSI 256 色、加粗与下划线、按显示宽度对齐。
+"""status 与 watch 的样式：前景色、加粗与下划线、按显示宽度对齐。
 
-- 颜色照 44 号计划「样式参考」的颜色表，只用 256 色，不用终端暗蓝(ANSI 4)：深色背景上几乎看不见；
+- 浅色与深色背景都要看得清：普通文字不着色(用终端的缺省前景色)，数值只加粗；状态用 16 色里的绿、青、黄、红，
+  跟着终端的配色方案走；辅助文字与框线用中灰(256 色 244)，两种背景上都有对比度。不用 256 色的近白(231、254)：
+  浅色背景上几乎看不见；也不用暗蓝(ANSI 4)：深色背景上几乎看不见；
 - 状态、数值、命令加粗；命令另加下划线，提示可以直接复制；
 - 非终端(管道、重定向)或设了 NO_COLOR(https://no-color.org)时不着色，只输出文字；
 - 一行由若干段(Span)组成，每段带一个语义角色；先按显示宽度截断、补齐，再着色，ANSI 转义不计入宽度；
@@ -22,16 +24,20 @@ MIN_WIDTH = 72
 MAX_WIDTH = 120
 ELLIPSIS = "…"
 
-# 角色 → (256 色编号, 加粗, 下划线)
-ROLES: dict[str, tuple[int, bool, bool]] = {
-    "frame": (248, False, False),    # 框线、连接线、辅助文字 #94A3B8
-    "text": (254, False, False),     # 普通文字、标签 #E2E8F0
-    "value": (231, True, False),     # 核心数值、标题 #FFFFFF
-    "ok": (78, True, False),         # 就绪、正常、成功 #34D399
-    "active": (81, True, False),     # 进行中、步骤 #38BDF8
-    "warn": (214, True, False),      # 待审、警告、余量 #FBBF24
-    "bad": (203, True, False),       # 阻塞、报错、急停 #F87171
-    "command": (80, True, True),     # 可执行命令 #22D3EE
+DEFAULT_HEIGHT = 24  # 非终端时 watch 的行数
+MIN_HEIGHT = 18
+MAX_HEIGHT = 60
+
+# 角色 → (前景色的 SGR 参数，空为终端缺省前景色；加粗；下划线)
+ROLES: dict[str, tuple[str, bool, bool]] = {
+    "frame": ("38;5;244", False, False),  # 框线、连接线、辅助文字：中灰 #808080，浅色与深色背景上都看得清
+    "text": ("", False, False),           # 普通文字、标签：终端缺省前景色
+    "value": ("", True, False),           # 核心数值、标题：缺省前景色加粗
+    "ok": ("32", True, False),            # 就绪、正常、成功：绿
+    "active": ("36", True, False),        # 进行中、步骤：青
+    "warn": ("33", True, False),          # 待审、警告、余量：黄
+    "bad": ("31", True, False),           # 阻塞、报错、急停：红
+    "command": ("36", True, True),        # 可执行命令：青加下划线
 }
 RESET = "\x1b[0m"
 
@@ -111,12 +117,12 @@ def paint(line: Iterable[Span], color: bool) -> str:
     for item in line:
         if not item.text:
             continue
-        number, bold, underline = ROLES[item.role]
-        codes = [f"38;5;{number}"] + (["1"] if bold else []) + (["4"] if underline else [])
-        if item.text.strip():
+        foreground, bold, underline = ROLES[item.role]
+        codes = ([foreground] if foreground else []) + (["1"] if bold else []) + (["4"] if underline else [])
+        if item.text.strip() and codes:
             out.append(f"\x1b[{';'.join(codes)}m{item.text}{RESET}")
         else:
-            out.append(item.text)  # 只有空白时不加转义：下划线不画在空格上
+            out.append(item.text)  # 只有空白时不加转义(下划线不画在空格上)；普通文字不加转义
     return "".join(out)
 
 
@@ -134,6 +140,14 @@ def terminal_width(stream: TextIO | None = None) -> int:
         return DEFAULT_WIDTH
     columns = shutil.get_terminal_size((DEFAULT_WIDTH, 24)).columns
     return max(MIN_WIDTH, min(MAX_WIDTH, columns))
+
+
+def terminal_height(stream: TextIO | None = None) -> int:
+    """watch 的行数：终端行数夹在 MIN_HEIGHT 与 MAX_HEIGHT 之间；非终端时取 DEFAULT_HEIGHT。"""
+    if stream is not None and not (getattr(stream, "isatty", None) and stream.isatty()):
+        return DEFAULT_HEIGHT
+    rows = shutil.get_terminal_size((DEFAULT_WIDTH, DEFAULT_HEIGHT)).lines
+    return max(MIN_HEIGHT, min(MAX_HEIGHT, rows))
 
 
 # 框
@@ -154,10 +168,19 @@ def box_bottom(width: int) -> Line:
     return [Span("└" + "─" * (width - 2) + "┘", "frame")]
 
 
-def bar(ratio: float | None, cells: int = 10) -> Line:
-    """额度条 ━━━━━━──── ；未知时全为细线。用到留余量门槛以上的部分由调用方换色。"""
+def bar(ratio: float | None, cells: int = 10, role: str = "active") -> Line:
+    """额度条 ━━━━━━──── ；未知时全为细线。过了留量线时调用方传 warn、bad 换色。"""
     filled = 0 if ratio is None else max(0, min(cells, round(ratio * cells)))
-    return [Span("━" * filled, "active"), Span("─" * (cells - filled), "frame")]
+    return [Span("━" * filled, role), Span("─" * (cells - filled), "frame")]
+
+
+def rule(title: Line, width: int, right: Line | None = None) -> Line:
+    """分节线 ── 标题 ─────────── 右侧 ─；没有标题时整行细线。"""
+    if not title:
+        return [Span("─" * width, "frame")]
+    head = [Span("── ", "frame"), *title, Span(" ", "frame")]
+    tail = [Span(" ", "frame"), *right, Span(" ──", "frame")] if right else [Span("──", "frame")]
+    return pad_between(head, tail, width, "─", "frame")
 
 
 def join(parts: Iterable[Line], separator: Line) -> Line:

@@ -49,11 +49,18 @@ def test_box_lines_have_the_same_width():
     assert plain(top).startswith("┌─ ") and plain(top).endswith(" ─┐")
 
 
-def test_colors_follow_the_table_and_never_use_dark_blue():
-    assert {number for number, _, _ in ROLES.values()} == {248, 254, 231, 78, 81, 214, 203, 80}
-    assert ROLES["command"] == (80, True, True)
+def test_colors_read_on_light_and_dark_backgrounds():
+    # 文字与数值用终端的缺省前景色(数值加粗)，不用 256 色的近白；状态用跟着配色方案走的 16 色，不用暗蓝(34)
+    assert ROLES["text"] == ("", False, False)
+    assert ROLES["value"] == ("", True, False)
+    assert {ROLES[name][0] for name in ("ok", "active", "warn", "bad")} == {"32", "36", "33", "31"}
+    assert ROLES["frame"] == ("38;5;244", False, False)  # 中灰：两种背景上都有对比度
+    assert ROLES["command"] == ("36", True, True)
     assert all(bold for name, (_, bold, _) in ROLES.items() if name in ("value", "ok", "active", "warn", "bad"))
-    assert paint([span("tightrein run", "command")], True) == "\x1b[38;5;80;1;4mtightrein run\x1b[0m"
+    assert all("34" not in foreground.split(";") for foreground, _, _ in ROLES.values())
+    assert paint([span("普通文字")], True) == "普通文字"
+    assert paint([span("42", "value")], True) == "\x1b[1m42\x1b[0m"
+    assert paint([span("tightrein run", "command")], True) == "\x1b[36;1;4mtightrein run\x1b[0m"
     assert paint([span("   ", "command")], True) == "   "  # 空白不画下划线
     assert paint([span("tightrein run", "command")], False) == "tightrein run"
 
@@ -63,6 +70,13 @@ def test_color_is_off_for_pipes_and_with_no_color():
     assert not use_color(Terminal(), {"NO_COLOR": "1"})
     assert not use_color(io.StringIO(), {})
     assert style.terminal_width(io.StringIO()) == style.DEFAULT_WIDTH
+    assert style.terminal_height(io.StringIO()) == style.DEFAULT_HEIGHT
+
+
+def test_rules_span_the_whole_width():
+    assert plain(style.rule([span("进行中 4")], 20)) == "── 进行中 4 ────────"
+    assert plain(style.rule([], 6)) == "──────"
+    assert line_width(style.rule([span("最近事件")], 30, [span("12m")])) == 30
 
 
 def test_render_joins_fitted_lines():

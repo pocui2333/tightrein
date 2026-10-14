@@ -25,10 +25,15 @@ def step_name(language: str, point: str) -> str:
 
 
 def point_name(language: str, point: str | None, round_: int | None = None) -> str:
-    """调用点全名：zh「实施·编码 r2」，en「implement.code r2」(英文版用控制键原名)。没登记的照写控制键。"""
+    """调用点全名：zh「实施·编码 r2」，en「implement.code r2」(英文版用控制键原名)。子步骤没登记时用它所在的
+    小步骤(implement.review.deep → 实施·审查)；都没登记的照写控制键。"""
     if not point:
         return NONE
     stage, step = _point(language, point.split(".", 1)[0]), _point(language, point)
+    parent = point
+    while step is None and parent.count(".") > 1:
+        parent = parent.rsplit(".", 1)[0]
+        step = _point(language, parent)
     if "." in point and stage and step:
         name = text(language, "common.point", point=point, stage=stage, step=step)
     elif step:

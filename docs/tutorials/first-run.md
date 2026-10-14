@@ -285,6 +285,8 @@ tightrein watch -p demo-app       # 实时界面，在另一个终端开着；p 
        tightrein approve 0001                     data/issues/0001/90-issue-pending.md
 ```
 
+`watch` 依次是：运行(状态、阶段、已跑、心跳)、Claude 与 agy 的额度、进行中(并行的每个 Issue 一行：步骤进度、当前步骤与时长、模型与轮数、token)、需要你处理(只在有事时出现，右边是要敲的命令)、最近事件、排队。窗口拉高时事件多显示几行。
+
 回应关卡：
 
 ```sh

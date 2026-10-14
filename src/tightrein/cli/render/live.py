@@ -2,6 +2,7 @@
 
 - 只用标准库：终端切到逐键读取(cbreak：不回显、不等回车，Ctrl-C 仍能中断)，退出时一定恢复；
 - 用备用屏幕(像 less、top)，退出后回到原来的终端内容；重绘时光标回到左上角整屏覆盖，不先清屏，避免闪烁；
+- 每次重绘按当前终端的宽与高排版：拉大窗口时事件流水多显示几行，同一大小下行数不变；
 - 标准输入不是终端(管道、测试)时不读键，只按间隔刷新；
 - p、s 交给调用方(命令壳写运行控制)，watch 自己只读不写。
 """
@@ -19,7 +20,7 @@ from contextlib import contextmanager
 from typing import TextIO
 
 from tightrein.cli.render.snapshot import WatchSnapshot
-from tightrein.cli.render.style import terminal_width, use_color
+from tightrein.cli.render.style import terminal_height, terminal_width, use_color
 from tightrein.cli.render.watch import render_watch
 
 INTERVAL_S = 2.0
@@ -44,7 +45,7 @@ def run(fetch: Callable[[], WatchSnapshot], language: str, *, collect_view: bool
         with _keys(source, read_key) as next_key:
             while True:
                 frame = render_watch(fetch(), language, collect_view=collect_view, width=terminal_width(out),
-                                     color=color)
+                                     height=terminal_height(out), color=color)
                 out.write((_HOME + frame + _CLEAR_BELOW) if screen else frame + "\n\n")
                 out.flush()
                 key = next_key(interval_s)

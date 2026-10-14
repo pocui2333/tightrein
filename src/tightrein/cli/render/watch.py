@@ -1,86 +1,139 @@
-"""watch 的渲染：实时界面，固定 16 行，刷新时不滚屏、不抖动。
+"""watch 的渲染：实时界面，行数随终端高度(同一高度下每次刷新行数相同)，刷新时不滚屏、不抖动。
 
-自上而下：运行顶栏 → 额度 → 当前对象卡片(8 行；运行的是采集或按 [c] 切换时换成采集卡片，行数不变) →
-事件流水(4 行，不足补空行) → 后续走向 → 按键提示。进程已不在或心跳失效的运行显示为中断，并给出接管命令。
+自上而下：标题与时刻 → 运行(状态、阶段、已跑、心跳) → 两个工具的额度 → 进行中(并行的每个对象一行：
+编号、标题、步骤进度、当前步骤、在这一步多久、模型与轮数、token) → 需要你处理(只在有要你处理的事时出现，
+每条给出要敲的命令) → 最近事件(行数随终端高度) → 排队 → 按键提示。按 [c] 时「进行中」换成采集看板。
 """
 
 from __future__ import annotations
 
 import sys
-from datetime import tzinfo
+from datetime import datetime, tzinfo
 
 from tightrein.cli.render import labels
 from tightrein.cli.render.labels import NONE, t
 from tightrein.cli.render.snapshot import (
+    ActiveRow,
     CollectCard,
     EventLine,
     QuotaInfo,
     RunInfo,
     SourceMark,
     StepMark,
-    SubjectCard,
+    WaitingItem,
     WatchSnapshot,
 )
 from tightrein.cli.render.style import (
+    DEFAULT_HEIGHT,
     DEFAULT_WIDTH,
+    MIN_HEIGHT,
     Line,
-    box_bottom,
-    box_row,
-    box_top,
+    bar,
+    display_width,
     fit,
     join,
+    pad_between,
     render,
+    rule,
     span,
     use_color,
 )
 
-LINES = 16
-CARD_ROWS = 6  # 卡片框内的行数(不含上下框线)
-EVENT_ROWS = 4
+FIXED_LINES = 9  # 标题、运行、两行额度、进行中与事件的分节线、底线、排队、按键
+MIN_EVENTS = 2
 SOURCE_COLUMNS = 3
-POINT_COLUMN = 14  # 事件流水中「调用点 轮次」一列的显示宽度
-STEP_MARKS = {"done": ("✓", "ok"), "active": ("◐", "active"), "waiting": ("○", "frame"), "skipped": ("⊘", "frame"),
+ID_COLUMN = 6  # 0025、P-0038
+STEP_COLUMN = 10
+TIME_COLUMN = 6
+POINT_COLUMN = 14  # 事件流水中「调用点 轮次」一列
+SUBJECT_COLUMN = 6
+STEP_MARKS = {"done": ("✓", "ok"), "active": ("◐", "active"), "waiting": ("·", "frame"), "skipped": ("⊘", "frame"),
               "failed": ("■", "bad"), "gate": ("▲", "warn")}
-SOURCE_MARKS = {"done": ("✓", "ok"), "active": ("◐", "active"), "waiting": ("○", "frame"), "skipped": ("⊘", "frame"),
+SOURCE_MARKS = {"done": ("✓", "ok"), "active": ("◐", "active"), "waiting": ("·", "frame"), "skipped": ("⊘", "frame"),
                 "off": ("⊘", "frame"), "failed": ("■", "bad")}
-EVENT_MARKS = {"ok": ("✓", "ok"), "bad": ("■", "bad"), "warn": ("▲", "warn"), "info": ("●", "active")}
+# 事件：一步的结果、程序做完的动作为 ok；模型调用成功是例行的，整行淡显；决定为 info
+EVENT_MARKS = {"ok": ("✓", "ok"), "bad": ("■", "bad"), "warn": ("▲", "warn"), "gate": ("▲", "warn"),
+               "info": ("●", "active"), "routine": ("·", "frame")}
+EVENT_TEXT = {"ok": "text", "bad": "bad", "warn": "warn", "gate": "warn", "info": "text", "routine": "frame"}
 RUN_ROLES = {"running": "ok", "paused": "warn", "finishing": "active", "interrupted": "bad", "done": "ok",
              "failed": "bad", "skipped": "text"}
+QUOTA_LINES = 2
 
 
 def render_watch(snapshot: WatchSnapshot, language: str, *, collect_view: bool = False, width: int = DEFAULT_WIDTH,
-                 color: bool | None = None, zone: tzinfo | None = None) -> str:
-    collecting = collect_view or (snapshot.run is not None and snapshot.run.stage == "collect")
-    card = _collect(snapshot, language, snapshot.collect, width) if collecting else _subject(snapshot, language, width)
-    lines = [_top(snapshot, language, zone), _quota(snapshot, language), *card, *_events(snapshot, language, zone),
-             _next(snapshot, language), _keys(language)]
-    if len(lines) != LINES:
-        raise AssertionError(f"watch 应为 {LINES} 行：{len(lines)}")
+                 height: int = DEFAULT_HEIGHT, color: bool | None = None, zone: tzinfo | None = None) -> str:
+    height = max(height, MIN_HEIGHT)
+    head = [_title(snapshot, width, zone), _run(snapshot, language, zone), *_quotas(snapshot, language, width)]
+    attention = _attention(snapshot, language, width)
+    room = height - FIXED_LINES
+    shown_attention = attention[:max(2, room // 4)] if attention else []
+    if len(shown_attention) < len(attention):
+        hidden = len(attention) - len(shown_attention) + 1
+        shown_attention[-1] = [span("   " + t(language, "watch.more", count=hidden), "frame")]
+    room -= len(shown_attention) + (1 if attention else 0)
+    if collect_view:
+        title: Line = [span(t(language, "watch.collect_title"), "value")]
+        section = _collect(snapshot, language, snapshot.collect, width)
+        right = _collect_elapsed(snapshot, language, snapshot.collect)
+    else:
+        title = [span(t(language, "watch.active", count=len(snapshot.active)), "value")]
+        section = _active(snapshot, language, width)
+        right = []
+    rows = _cap(section, room - MIN_EVENTS, language)
+    events = _events(snapshot, language, zone, room - len(rows))
+    lines = [*head, rule(title, width, right), *rows]
+    if attention:
+        lines += [rule([span(t(language, "watch.attention", count=len(attention)), "warn")], width),
+                  *shown_attention]
+    lines += [rule([span(t(language, "watch.events"), "value")], width), *events, rule([], width),
+              _queue(snapshot, language), _keys(language)]
+    if len(lines) != height:
+        raise AssertionError(f"watch 应为 {height} 行：{len(lines)}")
     return render(lines, width, use_color(sys.stdout) if color is None else color)
 
 
-# 顶栏与额度
+def _cap(rows: list[Line], limit: int, language: str) -> list[Line]:
+    """放不下时最后一行换成「另 N 个」。"""
+    limit = max(limit, 1)
+    if len(rows) <= limit:
+        return rows
+    hidden = len(rows) - limit + 1
+    return rows[:limit - 1] + [[span(" " + t(language, "watch.more", count=hidden), "frame")]]
 
 
-def _top(snapshot: WatchSnapshot, language: str, zone: tzinfo | None) -> Line:
+# 标题、运行与额度
+
+
+def _title(snapshot: WatchSnapshot, width: int, zone: tzinfo | None) -> Line:
+    left = [span(" tightrein watch", "value"), span("  "), span(snapshot.project, "text")]
+    right = [span(snapshot.now.astimezone(zone).strftime("%m-%d %H:%M:%S"), "value"), span(" ")]
+    return pad_between(left, right, width)
+
+
+def _run(snapshot: WatchSnapshot, language: str, zone: tzinfo | None) -> Line:
     run = snapshot.run
-    head: Line = [span(" tightrein watch", "value"), span("  ")]
     if run is None:
-        return head + [span(t(language, "watch.no_run"), "text")]
+        return [span(" " + t(language, "watch.no_run"), "text")]
     state = _run_state(snapshot, run)
-    line = head + [span(run.id, "value"), span("  "), span(t(language, f"common.trigger_{run.trigger or 'unknown'}"),
-                                                         "text"), span("  "),
-                   span("● " + _run_label(language, run, state), RUN_ROLES.get(state, "text"))]
-    if state == "interrupted":
-        return line
-    end = snapshot.now if run.ended_at is None else run.ended_at
-    line += [span("  " + t(language, "watch.start") + " ", "text"), span(labels.clock(run.started_at, zone), "value"),
-             span("  " + t(language, "watch.elapsed") + " ", "text"),
-             span(labels.duration((end - run.started_at).total_seconds()), "value")]
-    if run.ended_at is None:
-        line += [span("  " + t(language, "watch.beat") + " ", "text"),
-                 span(labels.ago(language, snapshot.now, run.heartbeat_at), "value")]
-    return line
+    dot = [span(" · ", "frame")]
+    parts: list[Line] = [[span(" ● " + _run_label(language, run, state), RUN_ROLES.get(state, "text")),
+                          span("  "), span(run.id, "value")],
+                         [span(t(language, f"common.trigger_{run.trigger or 'unknown'}"), "text")]]
+    if snapshot.stage:
+        parts.append([span(t(language, "watch.stage") + " ", "text"),
+                      span(labels.point_name(language, snapshot.stage), "active")])
+    if state != "interrupted":
+        end = snapshot.now if run.ended_at is None else run.ended_at
+        parts += [[span(t(language, "watch.start") + " ", "text"), span(labels.clock(run.started_at, zone), "value")],
+                  [span(t(language, "watch.elapsed") + " ", "text"),
+                   span(labels.duration((end - run.started_at).total_seconds()), "value")]]
+    if run.ended_at is not None:
+        parts.append([span(t(language, "watch.ended") + " ", "text"), span(labels.clock(run.ended_at, zone), "value")])
+    else:
+        parts.append([span(t(language, "watch.beat") + " ", "text"),
+                      span(labels.ago(language, snapshot.now, run.heartbeat_at),
+                           "bad" if state == "interrupted" else "value")])
+    return join(parts, dot)
 
 
 def _run_state(snapshot: WatchSnapshot, run: RunInfo) -> str:
@@ -95,179 +148,221 @@ def _run_label(language: str, run: RunInfo, state: str) -> str:
     return t(language, f"common.run_{state}")
 
 
-def _quota(snapshot: WatchSnapshot, language: str) -> Line:
-    quota = snapshot.quota
-    line: Line = [span(" ")]
-    if quota is not None:
-        line += _window(language, quota, "5h", quota.five_hour, quota.reserve_five_hour)
-        line += [span(" · ", "frame")]
-        line += _window(language, quota, t(language, "watch.week"), quota.weekly, quota.reserve_weekly, short=True)
-    if snapshot.tool:
-        parts = [snapshot.tool, snapshot.model or NONE]
-        line += [span("    " + t(language, "watch.now") + " ", "text"), span(" · ".join(parts), "value")]
-        if snapshot.effort:
-            line += [span(" · " + t(language, "watch.effort") + " ", "text"), span(snapshot.effort, "value")]
+def _quotas(snapshot: WatchSnapshot, language: str, width: int) -> list[Line]:
+    cells = 10 if width >= DEFAULT_WIDTH else 6
+    lines = [_quota(snapshot, language, quota, cells) for quota in snapshot.quotas[:QUOTA_LINES]]
+    return lines + [[] for _ in range(QUOTA_LINES - len(lines))]
+
+
+def _quota(snapshot: WatchSnapshot, language: str, quota: QuotaInfo, cells: int) -> Line:
+    return [span(f" {labels.tool_name(quota.tool):<7}", "value"),
+            *_window(snapshot, language, quota, "5h", quota.five_hour, quota.reserve_five_hour,
+                     quota.five_hour_resets_at, cells, short=False),
+            span("    "),
+            *_window(snapshot, language, quota, t(language, "watch.week"), quota.weekly, quota.reserve_weekly,
+                     quota.weekly_resets_at, cells, short=True)]
+
+
+def _window(snapshot: WatchSnapshot, language: str, quota: QuotaInfo, name: str, used: float | None,
+            reserve: float, resets_at: datetime | None, cells: int, *, short: bool) -> Line:
+    over = used is not None and used >= reserve
+    role = "bad" if quota.rejected else "warn" if over else "active"
+    line: Line = [span(name + " ", "text"), *bar(used, cells, role), span(" " + labels.percent(used),
+                                                                          "value" if role == "active" else role)]
+    if quota.rejected:
+        line.append(span(t(language, "watch.rejected"), "bad"))
+    elif over:
+        line.append(span(t(language, "watch.reserve_hit"), "warn"))
+    elif used is not None:
+        key = "watch.reserve_gap_short" if short else "watch.reserve_gap"
+        line.append(span(t(language, key, value=labels.percent(reserve - used)), "frame"))
+    if resets_at is not None:
+        line.append(span(" " + t(language, "status.reset",
+                                 value=labels.duration((resets_at - snapshot.now).total_seconds())), "frame"))
     return line
 
 
-def _window(language: str, quota: QuotaInfo, name: str, used: float | None, reserve: float, *,
-            short: bool = False) -> Line:
-    head = [span(f"{labels.tool_name(quota.tool)} " if not short else "", "text"), span(f"{name} ", "text"),
-            span(labels.percent(used), "value")]
-    if used is None:
-        return head
-    gap = reserve - used
-    if quota.rejected or gap <= 0:
-        return head + [span(t(language, "watch.reserve_hit"), "bad" if quota.rejected else "warn")]
-    key = "watch.reserve_gap_short" if short else "watch.reserve_gap"
-    return head + [span(t(language, key, value=labels.percent(gap)), "text")]
+# 进行中
 
 
-# 当前对象卡片
+def _active(snapshot: WatchSnapshot, language: str, width: int) -> list[Line]:
+    rows = snapshot.active
+    if not rows:
+        return [[span(" " + t(language, "watch.no_subject"), "frame")]]
+    github = max((display_width(f"#{row.github}") for row in rows if row.github is not None), default=0)
+    severity = 2 if any(row.severity for row in rows) else 0
+    strip = max(len(row.steps) for row in rows)
+    budget = 9 if width >= 100 and any(row.tokens_limit for row in rows) else 0
+    detail = 22 if width >= 110 else 18 if width >= DEFAULT_WIDTH else 14
+    fixed = 1 + ID_COLUMN + 1 + (github + 1 if github else 0) + (severity + 1 if severity else 0) \
+        + 2 + strip + 2 + STEP_COLUMN + 1 + TIME_COLUMN + 2 + detail + (2 + budget if budget else 0)
+    title = max(width - fixed, 6)
+    widths = (github, severity, title, strip, detail, budget)
+    return [_row(snapshot, language, row, widths) for row in rows]
 
 
-def _subject(snapshot: WatchSnapshot, language: str, width: int) -> list[Line]:
-    card = snapshot.subject
-    if card is None:
-        rows: list[Line] = [[span(t(language, "watch.no_subject"), "text")]]
-        return [box_top([span(t(language, "watch.subject_none"), "text")], [], width),
-                *_rows(rows, width), box_bottom(width)]
-    title: Line = [span(card.id, "value"), span(" "), span(card.severity or NONE, "value"), span(" "),
-                   span(t(language, f"watch.kind_{card.kind}"), "text"), span(" "), span(card.title, "text")]
-    share = card.tokens_used / card.tokens_limit if card.tokens_limit else None
-    right: Line = [span(f"{labels.count(card.tokens_used)} / {labels.count(card.tokens_limit)} token", "value"),
-                   span(t(language, "watch.share", value=labels.percent(share)),
-                        "warn" if share is not None and share >= 0.8 else "text")]
-    rows = [_steps(language, card.steps), _current(snapshot, language, card), _review(language, card),
-            _progress(language, card), _total(language, card), _gate(language, card)]
-    return [box_top(title, right, width), *_rows(rows, width), box_bottom(width)]
-
-
-def _rows(rows: list[Line], width: int) -> list[Line]:
-    rows = rows[:CARD_ROWS] + [[] for _ in range(CARD_ROWS - len(rows))]
-    return [box_row(row, width) for row in rows]
-
-
-def _steps(language: str, steps: tuple[StepMark, ...]) -> Line:
-    parts = []
-    for step in steps:
-        mark, role = STEP_MARKS[step.state]
-        name_role = "active" if step.state == "active" else "text"
-        part: Line = [span(labels.step_name(language, step.point) + " ", name_role), span(mark, role)]
-        if step.state == "done":
-            detail = t(language, f"watch.approve_{step.note}") if step.note else labels.duration(step.duration_s)
-            part.append(span(detail, "text"))
-        elif step.state == "skipped" and step.note:
-            part.append(span(step.note, "frame"))
-        elif step.state == "active" and step.round:
-            limit = f"/{step.rounds_limit}" if step.rounds_limit and step.rounds_limit > 1 else ""
-            part.append(span(f" r{step.round}{limit}", "active"))
-        parts.append(part)
-    return join(parts, [span(" ─ ", "frame")])
-
-
-def _current(snapshot: WatchSnapshot, language: str, card: SubjectCard) -> Line:
-    dot = [span(" · ", "frame")]
-    step = None if card.step_started is None else (snapshot.now - card.step_started).total_seconds()
-    turns = card.call.turns if card.call else None
-    parts: list[Line] = [
-        [span(t(language, "watch.current") + " ", "text"), span(labels.point_name(language, card.point, card.round),
-                                                                "active")],
-        [span(t(language, f"watch.action_{card.action}"), "active")],
-        [span(t(language, "watch.turns") + " ", "text"),
-         span(f"{NONE if turns is None else turns}/{NONE if card.turns_limit is None else card.turns_limit}", "value")],
-        [span(t(language, "watch.time") + " ", "text"),
-         span(f"{labels.duration(step)}/{labels.duration(card.step_limit_s)}",
-              "warn" if step and card.step_limit_s and step >= card.step_limit_s * 0.8 else "value")],
-    ]
-    tokens = card.step_tokens
-    if tokens is not None:
-        parts.append([span(t(language, "watch.tokens", input=labels.count(tokens.input),
-                             output=labels.count(tokens.output), cache=labels.count(tokens.cache_read)), "text")])
-    if card.last_failure:
-        parts.append([span(t(language, "watch.last_failure", status=card.last_failure,
-                             retrying=t(language, "watch.retrying") if card.call else ""), "warn")])
-    return join(parts, dot)
-
-
-def _review(language: str, card: SubjectCard) -> Line:
-    review = card.review
-    line: Line = [span(t(language, "watch.last_round") + " ", "text")]
-    if review is None:
-        return line + [span(NONE, "text")]
-    line += [span(labels.step_name(language, review.point) + " ", "text")]
-    if review.passed:
-        return line + [span("✓ " + t(language, "watch.passed"), "ok")]
-    line.append(span("■ " + t(language, "watch.failed", count=len(review.blockers)), "bad"))
-    if review.blockers:
-        separator = t(language, "common.item_separator")
-        detail = separator.join(f"{location} {summary}".strip() for location, summary in review.blockers)
-        line.append(span(t(language, "common.colon") + detail, "text"))
+def _row(snapshot: WatchSnapshot, language: str, row: ActiveRow,
+         widths: tuple[int, int, int, int, int, int]) -> Line:
+    github, severity, title, strip, detail, budget = widths
+    line: Line = [span(" "), *fit([span(_row_id(language, row), "value")], ID_COLUMN), span(" ")]
+    if github:
+        line += [*fit([span(f"#{row.github}" if row.github is not None else "", "frame")], github), span(" ")]
+    if severity:
+        role = "bad" if row.severity in ("P0", "P1") else "text"
+        line += [*fit([span(row.severity or "", role)], severity), span(" ")]
+    line += [*fit([*_notes(language, row), span(_row_title(language, row), "text")], title), span("  "),
+             *fit(_strip(row.steps), strip), span("  "),
+             *fit(_step(language, row), STEP_COLUMN), span(" "),
+             *_right(_elapsed(snapshot, row), TIME_COLUMN), span("  "),
+             *fit(_detail(language, row), detail)]
+    if budget:
+        line += [span("  "), *_right(_budget(row), budget)]
     return line
 
 
-def _progress(language: str, card: SubjectCard) -> Line:
-    line: Line = [span(t(language, "watch.progress") + " ", "text")]
-    if card.progress is None:
-        return line + [span(t(language, "watch.progress_first"), "text")]
-    reasons = []
-    if card.diff_changed is not None:
-        reasons.append(t(language, "watch.diff_changed" if card.diff_changed else "watch.diff_same"))
-    if card.blockers_changed is not None:
-        reasons.append(t(language, "watch.blockers_changed" if card.blockers_changed else "watch.blockers_same"))
-    head = t(language, "watch.progress_yes" if card.progress else "watch.progress_no")
-    return line + [span(head, "ok" if card.progress else "bad"),
-                   span(t(language, "common.colon") + t(language, "common.list_separator").join(reasons)
-                        if reasons else "", "text")]
+def _row_id(language: str, row: ActiveRow) -> str:
+    return labels.point_name(language, row.id) if row.kind in ("collect", "run") else row.id
 
 
-def _total(language: str, card: SubjectCard) -> Line:
-    dot = [span(" · ", "frame")]
-    files = NONE if card.files is None else str(card.files)
-    lines = NONE if card.lines is None else str(card.lines)
-    return [span(t(language, "watch.total") + " ", "text"),
-            span(t(language, "watch.calls", count=card.calls), "text"), *dot,
-            span(t(language, "watch.retries", count=card.retries), "warn" if card.retries else "text"), *dot,
-            span(t(language, "watch.returned", count=card.returned), "warn" if card.returned else "text"), *dot,
-            span(t(language, "watch.changed", files=f"{files}/{card.files_limit}", lines=f"{lines}/{card.lines_limit}"),
-                 "text"), *dot,
-            span(t(language, "watch.spent", value=f"{labels.duration(card.spent_s)}/"
-                   f"{labels.duration(card.spent_limit_s)}"), "text")]
+def _row_title(language: str, row: ActiveRow) -> str:
+    if row.kind == "collect":
+        sources = [mark for mark in row.steps if mark.point != "collect.dedup"]
+        done = sum(1 for mark in sources if mark.state in ("done", "skipped", "failed"))
+        return t(language, "watch.sources", done=done, total=len(sources))
+    if row.kind == "run":
+        return labels.point_name(language, row.point)
+    return row.title
 
 
-def _gate(language: str, card: SubjectCard) -> Line:
-    line: Line = [span(t(language, "watch.gate") + " ", "text")]
-    if card.gate_paths:
-        return line + [span(t(language, "watch.gate_high_risk", paths=" ".join(card.gate_paths)), "warn")]
-    if card.gate:
-        return line + [span(t(language, "watch.gate_at", gate=card.gate), "warn")]
-    return line + [span(t(language, "watch.gate_none"), "ok")]
+def _strip(steps: tuple[StepMark, ...]) -> Line:
+    return [span(STEP_MARKS[mark.state][0], STEP_MARKS[mark.state][1]) for mark in steps]
 
 
-# 采集卡片
+def _step(language: str, row: ActiveRow) -> Line:
+    point = row.step or row.point
+    if point is None:
+        return [span(NONE, "frame")]
+    name = labels.step_name(language, point) if "." in point else labels.point_name(language, point)
+    if row.round and row.round > 1:
+        name += f" r{row.round}"
+    return [span(name, "active" if row.action != "idle" else "text")]
+
+
+def _elapsed(snapshot: WatchSnapshot, row: ActiveRow) -> Line:
+    if row.step_started is None:
+        return [span(NONE, "frame")]
+    seconds = (snapshot.now - row.step_started).total_seconds()
+    limit = row.step_limit_s
+    role = "bad" if limit and seconds >= limit else "warn" if limit and seconds >= limit * 0.8 else "value"
+    return [span(labels.duration(seconds), role)]
+
+
+def _notes(language: str, row: ActiveRow) -> Line:
+    """要留意的情况放在标题前：上一次调用没成功(正在重试，不是卡死)、与上一轮比没有进展。"""
+    line: Line = []
+    if row.last_failure:
+        retrying = t(language, "watch.retrying") if row.call else ""
+        line.append(span(t(language, "watch.last_failure", status=row.last_failure, retrying=retrying) + "  ", "warn"))
+    if row.stalled:
+        line.append(span(t(language, "watch.stalled") + "  ", "warn"))
+    return line
+
+
+def _detail(language: str, row: ActiveRow) -> Line:
+    """正在调用模型时：这次调用读入的 token、第几轮、模型；否则是在做什么(跑测试、等 CI 等)。"""
+    call = row.call
+    if call is None:
+        return [span(t(language, f"watch.action_{row.action}"), "frame" if row.action == "idle" else "text")]
+    parts: list[Line] = []
+    if call.tokens is not None:
+        parts.append([span(labels.count(call.tokens.input), "value")])
+    if call.turns is not None:
+        parts.append([span(t(language, "watch.turn", count=call.turns), "text")])
+    parts.append([span(call.model or call.tool or NONE, "text")])
+    return join(parts, [span(" ")])
+
+
+def _budget(row: ActiveRow) -> Line:
+    if row.tokens_used is None or not row.tokens_limit:
+        return []
+    share = row.tokens_used / row.tokens_limit
+    role = "bad" if share >= 1 else "warn" if share >= 0.8 else "text"
+    return [span(f"{labels.count(row.tokens_used)}/{labels.count(row.tokens_limit)}", role)]
+
+
+def _right(line: Line, width: int) -> Line:
+    """右对齐到 width；放不下时截断。"""
+    gap = width - sum(display_width(item.text) for item in line)
+    return [span(" " * gap), *line] if gap >= 0 else fit(line, width)
+
+
+# 需要你处理
+
+
+def _attention(snapshot: WatchSnapshot, language: str, width: int) -> list[Line]:
+    """要人处理的事：运行中断、暂停或急停、待审核与出问题的 Issue、评估转人工的问题；每条右边是要敲的命令。"""
+    items: list[tuple[Line, str]] = []
+    run = snapshot.run
+    if run is not None and run.status == "interrupted":
+        items.append(([span(" ■ ", "bad"), span(t(language, f"common.gone_{run.gone_reason}"), "bad")],
+                      "tightrein run"))
+    if snapshot.control.mode != "normal":
+        note = [span("  " + snapshot.control.note, "text")] if snapshot.control.note else []
+        items.append(([span(" ▲ ", "warn"), span(t(language, f"watch.{snapshot.control.mode}"), "warn"),
+                       span(" " + labels.ago(language, snapshot.now, snapshot.control.since), "frame"), *note],
+                      "tightrein resume"))
+    items += [(_waiting(snapshot, language, item), item.command) for item in snapshot.waiting]
+    if snapshot.manual:
+        ids = " ".join(snapshot.manual)
+        items.append(([span(" ● ", "active"), span(t(language, "watch.manual", count=len(snapshot.manual)), "text"),
+                       span("  " + ids, "value")], f"tightrein show {snapshot.manual[0]}"))
+    return [pad_between(left, [span(command, "command"), span(" ")], width) for left, command in items]
+
+
+def _waiting(snapshot: WatchSnapshot, language: str, item: WaitingItem) -> Line:
+    review = item.kind == "review"
+    mark, role = ("▲", "warn") if review else ("■", "bad")
+    line: Line = [span(f" {mark} ", role), *fit([span(item.id, "value")], ID_COLUMN)]
+    if item.github is not None:
+        line.append(span(f"#{item.github} ", "frame"))
+    if item.severity:
+        line.append(span(item.severity + " ", "bad" if item.severity in ("P0", "P1") else "text"))
+    step = labels.step_name(language, item.point) if item.point else NONE
+    line += [span(t(language, "watch.review" if review else "watch.failed"), role),
+             span(" · " + step, "active"),
+             span(" · " + t(language, "watch.waited",
+                            value=labels.duration((snapshot.now - item.since).total_seconds())), "text"),
+             span("  " + item.title, "text")]
+    return line
+
+
+# 采集看板
+
+
+def _collect_elapsed(snapshot: WatchSnapshot, language: str, card: CollectCard) -> Line:
+    if card.started_at is None:
+        return []
+    elapsed = (snapshot.now - card.started_at).total_seconds()
+    return [span(t(language, "watch.elapsed") + " ", "text"), span(labels.duration(elapsed), "value")]
 
 
 def _collect(snapshot: WatchSnapshot, language: str, card: CollectCard, width: int) -> list[Line]:
-    elapsed = None if card.started_at is None else (snapshot.now - card.started_at).total_seconds()
-    title = [span(t(language, "points.collect"), "value")]
-    right = [span(t(language, "watch.elapsed") + " ", "text"), span(labels.duration(elapsed), "value")]
-    inner = width - 4
-    column = inner // SOURCE_COLUMNS
+    column = (width - 2) // SOURCE_COLUMNS
     rows: list[Line] = []
     sources = list(card.sources)
     for start in range(0, len(sources), SOURCE_COLUMNS):
-        row: Line = []
+        row: Line = [span(" ")]
         for mark in sources[start:start + SOURCE_COLUMNS]:
             row += fit(_source(language, mark), column)
         rows.append(row)
     rows.append(_dedup(language, card))
     rows.append(_breaker(snapshot, language, card))
-    return [box_top(title, right, width), *_rows(rows, width), box_bottom(width)]
+    return rows
 
 
 def _source(language: str, mark: SourceMark) -> Line:
     symbol, role = SOURCE_MARKS[mark.state]
-    line: Line = [span(labels.step_name(language, mark.key) + " ", "text"), span(symbol, role)]
+    line: Line = [span(symbol + " ", role), span(labels.step_name(language, mark.key), "text")]
     if mark.state == "off":
         return line + [span(" " + t(language, "watch.source_off"), "frame")]
     if mark.state == "skipped":
@@ -279,21 +374,21 @@ def _source(language: str, mark: SourceMark) -> Line:
     if mark.produced is not None:
         line.append(span(" " + t(language, "watch.produced", count=labels.count(mark.produced)), "value"))
     if mark.duration_s is not None:
-        line.append(span(" " + labels.duration(mark.duration_s), "text"))
+        line.append(span(" " + labels.duration(mark.duration_s), "frame"))
     return line
 
 
 def _dedup(language: str, card: CollectCard) -> Line:
-    line: Line = [span(labels.step_name(language, "collect.dedup") + " ", "text")]
+    line: Line = [span(" "), span(labels.step_name(language, "collect.dedup") + " ", "text")]
     if card.dedup is None:
-        return line + [span("○ " + t(language, "watch.source_waiting"), "frame")]
+        return line + [span("· " + t(language, "watch.source_waiting"), "frame")]
     new, merged, muted, regressed = card.dedup
     return line + [span(t(language, "watch.dedup", new=new, merged=merged, muted=muted), "text"),
                    span(" · " + t(language, "watch.regressed", count=regressed), "bad" if regressed else "text")]
 
 
 def _breaker(snapshot: WatchSnapshot, language: str, card: CollectCard) -> Line:
-    line: Line = [span(t(language, "watch.breaker") + " ", "text")]
+    line: Line = [span(" " + t(language, "watch.breaker") + " ", "text")]
     breaker = card.breaker
     if breaker is None:
         return line + [span(t(language, "common.none"), "ok")]
@@ -302,44 +397,42 @@ def _breaker(snapshot: WatchSnapshot, language: str, card: CollectCard) -> Line:
                         "bad")]
 
 
-# 事件、后续、按键
+# 事件、排队、按键
 
 
-def _events(snapshot: WatchSnapshot, language: str, zone: tzinfo | None) -> list[Line]:
-    lines = [_event(language, event, zone) for event in snapshot.events[:EVENT_ROWS]]
+def _events(snapshot: WatchSnapshot, language: str, zone: tzinfo | None, count: int) -> list[Line]:
+    lines = [_event(language, event, zone) for event in snapshot.events[:count]]
     if not lines:
         lines = [[span(" " + t(language, "watch.no_events"), "frame")]]
-    return lines + [[] for _ in range(EVENT_ROWS - len(lines))]
+    return lines + [[] for _ in range(count - len(lines))]
 
 
 def _event(language: str, event: EventLine, zone: tzinfo | None) -> Line:
     symbol, role = EVENT_MARKS[event.mark]
-    point = fit([span(labels.point_name(language, event.point, event.round), "active")], POINT_COLUMN)
-    return [span(" " + labels.clock(event.at, zone, seconds=True) + "  ", "frame"),
-            span(f"{event.subject or NONE:<6}", "value"), *point, span(" "), span(symbol + " ", role),
-            span(event.summary, "warn" if event.mark == "warn" else "text")]
+    routine = event.mark == "routine"
+    point = fit([span(labels.point_name(language, event.point, event.round), "frame" if routine else "active")],
+                POINT_COLUMN)
+    subject = fit([span(event.subject or NONE, "frame" if routine else "value")], SUBJECT_COLUMN)
+    return [span(" " + labels.clock(event.at, zone, seconds=True) + "  ", "frame"), *subject, span(" "), *point,
+            span(" "), span(symbol + " ", role), span(event.summary, EVENT_TEXT[event.mark])]
 
 
-def _next(snapshot: WatchSnapshot, language: str) -> Line:
-    line: Line = [span(" " + t(language, "watch.next") + " ", "text")]
-    run = snapshot.run
-    if run is not None and run.status == "interrupted":
-        return line + [span(t(language, "common.take_over") + " ", "warn"), span("tightrein run", "command")]
-    if snapshot.control.mode != "normal":
-        return line + [span(t(language, f"watch.control_{snapshot.control.mode}") + " ", "warn"),
-                       span("tightrein resume", "command")]
-    if run is None or run.status not in ("running", "finishing"):
-        return line + [span(t(language, "watch.start_run") + " ", "text"), span("tightrein run", "command")]
-    parts: list[Line] = []
-    if snapshot.next_point:
-        round_ = snapshot.subject.round if snapshot.subject is not None else None
-        parts.append([span(labels.step_name(language, snapshot.next_point) + (f" r{round_}" if round_ else ""),
-                           "active")])
-    if snapshot.queued:
-        parts.append([span(t(language, "watch.queued") + " ", "text"), span(" ".join(snapshot.queued), "value")])
-    if snapshot.retro_after:
+def _queue(snapshot: WatchSnapshot, language: str) -> Line:
+    queue = snapshot.queue
+    dot = [span(" · ", "frame")]
+    parts: list[Line] = [[span(t(language, "watch.todo", count=len(queue.todo)), "value" if queue.todo else "text")],
+                         [span(t(language, "watch.assess_pending", count=queue.assess_pending),
+                               "value" if queue.assess_pending else "text")]]
+    for key, value in (("ci", queue.ci), ("to_merge", queue.to_merge), ("deploying", queue.deploying),
+                       ("accepting", queue.accepting)):
+        if value:
+            parts.append([span(t(language, f"watch.{key}", count=value), "text")])
+    if queue.retro_after:
         parts.append([span(t(language, "watch.retro_after"), "text")])
-    return line + (join(parts, [span(" · ", "frame")]) if parts else [span(NONE, "text")])
+    line: Line = [span(" " + t(language, "watch.queue") + "  ", "value"), *join(parts, dot)]
+    if queue.todo:
+        line += [span("    " + t(language, "watch.next_up") + " ", "frame"), span(" ".join(queue.todo), "text")]
+    return line
 
 
 def _keys(language: str) -> Line:
