@@ -121,3 +121,16 @@ def test_a_failing_prepare_command_is_a_configuration_error(new_world: Any, sett
     assert result.facts["prepareCommands"][0]["name"] == "prepare" and "baseChecks" not in result.facts
     # 准备失败就不在基准上跑检查，免得把环境问题算成基准失败
     assert [command.argv for command in world.runner.others()] == [("npm", "ci")]
+
+
+def test_branch_slugs_read_like_a_person_named_them():
+    from types import SimpleNamespace
+
+    from tightrein.implement.prepare.workspace import _slug
+
+    def issue(slug, causes=()):
+        return SimpleNamespace(extra={"slug": slug, "rootCauses": list(causes)}, title="中文标题", kind="bug")
+
+    assert _slug(issue("static-restore-progress")) == "restore-progress"  # 不带来源名
+    assert _slug(issue("static", [{"symbol": "Database.set_progress"}])) == "set-progress"  # 取根因的函数名
+    assert _slug(issue("static")) == "bug"

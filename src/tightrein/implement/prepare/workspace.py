@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 
 POINT = "implement.prepare"
 URGENT = "P0"  # 立即修的 P0 用 hotfix 分支
-TOOL_SLUG_PREFIX = re.compile(r"^(?:static|probe|error|alert|latency|server-error|incidental|authz)-")
+TOOL_SLUG_PREFIX = re.compile(r"^(?:static|probe|error|alert|latency|server-error|incidental|authz)(?:-|$)")
 # 快照 commit 的作者：不是提交到分支上的 commit，不经 Git.commit，也就不涉及署名规则
 SNAPSHOT_IDENTITY = {"GIT_AUTHOR_NAME": "tightrein", "GIT_AUTHOR_EMAIL": "tightrein@localhost",
                      "GIT_COMMITTER_NAME": "tightrein", "GIT_COMMITTER_EMAIL": "tightrein@localhost"}
@@ -135,7 +135,17 @@ def _slug(issue: Issue) -> str:
     """分支名里的简称：评估写下的英文简称优先，其次标题中的英文词，都没有时用种类。旧版简称开头带的检查类别
     (`static-…`、`probe-…`)去掉：分支名要像人起的。"""
     found = TOOL_SLUG_PREFIX.sub("", kebab(str(issue.extra.get("slug") or "")))
-    return found or kebab(issue.title) or issue.kind
+    return found or kebab(issue.title) or _cause_words(issue) or issue.kind
+
+
+def _cause_words(issue: Issue) -> str:
+    """中文标题转不出英文词时，用第一个根因所在的函数名(`Database.set_progress` → `set-progress`)。"""
+    for cause in issue.extra.get("rootCauses") or []:
+        symbol = str((cause or {}).get("symbol") or "").rpartition(".")[2].lstrip("_")
+        found = kebab(re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "-", symbol))
+        if found:
+            return found
+    return ""
 
 
 def _worktree_tree(git: Git, head: str) -> str:
