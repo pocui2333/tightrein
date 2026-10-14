@@ -54,6 +54,8 @@ def test_each_check_fails_on_its_own_defect(repo: Path, good_output: Callable[..
     assert [item for item in run(bad_fact, repo) if item.startswith("[evidence-location]")]
     vague = good_output(trigger="可能在并发时出现")
     assert run(vague, repo) == ["[vague-wording] 结论含含糊措辞：trigger 含「可能」"]
+    described = good_output(facts=[{"location": "services/orders.py:3", "observation": "返回前 order 都可能为空"}])
+    assert run(described, repo) == []  # 代码事实描述可能的状态，不算含糊
     no_assessment = good_output(assessment=None)
     assert run(no_assessment, repo)[0].startswith("[assessment]")
     missing_file = good_output()

@@ -31,7 +31,8 @@ LINE_KEY = "line"
 # 要核对的证据位置：(取值路径, 说明)；路径中 [*] 展开列表
 EVIDENCE_PATHS = ("facts[*].location", "counterEvidence[*].upstreamValidation.location",
                   "sourceOfPhenomenon.location", "rootCauses[*]", "impact.callSites[*]")
-VAGUE_FIELDS = ("facts[*].observation", "trigger", "counterEvidence[*].result")
+# 只查结论性的字段：代码事实里「这段时间内都可能为空」是在描述代码可能的状态，不是含糊其辞(实测误报，白白重做一次)
+VAGUE_FIELDS = ("trigger", "counterEvidence[*].result")
 
 
 @dataclass
