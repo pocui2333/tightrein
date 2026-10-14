@@ -127,6 +127,16 @@ def test_regression_only_on_strictly_newer_release():
     assert is_regression(problem(), "c3", FACTS) is False
 
 
+def test_regression_needs_the_occurrence_to_contain_the_issue_fix():
+    resolved = problem(status=ProblemStatus.RESOLVED, **{RESOLVED_COMMIT: "c1"})
+    facts = CommitFacts({**FACTS.ancestry, ("c3", "c2"): False})
+    assert is_regression(resolved, "c2", facts, fix="c3") is False  # 晚于解决时 commit，但修复还没合进来
+    assert is_regression(resolved, "c3", facts, fix="c3") is True
+    assert is_regression(resolved, "c3", facts, fix="c2") is True
+    assert is_regression(resolved, "c3", facts, fix="zz") is None
+    assert facts.contains("c3", "c3") is True and facts.contains(None, "c3") is None
+
+
 def muted(condition: IgnoreCondition, **kwargs):
     return problem(status=ProblemStatus.MUTED, **{IGNORE: condition.to_json()}, **kwargs)
 

@@ -147,6 +147,21 @@ def test_regression_reopens_the_issue_and_is_sent_with_its_number(runtime, conn,
     assert read(layout.step_file("P-0001", HANDOFF)).facts["issue"] == "0018"
 
 
+def test_occurrences_on_versions_without_the_issue_fix_do_not_reopen_it(runtime, conn, clock, make_signal,
+                                                                        make_result):
+    issues.save(conn, Issue(id="0018", status="done", title="t", kind="bug", origin="problem", merge_commit="c3",
+                            extra={"closeReason": "fixed"}), clock)
+    stored_problem(conn, clock, status="resolved", issue="0018", extra={RESOLVED_COMMIT: "c1"})
+    stale = dedup(runtime, [make_result("collect.platform_errors", [make_signal(group_key="g1", commit="c2")])])
+    assert stale.regressed == [] and stale.reopened == []
+    assert problems.get(conn, "P-0001").status == "resolved" and issues.get(conn, "0018").status == "done"
+    assert len(occurrences.find(conn, "P-0001")) == 1
+    assert any("0018" in note and "不算回归" in note for note in stale.notes)
+    fixed = dedup(runtime, [make_result("collect.platform_errors", [make_signal(group_key="g1", commit="c4")])])
+    assert fixed.regressed == ["P-0001"] and fixed.reopened == ["0018"]
+    assert issues.get(conn, "0018").status == "todo"
+
+
 def test_a_failed_reproduce_check_is_marked_on_the_regressed_problem(runtime, conn, clock, layout, make_signal,
                                                                       make_result):
     stored_problem(conn, clock, status="resolved", extra={RESOLVED_COMMIT: "c2"})

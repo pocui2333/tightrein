@@ -3,7 +3,8 @@
 - 状态转换只经 TRANSITIONS 查表，不在表中的组合抛 TransitionRejected，整次去重中止，不会静默写入非法状态；
 - commit 先后关系先汇总本次要用的 commit 对、一次查完(CommitFacts)再判定，不在循环中逐个查 git；
   查不到的 commit(本地没同步)视为关系未知，本次不做解决、回归、忽略到期判定，在说明中列出，不会误判；
-- 回归只在严格更新的 commit 上判定(是祖先且不是同一个，兄弟分支不算)；
+- 回归只在严格更新的 commit 上判定(是祖先且不是同一个，兄弟分支不算)；关联的 Issue 合并过修复时，出现的版本
+  还必须已含这次修复(合并提交是它的祖先或就是它)，否则只累计出现、不改问题与 Issue 的状态；
 - 已解决：覆盖运行里没出现、并且运行的 commit 比问题最后出现的 commit 更新，才累计一次；
   次数按来源取 resolveCoveredRuns(静态巡检 1 次，其余 3 次)；
 - 只有状态为 done 或 partial 的来源运行参与覆盖判定，且只按它实际读到、测到的范围(SourceResult.coverage)：
@@ -138,6 +139,14 @@ class CommitFacts:
             return False
         return self.ancestry.get((than, commit))
 
+    def contains(self, commit: str | None, change: str | None) -> bool | None:
+        """commit 的版本是否已含 change(change 是它的祖先或就是它)；任一方为空或关系未知时为 None。"""
+        if commit is None or change is None:
+            return None
+        if commit == change:
+            return True
+        return self.ancestry.get((change, commit))
+
 
 @dataclass(frozen=True)
 class Coverage:
@@ -179,6 +188,7 @@ class Plan:
     covered: list[tuple[Problem, Coverage]] = field(default_factory=list)
     muted: list[Problem] = field(default_factory=list)
     pairs: set[tuple[str, str]] = field(default_factory=set)
+    fixes: dict[str, str] = field(default_factory=dict)  # 问题编号 → 关联 Issue 修复的合并提交
 
 
 def transition(problem: Problem, event: Event) -> str:
@@ -276,16 +286,38 @@ def resolution_ready(problem: Problem, coverage: Coverage, facts: CommitFacts, r
     return newer and int(problem.extra.get(CLEAN_RUNS, 0)) >= required
 
 
-def is_regression(problem: Problem, commit: str | None, facts: CommitFacts) -> bool | None:
-    """已解决的问题出现在晚于解决时 commit 的版本上才算回归；旧版本上的迟到信号只累计。"""
+def is_regression(problem: Problem, commit: str | None, facts: CommitFacts, fix: str | None = None) -> bool | None:
+    """已解决的问题出现在晚于解决时 commit 的版本上才算回归；旧版本上的迟到信号只累计。
+    fix 为关联 Issue 修复的合并提交：给了时出现的版本还必须已含这次修复。没含修复的版本上的出现(如基于旧主干的
+    工作区里顺带报的发现，或「解决」是覆盖运行碰巧没报出来、修复其实还没合并)说明不了修复失效，只累计。"""
     if problem.status != ProblemStatus.RESOLVED:
         return False
-    return facts.is_newer(commit, problem.extra.get(RESOLVED_COMMIT))
+    newer = facts.is_newer(commit, problem.extra.get(RESOLVED_COMMIT))
+    if newer is not True or fix is None:
+        return newer
+    return facts.contains(commit, fix)
 
 
-def plan(changeset: ChangeSet, coverages: Mapping[str, Coverage]) -> Plan:
-    """coverages 为本次 done 或 partial 的来源运行各自的覆盖范围；调用前已把候选问题批量读进变更集。"""
-    result = Plan()
+def fix_commits(conn: sqlite3.Connection, changeset: ChangeSet) -> dict[str, str]:
+    """本次出现的已解决问题所关联 Issue 修复的合并提交(问题编号 → commit)，一次查完；Issue 没合并过修复的不在其中。"""
+    linked: dict[str, list[str]] = {}
+    for problem_id in sorted(changeset.occurred):
+        problem = changeset.known[problem_id]
+        if problem.status == ProblemStatus.RESOLVED and problem.issue is not None:
+            linked.setdefault(problem.issue, []).append(problem_id)
+    if not linked:
+        return {}
+    rows = conn.execute(
+        f"SELECT id, merge_commit FROM issues WHERE id IN ({', '.join('?' for _ in linked)}) "
+        "AND merge_commit IS NOT NULL", sorted(linked),
+    ).fetchall()
+    return {problem_id: row[1] for row in rows for problem_id in linked[row[0]]}
+
+
+def plan(changeset: ChangeSet, coverages: Mapping[str, Coverage], fixes: Mapping[str, str] | None = None) -> Plan:
+    """coverages 为本次 done 或 partial 的来源运行各自的覆盖范围；fixes 为 fix_commits 的结果；
+    调用前已把候选问题批量读进变更集。"""
+    result = Plan(fixes=dict(fixes or {}))
     decided = {item.problem for item in changeset.transitions}
     for problem_id in sorted(changeset.occurred):
         problem = changeset.known[problem_id]
@@ -295,6 +327,8 @@ def plan(changeset: ChangeSet, coverages: Mapping[str, Coverage]) -> Plan:
         commit = latest_commit(changeset, problem_id)
         if problem.status == ProblemStatus.RESOLVED and problem.extra.get(RESOLVED_COMMIT) and commit:
             result.pairs.add((problem.extra[RESOLVED_COMMIT], commit))
+            if problem_id in result.fixes:
+                result.pairs.add((result.fixes[problem_id], commit))
     for problem in sorted(changeset.known.values(), key=lambda item: item.id):
         if problem.id in changeset.occurred:
             continue
@@ -317,7 +351,7 @@ def apply(changeset: ChangeSet, conn: sqlite3.Connection, work: Plan, facts: Com
     windows = _window_counts(conn, changeset, [item.id for item in work.occurred
                                                if item.status == ProblemStatus.WATCHING], params.watch_window)
     for problem in work.occurred:
-        _seen_again(changeset, problem, facts, windows.get(problem.id, 0), params)
+        _seen_again(changeset, problem, facts, windows.get(problem.id, 0), params, work.fixes.get(problem.id))
     for problem, coverage in work.covered:
         _resolve(changeset, problem, coverage, facts, params)
     for problem in work.muted:
@@ -335,7 +369,8 @@ def required_runs(params: Params, source: str) -> int:
     return int(params.covered_runs.get(source, params.covered_runs["*"]))
 
 
-def _seen_again(changeset: ChangeSet, problem: Problem, facts: CommitFacts, in_window: int, params: Params) -> None:
+def _seen_again(changeset: ChangeSet, problem: Problem, facts: CommitFacts, in_window: int, params: Params,
+                fix: str | None) -> None:
     if problem.status == ProblemStatus.MUTED:
         expired = ignore_expired(problem, changeset.now, facts,
                                  escalated=escalated(problem, changeset.occurred.get(problem.id, [])))
@@ -346,9 +381,12 @@ def _seen_again(changeset: ChangeSet, problem: Problem, facts: CommitFacts, in_w
             return
     if problem.status == ProblemStatus.RESOLVED:
         commit = latest_commit(changeset, problem.id)
-        regressed = is_regression(problem, commit, facts)
+        regressed = is_regression(problem, commit, facts, fix)
         if regressed is None:
             _unknown(changeset, problem, "回归")
+        elif not regressed and commit is not None and fix is not None and facts.contains(commit, fix) is False:
+            changeset.notes.append(f"{problem.id}：出现的版本 {commit[:7]} 还不含 Issue {problem.issue} 的修复"
+                                   f"(合并提交 {fix[:7]})，只记出现，不算回归")
         if regressed:
             changeset.transition(problem, Event.REGRESSED, commit=commit, issue=problem.issue,
                                  regressionCheck=True if problem.id in changeset.regression_checks else None)
