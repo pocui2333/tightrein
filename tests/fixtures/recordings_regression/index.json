@@ -41,11 +41,21 @@
       "sha256": "7f81a9cd7b9aec5d099a66b3121f23d9d9b9bcaf4bc5aecda5c731dfdd35288a"
     },
     {
+      "point": "implement.review.deep",
+      "subject": "0001",
+      "round": 1,
+      "call": 1,
+      "dir": "05-implement.review.deep-r1",
+      "tool": "claude",
+      "exitCode": 0,
+      "sha256": "3b084d5695cd7c910cd8bc5997c2782083189bdeb72fb0ed1c3323d533e2b5ad"
+    },
+    {
       "point": "retro.idea",
       "subject": null,
       "round": null,
       "call": 1,
-      "dir": "05-retro.idea",
+      "dir": "06-retro.idea",
       "tool": "claude",
       "exitCode": 0,
       "sha256": "65f6e42f22c23b4ef8113ea8dc0610073098d775b9bb28c3ead3b8a246a44030"
@@ -55,7 +65,7 @@
       "subject": "0001",
       "round": null,
       "call": 2,
-      "dir": "06-implement.design-c2",
+      "dir": "07-implement.design-c2",
       "tool": "claude",
       "exitCode": 0,
       "sha256": "9ff2e9501d985af7b65f332501290f08d5306df6628f4e6683006e24fd93e23b"
@@ -65,7 +75,7 @@
       "subject": "0001",
       "round": 1,
       "call": 2,
-      "dir": "07-implement.code-r1-c2",
+      "dir": "08-implement.code-r1-c2",
       "tool": "claude",
       "exitCode": 0,
       "sha256": "b832a8b2eea932888004190d2396afcafebe995321e5bda3dd95b4ccf0f3bcf4"
@@ -75,10 +85,20 @@
       "subject": "0001",
       "round": 1,
       "call": 2,
-      "dir": "08-implement.review-r1-c2",
+      "dir": "09-implement.review-r1-c2",
       "tool": "claude",
       "exitCode": 0,
       "sha256": "c307585d88dc24794d283dfcf88e8721d8561f281f1c56a7974c40daeecf4e1c"
+    },
+    {
+      "point": "implement.review.deep",
+      "subject": "0001",
+      "round": 1,
+      "call": 2,
+      "dir": "10-implement.review.deep-r1-c2",
+      "tool": "claude",
+      "exitCode": 0,
+      "sha256": "d95df49e4118116f7174ae1226789884df3c2d6209d1a851536c3cba0e0e81e7"
     }
   ]
 }

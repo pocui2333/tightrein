@@ -39,6 +39,16 @@
       "tool": "claude",
       "exitCode": 0,
       "sha256": "c73887ee292843d28bd37322c7b9ca65cd67a384bd15809f4425651f167c5075"
+    },
+    {
+      "point": "implement.review.deep",
+      "subject": "0001",
+      "round": 1,
+      "call": 1,
+      "dir": "05-implement.review.deep-r1",
+      "tool": "claude",
+      "exitCode": 0,
+      "sha256": "b948b67f06407ea80a061e296900f9381700446e1e425ac83adf8eb026bb9573"
     }
   ]
 }

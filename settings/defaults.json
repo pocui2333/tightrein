@@ -633,7 +633,8 @@
     "implement.review": {
       "model": "opus-mid",
       "rounds": 3,
-      "timeout": "10m"
+      "timeout": "10m",
+      "deepAlways": true
     },
     "implement.review.deep": {
       "model": "flash-high",

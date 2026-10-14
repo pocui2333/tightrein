@@ -1,4 +1,5 @@
-"""审查(implement.review)：轻量审查都做，高风险另加深度审查(implement.review.deep，盲审，与编码不同的模型)。
+"""审查(implement.review)：轻量审查都做，另加深度审查(implement.review.deep，盲审，与编码不同的模型)：缺省每次都做，
+deepAlways 为假时只在高风险时做。
 
 - 改动没变就不重做：上次已通过且与提交无关的 diff 哈希(protocol.git.diff_hash，比较基准为 review_base)相同，直接
   沿用；合并主干后只在主干改到同一文件时哈希才变，才需要重新审查；
@@ -109,7 +110,9 @@ def run(runtime: Runtime, context: ImplementContext) -> Handoff:
         results=results, hints=check.get("hardcodeHints") or [], previous=previous_blockers, files=files),
         usage, worktree)
     reviews = [light_review]
-    if light_review.passed and risk.high:
+    # 深度审查缺省每次都做(controls."implement.review".deepAlways)：实测并发取锁的修复没被判为高风险，只做了轻量
+    # 审查，合并后下一轮巡检才查出它引入的竞态；成立与否的把关从评估挪到了修复之后
+    if light_review.passed and (risk.high or bool(runtime.settings.control(POINT, "deepAlways"))):
         reviews.append(_review(runtime, replace(context, risk=risk), DEEP,
                                prompts.deep(context, diff=changes.patch, results=results, risk=risk), usage, worktree))
     return _handoff(runtime, context, started, base, diff_hash, states, changes, files, reviews, risk, usage)

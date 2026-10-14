@@ -41,7 +41,7 @@ OBJECT_HANDOFFS = (
 # 每次运行都落盘的交接(相对 data/runs/<运行>/)
 RUN_HANDOFFS = ("11-collect.project_probes-handoff.json", "17-collect.incidental-handoff.json",
                 "19-collect.dedup-handoff.json", "51-retro.detect-handoff.json")
-RECORDED_POINTS = ["assess.triage", "implement.design", "implement.code", "implement.review"]
+RECORDED_POINTS = ["assess.triage", "implement.design", "implement.code", "implement.review", "implement.review.deep"]
 
 
 @pytest.fixture(scope="module")

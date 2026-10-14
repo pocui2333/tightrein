@@ -1,0 +1,20 @@
+{
+  "analysis": "改动只在 average 开头加了空列表判断，非空路径不变；新增测试覆盖空列表；自检的 pytest 通过。",
+  "acceptance": [
+    {
+      "criterion": "average([]) 返回 0",
+      "result": "pass",
+      "reason": "calc.py 新增空列表判断，test_average_empty 通过"
+    },
+    {
+      "criterion": "average([1, 2, 3]) 仍返回 2",
+      "result": "pass",
+      "reason": "test_average 通过"
+    }
+  ],
+  "previousBlockers": [],
+  "blockers": [],
+  "unverified": [],
+  "incidentalFindings": [],
+  "knowledgeSuggestions": []
+}

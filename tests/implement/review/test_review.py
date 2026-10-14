@@ -57,6 +57,12 @@ class FakeAsk:
         return [request.point for request in self.requests]
 
 
+@pytest.fixture(autouse=True)
+def _deep_only_when_risky(world: Any, settings_with: Any) -> None:
+    """本文件的大多数用例只看轻量审查：关掉「深度审查每次都做」，另有用例专门测它。"""
+    world.runtime.settings = settings_with({"controls": {"implement.review": {"deepAlways": False}}})
+
+
 def _install(monkeypatch: pytest.MonkeyPatch, **outputs: dict[str, Any] | None) -> FakeAsk:
     fake = FakeAsk(**outputs)
     monkeypatch.setattr(review, "ask", fake)
@@ -166,6 +172,16 @@ def test_deep_review_runs_only_after_the_light_one_passes_and_is_blind(world: An
     fake = _install(monkeypatch, implement_review=_output(blockers=(_blocker(),)), implement_review_deep=_output())
     failed = review.run(world.runtime, _high_risk(world.context()))
     assert failed.status is Status.FAILED and fake.points() == ["implement.review"]
+
+
+def test_deep_review_runs_every_time_by_default(world: Any, settings_with: Any,
+                                               monkeypatch: pytest.MonkeyPatch) -> None:
+    world.runtime.settings = settings_with()
+    world.repo.write(FIX)
+    fake = _install(monkeypatch, implement_review=_output(), implement_review_deep=_output())
+    result = review.run(world.runtime, world.context())
+    assert result.status is Status.PASSED and fake.points() == ["implement.review", "implement.review.deep"]
+    assert result.facts["risk"]["high"] is False  # 不是高风险也做深度审查
 
 
 def test_unknown_items_wait_for_the_user_and_the_decision_is_not_rerun(world: Any,

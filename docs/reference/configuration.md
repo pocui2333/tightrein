@@ -303,6 +303,7 @@
 | `implement.review` | `model` | `"opus-mid"` |
 | `implement.review` | `rounds` | `3` |
 | `implement.review` | `timeout` | `"10m"` |
+| `implement.review` | `deepAlways` | `true` |
 | `implement.review.deep` | `model` | `"flash-high"` |
 | `implement.review.deep` | `fallback` | `"opus-mid"` |
 | `implement.review.deep` | `turns` | `30` |

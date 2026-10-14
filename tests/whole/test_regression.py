@@ -17,8 +17,8 @@ ISSUE = "0001"
 IMPLEMENT_STEPS = ("31-implement.prepare", "33-implement.design", "34-implement.approve", "35-implement.code.r1",
                    "36-implement.check.r1", "37-implement.review.r1", "38-implement.deliver.r1")
 RELEASE_STEPS = ("41-release.pr", "42-release.ci", "43-release.merge", "44-release.deploy", "45-release.accept")
-RECORDED_POINTS = ["assess.triage", "implement.design", "implement.code", "implement.review", "retro.idea",
-                   "implement.design", "implement.code", "implement.review"]
+RECORDED_POINTS = ["assess.triage", "implement.design", "implement.code", "implement.review", "implement.review.deep",
+                   "retro.idea", "implement.design", "implement.code", "implement.review", "implement.review.deep"]
 
 
 @pytest.fixture(scope="module")
