@@ -275,6 +275,22 @@ class Settings:
                         issues.append(f"controls.{reviewer}：与 {producer} 用了同一个模型 {left.tool}/{left.model}")
         return issues
 
+    def stronger(self, point: str, current: Model) -> Model | None:
+        """升档阶梯(limits.escalation.ladder，由弱到强)中比 current 强的第一个模型；跳过与 current 相同的，也跳过这个
+        调用点按 independence 要独立于的调用点所用的模型(工具、模型与推理强度都相同才算同一个；与 assess.refute 的
+        备用模型 opus-mid 同一口径)。current 不在阶梯上或已是最强时为 None。"""
+        ladder = list(self.get("limits.escalation.ladder"))
+        if current.alias not in ladder:
+            return None
+        avoid = {(model.tool, model.model, model.effort) for reviewer, producer in self.merged.get("independence", [])
+                 if reviewer == point for model in self._variants(producer)}
+        avoid.add((current.tool, current.model, current.effort))
+        for alias in ladder[ladder.index(current.alias) + 1:]:
+            model = self.model(alias)
+            if (model.tool, model.model, model.effort) not in avoid:
+                return model
+        return None
+
     def _variants(self, point: str) -> list[Model]:
         try:
             models = [self.model_for(point)]

@@ -59,9 +59,10 @@
 | 状态(agents 的统一结果) | 处理 | Action |
 |---|---|---|
 | 临时错误(限流、5xx、网络) | 按上表退避重试同一次调用 | RETRY，超过次数 STOP |
-| 格式不符 | 续接同一会话带原因重试 1 次(续接用得上缓存) | RESUME_WITH_REASON，再不符 STOP |
+| 格式不符 | 续接同一会话带原因重试 2 次(续接用得上缓存；同一模型共 3 次)，再不符升一档 | RESUME_WITH_REASON，再不符 ESCALATE |
 | 被拒绝(如安全分类)、工具不可用 | 换备用模型重试 1 次，再失败就停 | FALLBACK，已换过 STOP |
-| 超时、轮数到限、用量到限 | 不重试，停下，复盘记一条 | STOP |
+| 超时、轮数到限 | 升一档：换升档阶梯(`limits.escalation.ladder`，flash → … → opus)上更强的模型新开会话，每次调用最多升 `limits.escalation.max`(2)档；轮数到限的只读调用先续接补要一次结论；没有更强的就停下 | ESCALATE |
+| 用量到限 | 不重试，停下，复盘记一条 | STOP |
 | 认证失败 | 停，并对该工具立即触发依赖熔断(`Breaker.trip`) | STOP |
 | 订阅额度用完 | 全部停下，见 resources.md「额度用完」；不换到另一个工具 | HALT_ALL |
 | 越界、其余失败 | 停 | STOP |

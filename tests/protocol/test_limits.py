@@ -38,9 +38,14 @@ def test_transient_errors_are_retried_twice(settings):
         Action.RETRY, Action.RETRY, Action.STOP]
 
 
-def test_schema_invalid_resumes_the_session_once(settings):
-    assert decide(CallStatus.SCHEMA_INVALID, 1, fallback_used=False, settings=settings) is Action.RESUME_WITH_REASON
-    assert decide(CallStatus.SCHEMA_INVALID, 2, fallback_used=False, settings=settings) is Action.STOP
+def test_schema_invalid_resumes_the_session_twice_then_escalates(settings):
+    assert [decide(CallStatus.SCHEMA_INVALID, attempt, fallback_used=False, settings=settings)
+            for attempt in (1, 2, 3)] == [Action.RESUME_WITH_REASON, Action.RESUME_WITH_REASON, Action.ESCALATE]
+
+
+@pytest.mark.parametrize("status", [CallStatus.TIMEOUT, CallStatus.TURN_LIMIT])
+def test_timeouts_and_turn_limits_escalate(settings, status):
+    assert decide(status, 1, fallback_used=False, settings=settings) is Action.ESCALATE
 
 
 @pytest.mark.parametrize("status", [CallStatus.REFUSED, CallStatus.UNAVAILABLE])
@@ -53,8 +58,8 @@ def test_quota_exhaustion_halts_everything(settings):
     assert decide(CallStatus.QUOTA_EXHAUSTED, 1, fallback_used=False, settings=settings) is Action.HALT_ALL
 
 
-@pytest.mark.parametrize("status", [CallStatus.TIMEOUT, CallStatus.TURN_LIMIT, CallStatus.BUDGET_LIMIT,
-                                    CallStatus.AUTH_FAILED, CallStatus.BOUNDARY, CallStatus.FAILED])
+@pytest.mark.parametrize("status", [CallStatus.BUDGET_LIMIT, CallStatus.AUTH_FAILED, CallStatus.BOUNDARY,
+                                    CallStatus.FAILED])
 def test_limits_auth_and_other_failures_stop(settings, status):
     assert decide(status, 1, fallback_used=False, settings=settings) is Action.STOP
 

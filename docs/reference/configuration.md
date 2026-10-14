@@ -361,6 +361,8 @@
 
 | 键 | 缺省值 |
 |---|---|
+| `limits.escalation.ladder` | `["flash", "flash-mid", "flash-high", "sonnet", "opus-mid", "opus"]` |
+| `limits.escalation.max` | `2` |
 | `limits.retry.attempts` | `2` |
 | `limits.retry.base` | `"1s"` |
 | `limits.retry.max` | `"20s"` |

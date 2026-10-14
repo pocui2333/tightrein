@@ -737,6 +737,17 @@
     ]
   ],
   "limits": {
+    "escalation": {
+      "ladder": [
+        "flash",
+        "flash-mid",
+        "flash-high",
+        "sonnet",
+        "opus-mid",
+        "opus"
+      ],
+      "max": 2
+    },
     "retry": {
       "attempts": 2,
       "base": "1s",

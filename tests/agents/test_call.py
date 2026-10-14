@@ -265,14 +265,14 @@ def test_schema_invalid_output_is_retried_in_the_same_session(make_world):
     assert note.endswith(json.dumps(INVALID, ensure_ascii=False))  # 工具给了 structured，原输出取它而不是空文本
 
 
-def test_output_invalid_twice_is_schema_invalid_and_saved(make_world):
-    world = make_world(FakeRun(claude_lines(INVALID)), FakeRun(claude_lines(INVALID)))
-    result = call(world.params(), world.context)
-    assert (result.status, result.output, result.attempts) == (CallStatus.SCHEMA_INVALID, None, 2)
+def test_output_invalid_three_times_is_schema_invalid_and_saved(make_world):
+    world = make_world(FakeRun(claude_lines(INVALID)), FakeRun(claude_lines(INVALID)), FakeRun(claude_lines(INVALID)))
+    result = call(world.params(), world.context)  # opus 已在升档阶梯的顶端：不再升
+    assert (result.status, result.output, result.attempts) == (CallStatus.SCHEMA_INVALID, None, 3)
     assert "/sameRootCause" in result.error
     assert result.raw_path == world.file("raw", "jsonl")
     lines = result.raw_path.read_text(encoding="utf-8").splitlines()
-    assert [json.loads(line)["tightrein"]["attempt"] for line in lines if '"tightrein"' in line] == [1, 2]
+    assert [json.loads(line)["tightrein"]["attempt"] for line in lines if '"tightrein"' in line] == [1, 2, 3]
     assert world.file("prompt", "md").read_text(encoding="utf-8").strip() == "判断以下主张是否成立"
 
 
@@ -311,10 +311,10 @@ def test_output_over_the_limit_is_a_protocol_error_that_resumes_the_session(make
     assert "写到文件" in retry.stdin and "以路径引用" in retry.stdin
 
 
-def test_output_over_the_limit_twice_is_schema_invalid(make_world):
-    world = make_world(FakeRun(claude_lines(VALID), stopped=OVERFLOW), FakeRun(claude_lines(VALID), stopped=OVERFLOW))
+def test_output_over_the_limit_three_times_is_schema_invalid(make_world):
+    world = make_world(*(FakeRun(claude_lines(VALID), stopped=OVERFLOW) for _ in range(3)))
     result = call(world.params(), world.context)
-    assert (result.status, result.error, result.attempts) == (CallStatus.SCHEMA_INVALID, OVERFLOW_REASON, 2)
+    assert (result.status, result.error, result.attempts) == (CallStatus.SCHEMA_INVALID, OVERFLOW_REASON, 3)
 
 
 def test_removed_environment_variables_are_recorded_once_per_call(make_world):
@@ -637,9 +637,9 @@ def test_the_finalize_call_collects_the_structured_result(make_world):
 def test_an_invalid_finalize_result_is_schema_invalid(make_world):
     bad = json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": "",
                       "session_id": SESSION, "structured_output": INVALID})
-    world = make_world(FakeRun(claude_lines(None)), FakeRun([bad]), FakeRun([bad]))
+    world = make_world(FakeRun(claude_lines(None)), FakeRun([bad]), FakeRun([bad]), FakeRun([bad]))
     result = call(world.params(finalize=True), world.context)
-    assert (result.status, result.attempts) == (CallStatus.SCHEMA_INVALID, 3)
+    assert (result.status, result.attempts) == (CallStatus.SCHEMA_INVALID, 4)
     assert world.runner.commands[2].stdin.startswith("上一次的输出不符合")
     assert "--output-format" in world.runner.commands[2].argv
 
@@ -727,3 +727,24 @@ def test_truncation_never_exceeds_the_limit():
     assert truncate("x" * 1000, 5) == "xxxxx"
     assert len(truncate("x" * 1000, 100)) == 100
     assert truncate("short", 100) == "short"
+
+
+def test_timeouts_and_repeated_format_failures_escalate_to_a_stronger_model(make_world):
+    world = make_world(FakeRun(claude_lines(VALID), timeout=True), FakeRun(claude_lines(VALID)))
+    params = world.params(model=world.settings.model("sonnet"), fallback=None)
+    result = call(params, world.context)
+    assert (result.status, result.model, result.attempts) == (CallStatus.OK, "opus", 2)
+    assert "--resume" not in world.runner.commands[1].argv  # 换了模型就新开会话
+    world = make_world(*(FakeRun(claude_lines(INVALID)) for _ in range(3)), FakeRun(claude_lines(VALID)))
+    result = call(params, world.context)
+    assert (result.status, result.model, result.attempts) == (CallStatus.OK, "opus", 4)
+
+
+def test_escalation_stops_at_the_limit_and_skips_the_reviewed_model(make_world):
+    settings = make_world().settings
+    assert settings.stronger("assess.refute", settings.model("flash-high")).alias == "opus-mid"  # 跳过确认用的 sonnet
+    assert settings.stronger("assess.triage", settings.model("opus")) is None
+    assert settings.stronger("assess.triage", settings.model("fable")) is None  # 不在阶梯上
+    world = make_world(*(FakeRun(claude_lines(VALID), timeout=True) for _ in range(3)))
+    result = call(world.params(model=world.settings.model("sonnet"), fallback=None), world.context)
+    assert (result.status, result.attempts) == (CallStatus.TIMEOUT, 3)  # sonnet → opus-mid → opus，最多升 2 档

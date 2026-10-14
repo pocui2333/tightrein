@@ -15,13 +15,14 @@ from tightrein.protocol.naming import Clock
 from tightrein.settings.load import Settings
 from tightrein.store.tables import counters
 
-FORMAT_RETRIES = 1  # 格式不符：续接同一会话带原因重试 1 次
+FORMAT_RETRIES = 2  # 格式不符：续接同一会话带原因重试 2 次(同一模型共 3 次)，再不行升一档
 
 
 class Action(StrEnum):
     RETRY = "retry"  # 退避后重试同一次调用
     RESUME_WITH_REASON = "resume_with_reason"  # 续接同一会话，带上不合格的原因
     FALLBACK = "fallback"  # 换备用模型新开会话
+    ESCALATE = "escalate"  # 换升档阶梯上更强的模型新开会话(limits.escalation)；没有更强的或已到次数上限就停
     STOP = "stop"  # 停下，交给上层(复盘记一条)
     HALT_ALL = "halt_all"  # 订阅额度用完：全部停下，到重置时间再接着做
 
@@ -32,15 +33,18 @@ def decide(status: CallStatus, attempt: int, *, fallback_used: bool, settings: S
     | 状态 | 处理 |
     |---|---|
     | 临时错误(限流、5xx、网络) | 退避重试，最多 limits.retry.attempts 次(缺省 2，共 3 次) |
-    | 格式不符 | 续接同一会话带原因重试 1 次 |
+    | 格式不符 | 续接同一会话带原因重试 2 次(同一模型共 3 次)，再不行升一档 |
+    | 超时、轮数到限 | 升一档(轮数到限先由调用层续接补要一次结论) |
     | 被拒绝、工具不可用 | 换备用模型 1 次，再失败就停 |
     | 订阅额度用完 | 全部停下；不换到另一个工具 |
-    | 超时、轮数到限、费用到限、认证失败、越界、其余失败 | 停下(认证失败另由调用方触发依赖熔断) |
+    | 费用到限、认证失败、越界、其余失败 | 停下(认证失败另由调用方触发依赖熔断) |
     """
     if status is CallStatus.TRANSIENT:
         return Action.RETRY if attempt <= int(settings.get("limits.retry.attempts")) else Action.STOP
     if status is CallStatus.SCHEMA_INVALID:
-        return Action.RESUME_WITH_REASON if attempt <= FORMAT_RETRIES else Action.STOP
+        return Action.RESUME_WITH_REASON if attempt <= FORMAT_RETRIES else Action.ESCALATE
+    if status in (CallStatus.TIMEOUT, CallStatus.TURN_LIMIT):
+        return Action.ESCALATE
     if status in (CallStatus.REFUSED, CallStatus.UNAVAILABLE):
         return Action.STOP if fallback_used else Action.FALLBACK
     if status is CallStatus.QUOTA_EXHAUSTED:

@@ -299,6 +299,7 @@ def _attempts(params: CallParams, context: AgentContext, adapter: Adapter, model
     current = params
     resume = None if params.resume_session is None else Resume(params.resume_session, params.prompt)
     finalizing = wrapped = False
+    escalations = 0
     seen: Counter[CallStatus] = Counter()
     while True:
         # 要补要结构化结果的调用：先不带 schema 做完事，再续接同一会话只要 JSON
@@ -357,6 +358,18 @@ def _attempts(params: CallParams, context: AgentContext, adapter: Adapter, model
             resume, current, finalizing = None, params, False
             run.session_id = None
             continue
+        if action is Action.ESCALATE:
+            limit = int(context.settings.get("limits.escalation.max"))
+            stronger = context.settings.stronger(params.point, model) if escalations < limit else None
+            if stronger is not None:
+                _emit(context, params, "decision", f"{model.alias} {status.value}，升一档换 {stronger.alias}")
+                run.fallback_from = {"model": model.alias, "status": status.value}
+                model, escalations = stronger, escalations + 1
+                adapter = _adapter(model, context)
+                resume, current, finalizing, wrapped = None, params, False, False
+                run.session_id = None
+                seen.clear()
+                continue
         if action is Action.HALT_ALL:
             _emit(context, params, "decision", f"{model.tool} 的订阅额度用完，全部停下：{error}")
         return run.result(status, error=error)
