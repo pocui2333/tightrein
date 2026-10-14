@@ -117,6 +117,15 @@ def test_calls_finished_by_the_fallback_are_recorded(layout: WorkspaceLayout) ->
     assert "主模型 opus 以 refused 结束" in fallback.detail
 
 
+def test_a_stronger_model_that_still_struggles_points_at_the_flow_constraints(layout: WorkspaceLayout) -> None:
+    data = RunData(RUN, "succeeded")
+    data.calls = [detect_module.CallMark("implement.review.deep", "0003", "ok", 1000, "opus", None,
+                                         "换到 opus 后仍用了 25 轮(上限 20)")]
+    found = {(item.kind, item.phenomenon): item for item in detect(data, THRESHOLDS, blamed=set()).findings}
+    constraint = found[(Kind.FAILURE, "call-constraint")]
+    assert constraint.impact is Impact.SEVERE and "仍用了 25 轮" in constraint.detail
+
+
 def test_issue_tokens_are_recorded_only_in_the_run_that_crosses(layout: WorkspaceLayout) -> None:
     data = RunData(RUN, "done", issue_tokens_before={"0018": 1_200_000})
     data.handoffs = [handoff("implement.code", "0018", tokens=200_000)]

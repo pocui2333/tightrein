@@ -748,3 +748,20 @@ def test_escalation_stops_at_the_limit_and_skips_the_reviewed_model(make_world):
     world = make_world(*(FakeRun(claude_lines(VALID), timeout=True) for _ in range(3)))
     result = call(world.params(model=world.settings.model("sonnet"), fallback=None), world.context)
     assert (result.status, result.attempts) == (CallStatus.TIMEOUT, 3)  # sonnet → opus-mid → opus，最多升 2 档
+
+
+def test_a_call_over_the_turn_threshold_pins_the_next_model_for_the_point(make_world):
+    from tightrein.agents import pinning
+
+    many = tuple(("Read", {"file_path": f"f{number}.py"}) for number in range(11))  # 12 轮，超过 10
+    world = make_world(FakeRun(claude_lines(VALID, tools=many)), FakeRun(claude_lines(VALID)),
+                       FakeRun(claude_lines(VALID, tools=many)))
+    params = world.params(model=world.settings.model("sonnet"), fallback=None)
+    assert call(params, world.context).status is CallStatus.OK
+    assert pinning.pinned(world.context.conn, world.settings, params.point).alias == "opus-mid"
+    assert call(params, world.context).model == "opus"  # 之后这个调用点直接用固定的更强模型
+    # 换上更强的模型仍超过轮数：不再往上换，标记成流程约束问题交复盘
+    call(params, world.context)
+    marker = json.loads(world.file("started", "json").read_text(encoding="utf-8"))
+    assert "仍用了 12 轮" in marker["constraint"]
+    assert pinning.pinned(world.context.conn, world.settings, params.point).alias == "opus-mid"

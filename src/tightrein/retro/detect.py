@@ -92,6 +92,7 @@ class CallMark:
     duration_ms: int | None
     model: str | None
     fallback_from: dict[str, str] | None = None  # 换了备用模型时：原模型别名与它的结束状态
+    constraint: str | None = None  # 换上更强的模型仍不行：流程约束可能有问题(agents/call.py:_constraint)
 
 
 @dataclass
@@ -184,6 +185,10 @@ def _call_findings(data: RunData, thresholds: Thresholds) -> list[Finding]:
             found.append(Finding(Kind.FAILURE, step, call.point, f"call-fallback-{reason.replace('_', '-')}",
                                  f"主模型 {original} 以 {reason} 结束，改用备用模型", Impact.MAJOR, call.subject,
                                  f"{where}：主模型 {original} 以 {reason} 结束，这次由备用模型完成"))
+        if call.constraint is not None:
+            found.append(Finding(Kind.FAILURE, step, call.point, "call-constraint",
+                                 "换了更强的模型仍不行：这个调用点的流程约束、提示或检查规则可能有问题", Impact.SEVERE,
+                                 call.subject, f"{where}：{call.constraint}"))
         if call.status is None:
             found.append(Finding(Kind.FAILURE, step, call.point, "call-unfinished", "模型调用没有结束(进程被终止)",
                                  Impact.MAJOR, call.subject, f"{where}没有结束"))
@@ -304,7 +309,8 @@ def _call_mark(path: Path) -> tuple[str, CallMark]:
     data = json.loads(path.read_text(encoding="utf-8"))
     ended = data.get("endedAt") is not None
     return data["run"], CallMark(data["point"], data.get("subject"), data.get("status") if ended else None,
-                                 data.get("durationMs"), data.get("model"), data.get("fallbackFrom"))
+                                 data.get("durationMs"), data.get("model"), data.get("fallbackFrom"),
+                                 data.get("constraint"))
 
 
 def _weighted(handoff: Handoff, cache_read_weight: float) -> int:

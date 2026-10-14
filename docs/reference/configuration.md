@@ -364,6 +364,7 @@
 |---|---|
 | `limits.escalation.ladder` | `["flash", "flash-mid", "flash-high", "sonnet", "opus-mid", "opus"]` |
 | `limits.escalation.max` | `2` |
+| `limits.escalation.pinTurns` | `10` |
 | `limits.retry.attempts` | `2` |
 | `limits.retry.base` | `"1s"` |
 | `limits.retry.max` | `"20s"` |

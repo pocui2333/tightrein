@@ -736,7 +736,8 @@
         "opus-mid",
         "opus"
       ],
-      "max": 2
+      "max": 2,
+      "pinTurns": 10
     },
     "retry": {
       "attempts": 2,

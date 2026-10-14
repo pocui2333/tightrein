@@ -31,6 +31,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+from tightrein.agents import pinning
 from tightrein.agents.params import Access, CallParams, Model
 from tightrein.agents.result import CallResult, CallStatus, RateLimit
 from tightrein.agents.tools import FINALIZE_PROMPT, Adapter, CallConfigError, Parsed, Resume
@@ -139,12 +140,16 @@ def params_for(point: str, *, settings: Settings, run: str, subject: str | None,
 
 
 def call(params: CallParams, context: AgentContext) -> CallResult:
+    configured = params.model
+    if context.replay is None:  # 回放(整体测试)不用固定的模型，保证录制可重放
+        params = pinning.apply(params, context.conn, context.settings)
     model, fallback_used, breaker_open = _choose(params, context)
     adapter = _adapter(model, context)
     marker = _file(params, context.layout, "started", "json")
     started = format_iso(context.clock.now())
     _mark(marker, params, model, started, None, context.clock)
     run = _Run(model, progress=_progress(marker, params, model, started, context.clock))
+    run.upgraded = params.model != configured
     if fallback_used and (params.point, params.model.alias) in context.refused:
         run.fallback_from = {"model": params.model.alias, "status": CallStatus.REFUSED.value}
     blocked = _blocked(params, model, context, breaker_open)
@@ -264,6 +269,8 @@ class _Run:
     raw: list[str] = field(default_factory=list)
     progress: Callable[[int, Tokens], None] | None = None  # 调用进行中更新 started 标记(watch 显示实时轮数与 token)
     fallback_from: dict[str, str] | None = None  # 换了备用模型时：原模型别名与它的结束状态(复盘据此记录)
+    upgraded: bool = False  # 这次用的是固定的更强模型(agents/pinning.py)
+    escalated: bool = False  # 调用中升过档
 
     def add(self, attempt: _Attempt, model: Model) -> None:
         parsed = attempt.parsed
@@ -365,6 +372,7 @@ def _attempts(params: CallParams, context: AgentContext, adapter: Adapter, model
                 _emit(context, params, "decision", f"{model.alias} {status.value}，升一档换 {stronger.alias}")
                 run.fallback_from = {"model": model.alias, "status": status.value}
                 model, escalations = stronger, escalations + 1
+                run.escalated = True
                 adapter = _adapter(model, context)
                 resume, current, finalizing, wrapped = None, params, False, False
                 run.session_id = None
@@ -659,13 +667,35 @@ def _finish(params: CallParams, context: AgentContext, result: CallResult, marke
             run: _Run) -> CallResult:
     if not result.ok or context.debug:
         result.raw_path = _save(params, context, run)
-    _mark(marker, params, run.model, started, result, context.clock, fallback_from=run.fallback_from)
+    constraint = _constraint(params, context, run, result)
+    _mark(marker, params, run.model, started, result, context.clock, fallback_from=run.fallback_from,
+          constraint=constraint)
+    if constraint is not None:
+        _emit(context, params, "decision", f"流程约束可能有问题：{constraint}")
+    elif result.ok and context.replay is None:
+        note = pinning.learn(context.conn, context.clock, context.settings, params.point, run.model,
+                             turns=result.turns or 0, escalated=run.escalated)
+        if note is not None:
+            _emit(context, params, "decision", note)
     summary = f"{result.tool}/{result.model}：{result.status.value}"
     if result.error:
         summary += f"，{result.error[:200]}"
     refs = {"started": str(marker)} | ({"raw": str(result.raw_path)} if result.raw_path is not None else {})
     _emit(context, params, "action", summary, refs)
     return result
+
+
+def _constraint(params: CallParams, context: AgentContext, run: _Run, result: CallResult) -> str | None:
+    """已经换上更强的模型(固定的或调用中升档)仍失败或仍超过固定轮数：不再往上换，判为流程的约束、提示或检查
+    规则有问题，由复盘记一条交给人改(retro/detect.py 的 call-constraint)。"""
+    if not (run.upgraded or run.escalated):
+        return None
+    limit = int(context.settings.get("limits.escalation.pinTurns"))
+    if not result.ok:
+        return f"换到 {run.model.alias} 后仍以 {result.status.value} 结束"
+    if (result.turns or 0) > limit:
+        return f"换到 {run.model.alias} 后仍用了 {result.turns} 轮(上限 {limit})"
+    return None
 
 
 def _save(params: CallParams, context: AgentContext, run: _Run) -> Path | None:
@@ -712,7 +742,7 @@ def _separator(number: int, model: Model, outcome: Outcome) -> str:
 
 def _mark(path: Path, params: CallParams, model: Model, started: str, result: CallResult | None,
           clock: Clock, *, turns: int | None = None, tokens: Tokens | None = None,
-          fallback_from: Mapping[str, str] | None = None) -> None:
+          fallback_from: Mapping[str, str] | None = None, constraint: str | None = None) -> None:
     """started 标记：endedAt 为空即表示调用正在进行，模型重试或等待时 watch 不会显示成卡死。"""
     if result is not None:
         turns, tokens = result.turns, result.tokens
@@ -726,6 +756,7 @@ def _mark(path: Path, params: CallParams, model: Model, started: str, result: Ca
         "tokens": None if tokens is None else {"input": tokens.input, "output": tokens.output,
                                                 "cacheRead": tokens.cache_read, "cacheWrite": tokens.cache_write},
         "fallbackFrom": None if fallback_from is None else dict(fallback_from),
+        "constraint": constraint,
     })
 
 
