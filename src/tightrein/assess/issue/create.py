@@ -3,7 +3,8 @@
 - 同一根因追加：键是根因的「文件#方法」集合(没有方法名时用行号，比只用行号稳)，与任一未关闭 Issue 的键有交集就
   追加；追加时加入问题、写历史，新问题严重度更高时提升 Issue 的严重度并写明；这个问题的内容按新建时的同一套小节
   排版，写进正文「追加的问题」(实施各步读的是正文，只有一行历史就不知道追加的是什么)，按新建时的检查项单独查一遍；
-  根因、根因键与预估要改的文件并进记录(去重)，代码笔记按「只补缺」合并；已关联的问题再次评估时不重复追加；
+  根因、根因键与预估要改的文件并进记录(去重)，代码笔记按「只补缺」合并；已关联的问题再次评估(回归后等)时不重复
+  加入问题列表，新的取证照样写进「追加的问题」，标题末尾注明「再次评估」；
 - 新建前核对正文要引用的代码位置(只补全证据、根因、报告、评估，不改主张与信号原文)：补不全或不存在就不建，交接
   为 failed 并提示重新评估；建好后按检查项(必需小节、位置真实、日期为绝对日期)再查一遍，不过就保留文件、交接为
   failed；
@@ -170,29 +171,31 @@ def from_problem(runtime: Runtime, finding: Finding, snapshot: Snapshot, made: C
 
 
 def append(runtime: Runtime, issue: Issue, finding: Finding, snapshot: Snapshot) -> list[str]:
-    """追加到同一根因的 Issue；返回追加的内容没过检查的原因(与新建时一样：文件保留，交接为 failed)。"""
+    """追加到同一根因的 Issue；返回追加的内容没过检查的原因(与新建时一样：文件保留，交接为 failed)。
+
+    已关联的问题再次评估(回归后、手动重新评估)：不重复加入问题列表，新的取证(新的触发条件与事实)同样写进「追加的
+    问题」，标题末尾注明「再次评估」。只记一行历史时，回归后再修的方案读不到回归的新情况。"""
     severity = higher(finding.severity, issue.severity)
     problem = finding.problem
-    note = f"追加问题 {problem.id}"
+    extra = dict(issue.extra)
+    linked = problem.id in (extra.get(PROBLEMS) or [])
+    note = f"问题 {problem.id} 再次评估，新的取证写进正文「追加的问题」" if linked else f"追加问题 {problem.id}"
     if severity != issue.severity:
         note += f"，严重度由 {issue.severity} 提升为 {severity}"
-    extra = dict(issue.extra)
-    text: str | None = None
-    failures: list[str] = []
-    added = problem.id not in (extra.get(PROBLEMS) or [])  # 已关联的问题再次评估：只记历史，不重复追加
-    if added:
+    if not linked:
         extra[PROBLEMS] = [*extra.get(PROBLEMS, []), problem.id]
-        _merge_causes(extra, finding.output)
-        title = body.title_of(finding.output, finding.claim.to_json(),
-                              int(runtime.settings.section(POINT)["titleMaxLength"]))
-        part = body.render(_issue_facts(runtime, finding, problem.id, title), runtime.language)
-        failures = check_body(part, "problem", snapshot)
-        current = files.read_body(runtime.workspace, issue.id)
-        text = body.add_appended(current, part, runtime.language) if current else None
+    _merge_causes(extra, finding.output)
+    title = body.title_of(finding.output, finding.claim.to_json(),
+                          int(runtime.settings.section(POINT)["titleMaxLength"]))
+    if linked:
+        title += f"({body.text('reassessed', runtime.language)})"
+    part = body.render(_issue_facts(runtime, finding, problem.id, title), runtime.language)
+    failures = check_body(part, "problem", snapshot)
+    current = files.read_body(runtime.workspace, issue.id)
     extra[HISTORY] = [*extra.get(HISTORY, []), _entry(runtime, "append", note)]
     updated = replace(issue, severity=severity, extra=extra)
-    files.write(runtime, updated, body=text)
-    notes = code_notes.load(runtime.workspace, problem.id) if added else None
+    files.write(runtime, updated, body=body.add_appended(current, part, runtime.language) if current else None)
+    notes = code_notes.load(runtime.workspace, problem.id)
     if notes is not None:
         code_notes.copy_to(runtime.workspace, notes, issue.id)
     return failures

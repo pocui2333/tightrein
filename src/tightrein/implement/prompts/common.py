@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 from tightrein.agents.call import call, params_for
 from tightrein.agents.params import Access
 from tightrein.agents.result import CallResult
-from tightrein.assess.issue.body import post_deploy
+from tightrein.assess.issue.body import fenced, post_deploy
 from tightrein.knowledge.match import render
 from tightrein.prompts.build import build
 from tightrein.protocol.handoff import Metrics, Tokens, Versions, load_schema
@@ -182,14 +182,16 @@ def plan_view(plan: Mapping[str, Any], keys: Sequence[str]) -> dict[str, Any]:
 def acceptance(body: str) -> list[str]:
     """Issue 正文中实施阶段要满足的验收标准原文(方案逐条对应、审查逐条核对)：「验收标准」一节，其后是「追加的问题」中
     各问题自己的「验收标准」(assess/issue/body.add_appended)；重复的只留一条。每节从以「验收标准」(各语言)开头的标题起，
-    到同级或更高级的标题为止；只看开头，标题里提到验收的问题(`### P-0061 验收标准页面…`)不算。
+    到同级或更高级的标题为止；只看开头，标题里提到验收的问题(`### P-0061 验收标准页面…`)不算；代码块里的 # 行不算标题
+    (与 assess/issue/body 拆小节一样)，引用的模板示例不会多出验收标准。
 
     只能在部署后确认的(按来源生成、由采集复查的「观察期内不再出现…」「静态巡检…不再命中」等，assess/issue/body.post_deploy)
     不在其中：它是验收阶段的标准，由发布的验收按关联问题的出现确认(44 号计划 6「验收：只做实施阶段做不到的」)。"""
     found: list[str] = []
     level: int | None = None
-    for line in body.splitlines():
-        heading = _HEADING.match(line)
+    lines = body.splitlines()
+    for line, inside in zip(lines, fenced(lines)):
+        heading = None if inside else _HEADING.match(line)
         if heading is not None:
             depth, title = len(heading.group(1)), heading.group(2).strip().lower()
             if level is not None and depth <= level:

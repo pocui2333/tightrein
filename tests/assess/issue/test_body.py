@@ -127,3 +127,17 @@ def test_appended_problems_go_before_the_history_and_leave_the_rest_alone():
     assert body.acceptance_items(text) == ["原来的标准", "列表只有自己的", "导出只有自己的"]
     assert body.add_appended("# 0008 x\n\n## Problem\n\ntext\n", second, "en").endswith(
         "## Appended problems\n\n### P-0003 导出越权\n\n#### 问题\n\n导出也越权\n\n#### 验收标准\n\n- [ ] 导出只有自己的\n")
+
+
+def test_code_locations_of_appended_problems_keep_their_own_evidence_commit():
+    """GitHub 镜像按段换永久链接：「追加的问题」中各问题用它自己「引用」里的取证 commit，其余用 Issue 的。"""
+    original = body.document("0007 订单越权", {"cause": "`a.py:3`", "references": f"- 取证 commit：{'c' * 40}"}, "zh")
+    first = body.document("P-0002 列表越权", {"cause": "`b.py:5`", "references": f"- 取证 commit：{'d' * 40}\n"
+                                                                              "```\n### 不是标题\n```"}, "zh")
+    second = body.document("P-0003 导出越权", {"cause": "`c.py:7`"}, "zh")  # 没写取证 commit
+    text = body.add_appended(body.add_appended(original, first, "zh"), second, "zh")
+    parts = body.by_commit(text, "c" * 40)
+    assert "\n".join(part for part, _ in parts) == text
+    assert [(commit, [name for name in ("a.py", "b.py", "c.py") if name in part]) for part, commit in parts] == [
+        ("c" * 40, ["a.py"]), ("d" * 40, ["b.py"]), ("c" * 40, ["c.py"])]
+    assert body.by_commit(original, None) == [(original, None)]

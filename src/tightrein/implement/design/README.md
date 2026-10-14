@@ -13,7 +13,7 @@
 
 ## 输入与输出
 
-- 输入：Issue 正文与验收标准(含正文「追加的问题」中各问题自己的验收标准)、这一次修复(回归或重开后再修时：上一次修复合并了没有、PR 与合并提交，上一次交付之后的回归、重开与追加的问题；第 1 次为「无」)、代码笔记、风险判定、单个 PR 的上限与受保护文件、上一次的问题(用户否决、方案缺口)、用户的决定、知识条目、其他未完成的 Issue、项目设计文档(工作区 `designs/`，作为额外可读目录交给 agent)；
+- 输入：Issue 正文与验收标准(含正文「追加的问题」中各问题自己的验收标准)、这一次修复(回归或重开后再修时：上一次修复合并了没有、PR 与合并提交、验收中回归时提的撤销 PR；按结果写明的范围，已合并只处理变化，没合并照正文全部处理，提了撤销 PR 由方案看代码判断；上一次交付之后的回归、重开与追加的问题；第 1 次为「无」)、代码笔记、风险判定、单个 PR 的上限与受保护文件、上一次的问题(用户否决、方案缺口)、用户的决定、知识条目、其他未完成的 Issue、项目设计文档(工作区 `designs/`，作为额外可读目录交给 agent)；
 - 输出：交接事实为方案本身(不含 `analysis`，分析放备注；含模型给出的 `knowledgeSuggestions`)加 `version`、`planHash`、`risk`、`highRiskPaths`(命中的高风险文件，status 与 watch 显示)、`frontendFiles`、`frontendDesign`、`frontendError`、`acceptance`；停在关卡时为 `reason: design_issue` 与 `gate`；没通过时为 `reason`(`blocked` 带 `blockedBy`、`blockedReason`，`oversize` 带 `splitBack`、`plan_rejected` 带 `problems`、`design_declined`)；模型输出格式 `design.schema.json`、`frontend.schema.json`。
 
 ## 配置

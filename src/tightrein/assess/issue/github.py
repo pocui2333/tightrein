@@ -9,12 +9,14 @@
 - 安全与幂等：公开仓库整次跳过(正文含内部错误与代码位置)；正文去掉历史并整体脱敏；建 Issue 用幂等键，中断后按
   标题找回，不重复建(正文不留本地标记)；失败只记录，下次按本地状态与镜像状态重算差异重试；只移除仓库里确实存在的旧
   标签(GitHub.issue_labels)；
-- 正文里反引号中的 `路径:行号` 换成取证 commit 的永久链接。
+- 正文里反引号中的 `路径:行号` 换成取证 commit 的永久链接；「追加的问题」中各问题的位置是按它自己取证时的 commit
+  写的，按它「引用」里的取证 commit 链接(镜像在追加之后才新建时，不会指到 Issue 取证 commit 上的别的行)。
 """
 
 from __future__ import annotations
 
 import re
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from tightrein.onboard.setup import ModuleStatus
@@ -108,10 +110,10 @@ def mirror_body(runtime: Runtime, record: Issue, text: str) -> str:
     marker = f"\n## {history}\n"
     if marker in kept:
         kept = kept[:kept.index(marker)]
-    commit = record.extra.get("triageCommit")
-    if commit and runtime.github is not None:
+    if runtime.github is not None:
         slug = runtime.github.slug
-        kept = CODE_LOCATION.sub(lambda match: _link(slug, str(commit), match), kept)
+        commit = record.extra.get("triageCommit")
+        kept = "\n".join(_linked(slug, part, at) for part, at in body.by_commit(kept, str(commit) if commit else None))
     return runtime.redactor.text(kept.rstrip()) + "\n"
 
 
@@ -179,6 +181,11 @@ def _remember_state(runtime: Runtime, issue_id: str, state: str) -> None:
     mirror["state"] = state
     issue.extra[MIRROR] = mirror
     files.write(runtime, issue)
+
+
+def _linked(slug: str, text: str, commit: str | None) -> str:
+    """text 中反引号里的 `路径:行号` 换成 commit 的永久链接；不知道 commit 时不换。"""
+    return CODE_LOCATION.sub(partial(_link, slug, commit), text) if commit else text
 
 
 def _link(slug: str, commit: str, match: re.Match[str]) -> str:

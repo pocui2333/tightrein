@@ -44,6 +44,13 @@ def test_criteria_of_appended_problems_are_read_too() -> None:
     assert common.acceptance(body) == ["页面能打开", "按钮有反应"]
 
 
+def test_headings_inside_code_blocks_do_not_start_a_criteria_section() -> None:
+    """后面小节的代码块里以「验收标准」开头的 # 行不算标题，示例行不会变成方案要对应、审查要核对的标准。"""
+    body = ("## 验收标准\n\n- [ ] 页面能打开\n\n## 引用\n\n```markdown\n## Acceptance criteria\n- 这是模板里的示例行\n```\n\n"
+            "## 追加的问题\n\n### P-0002 按钮\n\n#### 引用\n\n~~~\n#### 验收标准\n- 也是示例\n~~~\n")
+    assert common.acceptance(body) == ["页面能打开"]
+
+
 def test_criteria_confirmed_only_after_deploy_are_left_to_acceptance() -> None:
     """方案不要求对应、审查不判断部署后才能确认的标准(44 号计划 6「验收：只做实施阶段做不到的」)。"""
     body = ("## 验收标准\n\n- [ ] average([]) 返回 0\n"

@@ -4,8 +4,9 @@
 Issue 正文多用 GitHub 编号互相引用(#25)，列表带上镜像的 GitHub 编号，方案才对得上本地编号。
 
 回归或重开后再修(assess/issue/attempts，第 2 次及以后)：「这一次修复」写明上一次修复的结果(合并了没有、PR 与合并
-提交)与上一次交付之后的变化(回归、重开、追加的问题，取自历史)。正文从「结论」到「引用」是最初的问题，上一次已按它
-修过，方案据此只处理这些变化，不把上一次的修复重做一遍。
+提交、验收中回归时提的撤销 PR)与上一次交付之后的变化(回归、重开、追加的问题，取自历史)，并按结果写明这一次的
+范围：上一次的修复已合并时只处理这些变化，不把上一次的修复重做一遍；没有合并时主干上没有它，正文的问题都还没修，
+照正文全部处理；提了撤销 PR 时撤销合并与否程序不知道，由方案看修复 worktree 中的代码判断上一次的修复还在不在。
 """
 
 from __future__ import annotations
@@ -61,7 +62,7 @@ def variables(runtime: Runtime, context: ImplementContext, *, risk: Risk, replan
 
 
 def attempt_text(issue: Issue, language: str) -> str:
-    """回归或重开后再修时：上一次修复的结果，与它交付之后的回归、重开、追加的问题(这一次要处理的)；第 1 次为「无」。
+    """回归或重开后再修时：上一次修复的结果与这一次的范围，以及上一次交付之后的回归、重开、追加的问题；第 1 次为「无」。
     上一次交付之前追加的问题，上一次的方案与审查已在正文中看到过，不算变化。"""
     done = list(issue.extra.get(attempts.ATTEMPTS) or [])
     if not done:
@@ -75,15 +76,34 @@ def attempt_text(issue: Issue, language: str) -> str:
                if entry.get("event") in CHANGES and str(entry["at"]) >= since]
     reason = REASONS.get(str(last.get("reason")), str(last.get("reason") or ""))
     head = f"第 {attempts.current(issue)} 次修复。上一次(第 {last.get('attempt')} 次){_outcome(last)}，之后因{reason}重新打开。"
-    return "\n".join([head, "上一次交付之后的变化(这一次要处理的就是这些；追加的问题的内容在正文「追加的问题」中该问题编号之下)：",
+    return "\n".join([head, _scope(last), "上一次交付之后的变化(追加的问题的内容在正文「追加的问题」中该问题编号之下)：",
                       *(changes or ["- 历史中没有记下"])])
 
 
 def _outcome(last: Mapping[str, Any]) -> str:
-    """上一次修复的结果：合并了没有，PR 与合并提交。"""
+    """上一次修复的结果：合并了没有，PR 与合并提交；验收中回归时提的撤销 PR。"""
     merged = f"合并提交 {str(last['mergeCommit'])[:12]}" if last.get("mergeCommit") else None
     found = "，".join(item for item in (f"PR #{last['pr']}" if last.get("pr") else None, merged) if item)
-    return ("的修复已合并" if merged else "的修复没有合并") + (f"({found})" if found else "")
+    revert = _revert(last)
+    return (("的修复已合并" if merged else "的修复没有合并") + (f"({found})" if found else "")
+            + (f"，验收中回归后提了撤销 PR #{revert['pr']}" if merged and revert else ""))
+
+
+def _scope(last: Mapping[str, Any]) -> str:
+    """按上一次修复的结果写这一次的范围：合并了的只处理变化；没合并的主干上没有它，正文的问题都还没修；提了撤销 PR
+    的看撤销合并了没有(程序不知道，由方案看修复 worktree 中的代码)。"""
+    if not last.get("mergeCommit"):
+        return "主干上没有上一次的修复：正文的问题都还没修，照正文全部处理(含「追加的问题」)，下面的变化一并处理。"
+    if _revert(last):
+        return ("撤销 PR 合并了的话主干上已没有上一次的修复：先看修复 worktree 中根因位置的代码还是不是正文描述的样子，"
+                "是(已撤销)就照正文全部处理，下面的变化一并处理；不是(上一次的修复还在)就只处理下面的变化。")
+    return "上一次的修复在主干上：只处理下面的变化，不把上一次的修复重做一遍。"
+
+
+def _revert(last: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """上一次验收中回归时提的撤销 PR({branch, pr, url})；没有为 None。"""
+    found = (last.get(attempts.RELEASE) or {}).get("revert")
+    return found if isinstance(found, Mapping) and found.get("pr") else None
 
 
 def open_issues_text(runtime: Runtime, context: ImplementContext) -> str:

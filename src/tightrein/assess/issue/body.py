@@ -4,7 +4,8 @@
   历史；没有内容的小节不写(不再写「—」)，每个实施角色少读一些；
 - 追加到已有 Issue 的问题(同一根因)：这个问题按新建时的同一套小节排版、标题整体降两级(`### <问题编号> <标题>`，
   其下 `#### 结论` 等)，接在「追加的问题」一节末尾，其余内容一字不动；它自己的验收标准留在它的一段里，
-  `acceptance_items` 与实施读验收标准时一并读出；
+  `acceptance_items` 与实施读验收标准时一并读出。已关联的问题再次评估(回归后等)的新取证也这样接上，标题末尾注明
+  「再次评估」；
 - 不再加三条固定的通用验收项(复现测试先败后过、现有测试全部通过、其余行为不变)：实施的通用交付检查已有。只留
   这个 Issue 真正的要求：取证给的验收标准，其后是按来源能由采集复查的条件；
 - 按来源生成、由采集复查的条件(观察期内不再出现某指纹的问题、静态巡检不再命中、API 模糊测试通过、重新取证不成立)
@@ -12,7 +13,8 @@
   由发布的验收按关联问题合并部署后有没有再出现确认(44 号计划 6「验收：只做实施阶段做不到的」)；
 - 取证给出的「明确不做」写进范围，「必须保持不变」写进注意事项；三类需用户定夺的标记(根因在设计、要动数据结构、
   改公共契约)带理由与位置单独标出；
-- 代码位置一律写成反引号中的 `路径:行号`，GitHub 镜像据此换成取证 commit 的永久链接；
+- 代码位置一律写成反引号中的 `路径:行号`，GitHub 镜像据此换成取证 commit 的永久链接(`by_commit`：「追加的问题」中
+  各问题按它自己「引用」里的取证 commit)；
 - 小节标题与固定文字按项目语言(zh、en、ja，带地区的取主语言，没有的取英文)；读取时任一语言的标题都认；
   拆小节按 CommonMark 规则闭合代码块(同种围栏、长度不短于开头)，代码块里的 `#` 不会切断小节。
 """
@@ -22,6 +24,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from itertools import pairwise
 from typing import Any
 
 from tightrein.store.files.markdown import demote_headings
@@ -68,6 +71,7 @@ TEXTS: dict[str, dict[str, str]] = {
     "flag.publicContract": {"zh": "会改变公共实现或接口契约", "en": "Changes a shared implementation or API contract",
                             "ja": "共通実装または API 契約が変わる"},
     "evidenceCommit": {"zh": "取证 commit", "en": "Evidence commit", "ja": "調査時のコミット"},
+    "reassessed": {"zh": "再次评估", "en": "re-assessed", "ja": "再評価"},
     "accept.apiFuzz": {"zh": "API 模糊测试对 `{location}` 的 `{check}` 检查以 `{role}` 身份通过",
                        "en": "API fuzzing check `{check}` on `{location}` passes as `{role}`",
                        "ja": "API ファジングの `{check}` チェックが `{location}` で `{role}` として通る"},
@@ -94,6 +98,9 @@ _HEADING = re.compile(r"^(#{1,6}) +(.+?)\s*#*\s*$")
 _ANY_HEADING = re.compile(r"^#{1,6} +(.+?)\s*$", re.MULTILINE)
 _ALIASES = {title: key for key, titles in HEADINGS.items() for title in titles.values()}
 _CHECKBOX = re.compile(r"^\[[ xX]\]\s*")
+# 「引用」里的取证 commit(各语言)：追加的问题按它找到自己的位置所在的 commit
+_EVIDENCE = re.compile(r"^- (?:" + "|".join(re.escape(found) for found in TEXTS["evidenceCommit"].values())
+                       + r")：([0-9a-fA-F]{7,40})\s*$", re.MULTILINE)
 # 只能在部署后确认的验收条件(按来源生成、由采集复查的；各语言的原文都认)
 POST_DEPLOY_KEYS = ("accept.observed", "accept.static", "accept.apiFuzz", "accept.refuted")
 _PLACEHOLDER = re.compile(r"\{(\w+)\}")
@@ -238,22 +245,53 @@ def acceptance_items(body: str) -> list[str]:
     return list(dict.fromkeys(_CHECKBOX.sub("", line[2:].strip()) for line in lines if line.startswith("- ")))
 
 
-def _marks(lines: Sequence[str], levels: Sequence[int]) -> list[tuple[int, int, str]]:
-    """代码块之外、级别在 levels 中的标题：(行号, 级别, 键(认不出的保留标题))。代码块按 CommonMark 规则闭合
-    (同种围栏、长度不短于开头)。"""
-    found: list[tuple[int, int, str]] = []
+def by_commit(body: str, default: str | None) -> list[tuple[str, str | None]]:
+    """正文按代码位置所在的 commit 切成几段：(这一段原文, commit)，各段以换行拼起来即原文。「追加的问题」中各问题的
+    位置是按它自己取证时的 commit 写的(它「引用」里的取证 commit，与 Issue 的不一定相同)；其余部分与没写取证 commit
+    的问题用 default(Issue 的取证 commit)。"""
+    lines = body.split("\n")
+    marks = _marks(lines, (2,))
+    keys = [key for _, _, key in marks]
+    if "appended" not in keys:
+        return [(body, default)]
+    number = keys.index("appended")
+    start = marks[number][0] + 1
+    end = marks[number + 1][0] if number + 1 < len(marks) else len(lines)
+    problems = {start + index for index, _, _ in _marks(lines[start:end], (3,))}
+    edges = sorted({0, *problems, end, len(lines)})
+    found: list[tuple[str, str | None]] = []
+    for begin, stop in pairwise(edges):
+        part = "\n".join(lines[begin:stop])
+        own = _EVIDENCE.search(part) if begin in problems else None
+        found.append((part, own.group(1) if own else default))
+    return found
+
+
+def fenced(lines: Sequence[str]) -> list[bool]:
+    """各行是不是代码块的一部分(围栏行本身也算)；代码块按 CommonMark 规则闭合(同种围栏、长度不短于开头)。读正文的
+    地方据此不把代码块里的 # 行当标题。"""
+    found: list[bool] = []
     fence: str | None = None
-    for index, line in enumerate(lines):
+    for line in lines:
         marker = _FENCE.match(line)
-        if marker is not None:
-            token = marker.group(1)
-            if fence is None:
-                fence = token
-            elif token[0] == fence[0] and len(token) >= len(fence):
-                fence = None
+        if marker is None:
+            found.append(fence is not None)
             continue
+        token = marker.group(1)
+        if fence is None:
+            fence = token
+        elif token[0] == fence[0] and len(token) >= len(fence):
+            fence = None
+        found.append(True)
+    return found
+
+
+def _marks(lines: Sequence[str], levels: Sequence[int]) -> list[tuple[int, int, str]]:
+    """代码块之外、级别在 levels 中的标题：(行号, 级别, 键(认不出的保留标题))。"""
+    found: list[tuple[int, int, str]] = []
+    for index, (line, inside) in enumerate(zip(lines, fenced(lines))):
         level = len(line) - len(line.lstrip("#"))
-        if fence is None and level in levels and line[level:level + 1] == " ":
+        if not inside and level in levels and line[level:level + 1] == " ":
             title = line[level + 1:].strip()
             found.append((index, level, _ALIASES.get(title, title)))
     return found

@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 
 from tightrein.assess import claims, notes
@@ -92,9 +94,28 @@ def test_an_appended_problem_is_written_into_the_body_and_the_record(runtime, re
     assert issue.extra["plannedFiles"] == ["services/orders.py", "routes/orders.py"]
     assert issue.extra["history"][-1]["note"] == "追加问题 P-0002"
 
-    write(runtime, repo, second)  # 已关联的问题再次评估：只记历史
-    again = files.read_body(layout, "0001")
-    assert again.count("### P-0002") == 1 and issues.get(runtime.conn, "0001").extra["problems"] == ["P-0001", "P-0002"]
+    write(runtime, repo, second)  # 已关联的问题再次评估：不重复加入问题列表
+    assert issues.get(runtime.conn, "0001").extra["problems"] == ["P-0001", "P-0002"]
+
+
+def test_a_linked_problem_assessed_again_writes_its_new_evidence(runtime, repo, finding, good_output, layout):
+    """建 Issue 的问题回归后重新评估、又判为成立：不重复加入问题列表，新的取证(新的触发条件与事实)写进「追加的问题」，
+    标题注明「再次评估」。只写一行历史「追加问题」时，回归后再修的方案被指到正文里并不存在的一段。"""
+    first = finding("P-0001")
+    write(runtime, repo, first)
+    again = _list_output(good_output)
+    again["report"] = {**again["report"], "title": "[订单] 回归：订单列表仍能读到他人的订单"}
+    made = write(runtime, repo, replace(first, output=again))
+    assert made.appended == "0001" and made.failures == []
+    issue = issues.get(runtime.conn, "0001")
+    assert issue.extra["problems"] == ["P-0001"]
+    assert issue.extra["history"][-1]["note"] == "问题 P-0001 再次评估，新的取证写进正文「追加的问题」"
+    assert issue.extra["rootKey"] == ["routes/orders.py#show", "services/orders.py#OrderService.get"]
+    text = files.read_body(layout, "0001")
+    part = body.split(text)["appended"]
+    assert part.startswith("### P-0001 [订单] 回归：订单列表仍能读到他人的订单(再次评估)\n\n#### 结论")
+    assert "触发条件：登录用户请求订单列表" in part and "`routes/orders.py:5` 列表直接调用服务的 get" in part
+    assert implement_common.acceptance(text)[-1] == "用户 A 的订单列表里没有用户 B 的订单"
 
 
 def test_a_second_appended_problem_follows_the_first_and_user_edits_stay(runtime, repo, finding, good_output, layout):

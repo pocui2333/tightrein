@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from tightrein.assess.issue import files, github, transitions
+from tightrein.assess.issue import body, files, github, transitions
 from tightrein.assess.issue.transitions import IssueEvent
 from tightrein.onboard.setup import ModuleSetup, ModuleStatus, Setup
 from tightrein.protocol.git import GitError, PublicRepository
@@ -91,6 +91,20 @@ def test_creating_a_local_issue_creates_the_mirror_with_a_redacted_body(mirrored
     assert created.labels == (("bug",) if "bug" in hub.labels() else ())
     assert mirrored.extra["github"] == {"number": 41, "url": "https://github.com/acme/shop/issues/41",
                                         "state": "open", "label": None}
+
+
+def test_appended_problems_link_to_their_own_evidence_commit(runtime, make_issue, hub):
+    """镜像在追加之后才新建(之前同步失败、后来才启用)：追加的问题的位置是按它自己的取证 commit 写的，链接不指到
+    Issue 取证 commit 上的别的行。"""
+    record = make_issue("0007", status="todo", extra={"triageCommit": "c" * 40})
+    part = body.document("P-0060 列表越权", {"cause": "`routes/orders.py:5`",
+                                         "references": f"- 取证 commit：{'d' * 40}"}, "zh")
+    files.write(runtime, record, body=body.add_appended(files.read_body(runtime.workspace, "0007"), part, "zh"))
+    github.sync(runtime, issues.get(runtime.conn, "0007"))
+    created = hub.created[0].body
+    assert f"(https://github.com/acme/shop/blob/{'c' * 40}/services/orders.py#L3)" in created
+    assert f"(https://github.com/acme/shop/blob/{'d' * 40}/routes/orders.py#L5)" in created
+    assert f"{'c' * 40}/routes/orders.py" not in created
 
 
 def test_status_changes_close_or_reopen_without_status_labels(runtime, mirrored, hub):
