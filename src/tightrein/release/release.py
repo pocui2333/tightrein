@@ -4,7 +4,8 @@
 - 发布中(releasing)：提交、同步、推送、提 PR(都幂等，重来不重复)；合并 main 改到同一文件或解决过冲突时退回实施重新
   自检与审查；合并 main 冲突时放弃这次合并、退回编码解决(连续退回 release.conflictReturns 次后再冲突才停下等人，
   同步干净、推送成功后重新计)；合并停在进行中(交给人的冲突)时先处理再提交：用户解决了就完成合并、退回重新自检与
-  审查，没解决而退回次数没用完就放弃合并、按冲突退回编码；提完 PR 当场等 CI 结束并判断合并，不等下一次定时运行。
+  审查，没解决而退回次数没用完就放弃合并、按冲突退回编码；推送前核对要推送的改动与交付时审查过的相同(diff 哈希)，
+  不同(比如人解决冲突后自己提交了合并)也退回重新自检与审查；提完 PR 当场等 CI 结束并判断合并，不等下一次定时运行。
   PR 已被人合并或关闭的按实际状态处理；
 - 验收中(accepting)：找包含合并提交的部署，按问题来源确认(Issue 正文中只能在部署后确认的验收标准在这里按指纹对应到
   确认结论，写进交接的 criteria)；全部通过转为完成，写交付文档，清理本地；回归时先提
@@ -113,6 +114,11 @@ def _release(runtime: Runtime, issue: Issue) -> StepOutcome:
         state.synced_main = synced.main
     if synced.needs_review:
         return _back_to_review(runtime, issue, state, synced, worktree, started)
+    # 推送前核对要推送的就是审查过的那份改动：人在修复目录解决冲突后自己提交了合并(或交付之后另有提交)时，提交看到
+    # 工作区干净、同步看到 main 已是祖先，都发现不了
+    unreviewed = _unreviewed(worktree, found)
+    if unreviewed is not None:
+        return _changed_after_delivery(runtime, issue, state, found, unreviewed, worktree, started)
     pushed = push.push(runtime, issue.id, found.branch, worktree)
     state.pushed = pushed.commit or state.pushed or _remote_head(worktree, found.branch)
     state.conflict_returns = 0  # 同步没有冲突、推送成功：这一段冲突已解决，之后再冲突重新计退回次数
@@ -194,6 +200,14 @@ def _back_to_review(runtime: Runtime, issue: Issue, state: ReleaseState, synced:
     return _send_back(runtime, issue, state, worktree, started, CHECK_STEP, reason + "，退回实施重新自检与审查", {
         "syncedMain": synced.main, "merged": synced.merged, "overlap": list(synced.overlap),
         "resolutions": synced.resolutions})
+
+
+def _changed_after_delivery(runtime: Runtime, issue: Issue, state: ReleaseState, found: Delivery, now: str,
+                            worktree: Git, started: float) -> StepOutcome:
+    """要推送的改动与交付时审查过的不同(相对合并进来的 main 的 diff 哈希不同)：退回实施重新自检与审查，不推送。"""
+    return _send_back(runtime, issue, state, worktree, started, CHECK_STEP,
+                      "交付之后修复分支上的改动与审查过的不同(比如在修复目录自己提交了合并)，退回实施重新自检与审查",
+                      {"diffHash": now, "deliveredDiffHash": found.diff_hash})
 
 
 def _back_to_code(runtime: Runtime, issue: Issue, state: ReleaseState, synced: sync.SyncResult, worktree: Git,
@@ -397,6 +411,13 @@ def _user_note(runtime: Runtime, github: GitHub, number: int) -> str | None:
                                                                *(found.get("reviews") or [])]]
     bodies = [body for body in bodies if body]
     return bodies[-1] if bodies else None
+
+
+def _unreviewed(worktree: Git, found: Delivery) -> str | None:
+    """修复分支上的改动相对合并进来的 main(review_base)的 diff 哈希；与交付时的相同为 None。合并的 main 只改了别的
+    文件时哈希不变(sync.py)，变了说明审查过的改动被改过。"""
+    now = worktree.diff_hash(worktree.review_base(f"origin/{worktree.main_branch}"))
+    return None if now == found.diff_hash else now
 
 
 def _remote_head(worktree: Git, branch: str) -> str | None:

@@ -13,6 +13,7 @@
 - 发布开始时合并停在进行中(上面交给人的，或旧版发布冲突时留下的)，由 resume 在提交之前处理：用户已解决(没有
   未合并的文件、没有冲突标记)就记下每个文件取了哪一侧、完成合并提交；没解决而退回编码的次数没用完就放弃这次合并，
   照常同步时再冲突即退回编码；次数用完了继续等人。提交只提交修复自己的改动，不能把半截合并当成修复提交。
+  用户解决后自己提交了合并的，这里看不出(合并已不在进行中、main 已是祖先)，由 release.py 推送前核对 diff 哈希发现。
 """
 
 from __future__ import annotations
@@ -34,6 +35,8 @@ FIX_SIDE, MAIN_SIDE, BOTH = "fix-side", "main-side", "both"
 DECISION_KEYS = ("branch", "head", "originMain")  # 合并 main 时复核的前置条件
 FINISH_KEYS = ("branch", "head")  # 完成合并提交时复核的前置条件
 MUTUAL = "两侧都修改了这一段；如果两侧实现的是同一功能，属于互斥实现，需要人选择保留哪一侧"
+# 交给人解决冲突时待决定文档的选项(解决后自己提交了合并也行：推送前核对出与审查过的不同，会退回重新自检与审查)
+RESOLVE_OPTIONS = ("在修复目录解决冲突并 git add 后重新发布", "放弃这次合并(git merge --abort)后重新发布")
 
 
 @dataclass(frozen=True)
@@ -88,8 +91,7 @@ def sync(runtime: Runtime, issue: str, delivery: Delivery, state: ReleaseState, 
         state.conflicts = list(error.files)
         tried = f"(已退回编码解决 {state.conflict_returns} 次仍冲突)" if state.conflict_returns else ""
         raise ReleaseBlocked(POINT_PR, f"合并 {main_ref} 出现冲突{tried}：{'、'.join(error.files)}；冲突报告 {report}",
-                             options=("在修复目录解决冲突并 git add 后重新发布", "放弃这次合并(git merge --abort)后重新发布"),
-                             command=f"tightrein run --object {issue}") from error
+                             options=RESOLVE_OPTIONS, command=f"tightrein run --object {issue}") from error
     return SyncResult(main, merged, overlap)
 
 
@@ -97,8 +99,10 @@ def resume(runtime: Runtime, issue: str, delivery: Delivery, state: ReleaseState
     """合并停在进行中时先处理(release.py 在提交之前调用)。没有进行中的合并、或放弃了这次合并时为 None：
     - 用户已解决(没有未合并的文件，冲突文件里没有冲突标记)：完成合并提交；
     - 还没解决、退回编码的次数没用完：放弃这次合并(工作区回到合并前)，之后照常同步，再冲突即退回编码；
-    - 还没解决、次数已用完：继续等人(ReleaseBlocked)。"""
+    - 还没解决、次数已用完：继续等人(ReleaseBlocked)。
+    没有进行中的合并时冲突文件清单作废(用户自己提交了合并或放弃了合并)，清掉，免得之后的合并误算进去。"""
     if worktree.merge_head() is None:
+        state.conflicts = []
         return None
     status = worktree.status()
     files = sorted(set(status.unmerged) | set(state.conflicts))
@@ -112,7 +116,7 @@ def resume(runtime: Runtime, issue: str, delivery: Delivery, state: ReleaseState
              f"放弃停在进行中、还有冲突的合并：{'、'.join(left)}；重新同步 main，再冲突即退回编码解决")
         return None
     raise ReleaseBlocked(POINT_PR, f"合并 origin/main 还有没解决的冲突：{'、'.join(left)}",
-                         command=f"tightrein run --object {issue}")
+                         options=RESOLVE_OPTIONS, command=f"tightrein run --object {issue}")
 
 
 def overlapping(fix_files: Sequence[str], main_files: Sequence[str]) -> tuple[str, ...]:

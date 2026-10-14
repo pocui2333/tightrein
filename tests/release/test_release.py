@@ -1,7 +1,8 @@
 """发布的流程(本地真 git + 假 GitHub)：提交 → 推送 → PR → 等 CI → 合并一次走完并转为验收中；PR 被关闭且未合并时
 以修复未采纳取消并记下用户说明；合并 main 改到同一文件时退回实施重新自检与审查；冲突时退回编码解决，退回次数用完后转为待决定并留下冲突文件清单；
 合并停在进行中时先处理再提交(没解决且退回次数没用完时放弃、退回编码，用户解决了就完成合并、退回自检与审查，次数用完继续等人)；
-同步干净、推送成功后退回次数清零；
+同步干净、推送成功后退回次数清零；推送前要推送的改动与交付时审查过的不同(人自己提交了合并、交付之后另有提交)时退回自检与
+审查，合并的 main 只改了别的文件时照常推送；
 验收通过转为完成、写交付文档并清理本地；回归时先提撤销 PR(只提一次)、清理修复目录，再退回待修并开下一次修复尝试；不在发布中的不碰；前置条件过期时
 留在发布中、下次重新观察；接入清单不启用验收时部署即完成、不观察。"""
 
@@ -25,7 +26,8 @@ from tightrein.store.tables import issues, occurrences, problems
 
 def _ready(kit, runtime, repos, worktree, **extra):
     repos.write(worktree, {"src/order.py": "PAGE = 0\n"})
-    kit.deliver(runtime, "0007", kit.delivery_facts(worktree, ["src/order.py"]))
+    delivered = kit.diff_hash(runtime, worktree)  # 推送前据此核对要推送的就是审查过的改动
+    kit.deliver(runtime, "0007", kit.delivery_facts(worktree, ["src/order.py"], diffHash=delivered))
     return kit.new_issue(runtime, **extra)
 
 
@@ -135,7 +137,8 @@ def _stuck(kit, runtime, repos, worktree, **release_state):
     """交给人的冲突留下的现场(旧版发布冲突时，或退回编码次数用完后)：修复已提交，合并 origin/main 停在进行中，
     冲突文件里有冲突标记，发布进度记着冲突文件清单。"""
     fix = repos.commit(worktree, "fix: page", {"src/order.py": "PAGE = 0\n"})
-    kit.deliver(runtime, "0007", kit.delivery_facts(worktree, ["src/order.py"]))
+    delivered = kit.diff_hash(runtime, worktree)
+    kit.deliver(runtime, "0007", kit.delivery_facts(worktree, ["src/order.py"], diffHash=delivered))
     main = repos.upstream("fix: page two", {"src/order.py": "PAGE = 2\n"})
     repos.merge_main(worktree)
     kit.new_issue(runtime, extra={"release": {"conflicts": ["src/order.py"], **release_state}})
@@ -198,12 +201,53 @@ def test_an_unresolved_merge_keeps_waiting_once_the_returns_are_used_up(kit, git
     assert (worktree / "src/order.py").read_text(encoding="utf-8").startswith("<<<<<<< ")
     assert repos.git(repos.origin, "branch", "--list", kit.BRANCH) == ""
     assert [kind for kind, _, _ in documents_written] == ["pending"]
+    assert documents_written[0][2]["options"] == ["在修复目录解决冲突并 git add 后重新发布",
+                                                  "放弃这次合并(git merge --abort)后重新发布"]
 
 
 def test_a_clean_sync_and_push_resets_the_conflict_returns(kit, github_runtime, repos, worktree):
     _ready(kit, github_runtime, repos, worktree, extra={"release": {"conflict_returns": 1}})
     release(github_runtime, "0007")
     assert load_state(issues.get(github_runtime.conn, "0007")).conflict_returns == 0
+
+
+@pytest.mark.parametrize("returns", [0, 2])
+def test_a_merge_the_user_committed_goes_back_to_self_check_unpushed(kit, github_runtime, repos, worktree,
+                                                                     simple_transitions, returns):
+    _stuck(kit, github_runtime, repos, worktree, conflict_returns=returns)
+    repos.write(worktree, {"src/order.py": "PAGE = 2\n"})
+    repos.git(worktree, "add", "src/order.py")
+    repos.git(worktree, "commit", "-q", "--no-edit")  # 解决后自己提交了合并：合并已不在进行中，main 已是祖先
+    merged = repos.head(worktree)
+    outcome = release(github_runtime, "0007")
+    assert outcome.next_point == "implement.check" and "与审查过的不同" in outcome.summary
+    issue = issues.get(github_runtime.conn, "0007")
+    assert issue.status == "implementing" and issue.step == "implement.check"
+    assert load_state(issue).conflicts == []  # 合并已不在进行中，冲突文件清单作废
+    facts = _handoff_facts(github_runtime)
+    assert facts["backTo"] == "implement.check" and facts["worktreeCommit"] == merged == repos.head(worktree)
+    assert facts["diffHash"] != facts["deliveredDiffHash"]
+    assert repos.git(repos.origin, "branch", "--list", kit.BRANCH) == ""  # 没经自检与审查，不推送
+    assert simple_transitions == [("0007", "start", None)]
+
+
+def test_a_commit_made_after_delivery_goes_back_to_self_check(kit, github_runtime, repos, worktree):
+    _ready(kit, github_runtime, repos, worktree)
+    repos.commit(worktree, "fix: page", {"src/order.py": "PAGE = 3\n"})  # 交付之后有人在修复目录改了又提交
+    outcome = release(github_runtime, "0007")
+    assert outcome.next_point == "implement.check"
+    assert issues.get(github_runtime.conn, "0007").step == "implement.check"
+    assert repos.git(repos.origin, "branch", "--list", kit.BRANCH) == ""
+
+
+def test_main_changing_other_files_is_merged_and_pushed_without_review(kit, github_runtime, repos, worktree):
+    _ready(kit, github_runtime, repos, worktree)
+    main = repos.upstream("feat: user", {"src/user.py": "NAME = 'b'\n"})
+    outcome = release(github_runtime, "0007")
+    # 合并的 main 只改了别的文件：相对它的 diff 哈希与交付时相同，照常推送、合并
+    assert outcome.next_point == "release.deploy"
+    issue = issues.get(github_runtime.conn, "0007")
+    assert issue.status == "accepting" and load_state(issue).synced_main == main
 
 
 def _handoff_facts(runtime):

@@ -275,6 +275,12 @@ def delivery_facts(worktree: Path, changed: list[str], **overrides: Any) -> dict
     return facts
 
 
+def diff_hash(runtime: Runtime, worktree: Path) -> str:
+    """worktree 现在的改动相对 review_base 的 diff 哈希：实施交付时记下的那个(发布推送前据此核对)。"""
+    git = runtime.git.at(worktree)
+    return git.diff_hash(git.review_base("origin/main"))
+
+
 def deliver(runtime: Runtime, issue: str, facts: dict[str, Any]) -> None:
     """落一份实施·交付的 handoff。"""
     from tightrein.protocol import handoff
@@ -392,5 +398,5 @@ def kit() -> SimpleNamespace:
     return SimpleNamespace(BRANCH=BRANCH, NOW=NOW, ORDER=ORDER, FIX_ORDER=FIX_ORDER, MAIN_ORDER=MAIN_ORDER,
                            FakeGitHub=FakeGitHub, LocalRunner=LocalRunner,
                            make_runtime=make_runtime, make_settings=make_settings, make_setup=make_setup,
-                           new_issue=new_issue, deliver=deliver, delivery_facts=delivery_facts,
+                           new_issue=new_issue, deliver=deliver, delivery_facts=delivery_facts, diff_hash=diff_hash,
                            stale_at_decision=stale_at_decision)
