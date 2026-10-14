@@ -28,6 +28,9 @@ VERSION = 2
 FRAME_COUNT = 3
 PERFORMANCE_CHECKS = frozenset({"latency"})  # 与报错类分开：同一处的报错与变慢不合并
 NOT_MERGED_INTO = frozenset({ProblemStatus.CLOSED, ProblemStatus.MUTED})  # 人已下过结论的问题不吸收别的来源
+# 人报的 Issue 各自成一个问题，不按「同一处」并进别的来源的问题：是否同一根因交给评估的查重
+# (并入时在 GitHub 上关成重复)
+STANDALONE_SOURCES = frozenset({"collect.github_issues"})
 
 # problems.extra 中的键
 FINGERPRINT_VERSION = "fingerprintVersion"
@@ -142,7 +145,7 @@ def apply(changeset: ChangeSet, signals: Sequence[Signal], messages: Mapping[str
         message = messages[signal.id]
         value = fingerprint(signal, message)
         problem = changeset.by_fingerprint(value)
-        if problem is None:
+        if problem is None and signal.source not in STANDALONE_SOURCES:
             problem = _same_place(changeset, places, signal, params.nearby_lines)
             if problem is not None:
                 changeset.alias(problem, value)

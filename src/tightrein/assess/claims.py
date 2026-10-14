@@ -22,7 +22,7 @@ JUDGEMENT_KEYS = frozenset({"verdict", "verification"})
 USER_PROVIDED = "用户提供"
 NO_ENTRY = "(没有可直接得到的入口)"
 ROUTE_SOURCES = frozenset({"collect.api_fuzz", "collect.access_log"})
-CODE_SOURCES = frozenset({"collect.static", "collect.incidental"})
+CODE_SOURCES = frozenset({"collect.static", "collect.incidental", "collect.github_issues"})
 # 检查类别 → 主张模板；{role}、{location}、{message}、{status} 由程序填入
 STATEMENTS: dict[str, str] = {
     "authz": "{role} 不具备访问权限，调用 {location} 却返回了 {status}",
@@ -33,6 +33,8 @@ STATEMENTS: dict[str, str] = {
     "alert": "业务告警 {location} 已触发：{message}",
     "probe": "项目探针在 {location} 发现：{message}",
     "static": "{location} 存在以下问题：{message}",
+    "report": "有人在 GitHub Issue 中报告(原文见信号样本)：{message}",
+    "request": "有人在 GitHub Issue 中提出需求(原文见信号样本)：{message}",
 }
 DEFAULT_STATEMENT = "{location} 存在以下问题：{message}"
 ANONYMOUS = "未登录用户"

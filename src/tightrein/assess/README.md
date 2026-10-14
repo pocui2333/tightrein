@@ -22,6 +22,8 @@
 12. **落库**(`persist.py`)：一个事务内写问题状态、评估记录、抑制规则、并入、写成 Issue；失败全部回滚。
 13. 每个问题写 `21-assess.triage-handoff.json`(问题目录)，建 Issue 时另写 `22-assess.issue-handoff.json`(Issue 目录)。
 
+GitHub 上已有的 Issue(采集 `collect.github_issues` 导入的问题)：带需求标签的在查重之后不取证，直接写成待修的用户需求(`issue/create.from_request`)；缺陷报告照常取证。写成 Issue 时接手原来的 GitHub 编号(镜像记成它，同步不再新建)；事务提交之后按去向在 GitHub 上回应——重复、不成立、不修的留一句话关掉，主干上已修的以 completed 关掉，证据不足、观察、转人工的不动(`issue/remote.py`)。回应失败只记进 `extra.assess.github`，不让评估失败。
+
 另有：`retriage(runtime, problem, note)`(用户补充信息后重新评估，补充跨次累积)、`override(runtime, problem, verdict, reason)`(用户改判，不调用模型)。
 
 ## 输入与输出

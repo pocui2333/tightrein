@@ -42,6 +42,7 @@ MERGED = "MERGED"
 PR_FIELDS = "number,url,state,headRefName,headRefOid,mergedAt,mergeCommit,closedAt,reviewDecision"
 MERGE_FIELDS = "state,isDraft,mergeable,mergeStateStatus,headRefOid,reviews"
 CHECK_FIELDS = "name,state,bucket"
+OPEN_ISSUE_FIELDS = "number,title,body,labels,url,createdAt"
 REQUIRED_STATUS_CHECKS = "required_status_checks"
 # 列出 Issue 与标签时一次取的条数：镜像 Issue 按标记找回、读开关状态都要看全
 LIST_LIMIT = 1000
@@ -105,6 +106,18 @@ class RemoteIssue:
     number: int
     state: str  # open、closed
     reason: str | None = None  # gh 的 stateReason：COMPLETED、NOT_PLANNED、DUPLICATE、REOPENED
+
+
+@dataclass(frozen=True)
+class OpenIssue:
+    """仓库里打开的 Issue(含别人建的；采集 collect.github_issues 读它)。"""
+
+    number: int
+    title: str
+    body: str
+    labels: tuple[str, ...]
+    url: str
+    created_at: datetime | None
 
 
 @dataclass(frozen=True)
@@ -262,6 +275,16 @@ class GitHub:
         return {item["number"]: RemoteIssue(item["number"], item["state"].lower(), item.get("stateReason") or None)
                 for item in items}
 
+    def open_issues(self) -> list[OpenIssue]:
+        """打开的 Issue(含别人建的)，按编号升序；gh issue list 不列 PR。"""
+        items = self._json("issue", "list", "--state", "open", "--json", OPEN_ISSUE_FIELDS, "--limit",
+                           str(LIST_LIMIT))
+        found = [OpenIssue(int(item["number"]), str(item.get("title") or ""), str(item.get("body") or ""),
+                           tuple(str(label["name"]) for label in item.get("labels") or [] if label.get("name")),
+                           str(item.get("url") or ""), _time(item.get("createdAt")))
+                 for item in items or []]
+        return sorted(found, key=lambda issue: issue.number)
+
     def find_marker(self, marker: str) -> IssueRef | None:
         """正文含有本地标记的 Issue；有多个时取编号最小的。"""
         items = self._json("issue", "list", "--state", "all", "--json", "number,url,body", "--limit", str(LIST_LIMIT))
@@ -325,6 +348,7 @@ class GitHub:
         return once(scope, "issue-labels", (str(number), *add, SEPARATOR, *removable), action, lambda: None)
 
     def issue_comment(self, number: int, body: str, *, scope: WriteScope) -> str:
+        """在 Issue 上发一条评论；同一对象、步骤、正文只发一次。"""
         return self._comment("issue", number, body, scope)
 
     def issue_close(self, number: int, reason: str, *, scope: WriteScope) -> int:

@@ -42,6 +42,7 @@
     "collect.api_fuzz": "API 模糊测试",
     "collect.static": "静态巡检",
     "collect.incidental": "任务外发现",
+    "collect.github_issues": "GitHub 上的 Issue",
     "collect.dedup": "去重",
     "assess.triage": "判定",
     "assess.issue": "写 Issue",

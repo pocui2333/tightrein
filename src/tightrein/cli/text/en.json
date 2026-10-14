@@ -42,6 +42,7 @@
     "collect.api_fuzz": "api_fuzz",
     "collect.static": "static",
     "collect.incidental": "incidental",
+    "collect.github_issues": "github_issues",
     "collect.dedup": "dedup",
     "assess.triage": "triage",
     "assess.issue": "issue",

@@ -22,6 +22,7 @@ STEP_SEQUENCE: dict[str, int] = {
     "collect.api_fuzz": 15,
     "collect.static": 16,
     "collect.incidental": 17,
+    "collect.github_issues": 18,
     "collect.dedup": 19,
     "assess.triage": 21,
     "assess.issue": 22,

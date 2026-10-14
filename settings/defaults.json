@@ -271,6 +271,14 @@
         "implement": "baseCommit"
       }
     },
+    "collect.github_issues": {
+      "sourceTimeout": "10m",
+      "featureLabels": [
+        "enhancement",
+        "feature"
+      ],
+      "bodyChars": 4000
+    },
     "collect.api_fuzz": {
       "sourceTimeout": "45m",
       "maxExamples": 100,
@@ -685,7 +693,8 @@
         "collect.project_probes": "24h",
         "collect.api_fuzz": "24h",
         "collect.static": "0s",
-        "collect.incidental": "0s"
+        "collect.incidental": "0s",
+        "collect.github_issues": "0s"
       }
     },
     "retro.idea": {
@@ -910,7 +919,8 @@
       "collect.alerts": "15m",
       "collect.api_fuzz": "on_deploy",
       "collect.static": "on_commit",
-      "collect.incidental": "1h"
+      "collect.incidental": "1h",
+      "collect.github_issues": "1h"
     },
     "advanceTo": "release",
     "logs": {

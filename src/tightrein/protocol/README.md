@@ -25,7 +25,7 @@
 | `recovery.md` | `recovery.py` | 恢复与控制：检查点续跑、写操作幂等、中断时就地收尾、启动时恢复、暂停、急停、接管 | `limits.lock.stale`<br>`limits.shutdownGrace` | `stale`：90s<br>`shutdownGrace`：30s |
 | `security.md` | `security.py` | 安全：凭据、脱敏、子进程环境变量白名单、只读副本与快照比对、网络、外部内容注入、外部代码 | 不可配置 | — |
 | `records.md` | `records.py` | 记录：事件记录链、版本、保留期与清理 | `records.retention` | `retention`：runs 90d，raw 30d，operations 30d |
-| `schedule.md` | `schedule/` | 调度：三种触发、按状态推进到关卡、运行锁、跑完必复盘 | `schedule.tick`<br>`schedule.window`<br>`schedule.every`<br>`schedule.advanceTo` | `tick`：15m<br>`window`：from 00:00，to 07:00，days 7 项<br>`every`：collect.project_probes 1h，collect.platform_errors 1h，collect.access_log 1d，collect.alerts 15m，collect.api_fuzz on_deploy，collect.static on_commit，collect.incidental 1h<br>`advanceTo`：release |
+| `schedule.md` | `schedule/` | 调度：三种触发、按状态推进到关卡、运行锁、跑完必复盘 | `schedule.tick`<br>`schedule.window`<br>`schedule.every`<br>`schedule.advanceTo` | `tick`：15m<br>`window`：from 00:00，to 07:00，days 7 项<br>`every`：collect.project_probes 1h，collect.platform_errors 1h，collect.access_log 1d，collect.alerts 15m，collect.api_fuzz on_deploy，collect.static on_commit，collect.incidental 1h，collect.github_issues 1h<br>`advanceTo`：release |
 | `git.md` | `git/` | git 规范：格式怎么确定(项目约定 → 历史推断 → 通用)、分支、提交、PR、不带 AI 署名 | `git.branch`<br>`git.commit`<br>`git.types`<br>`git.pr` | `branch`：{prefix}{type}/{issue}-{slug}<br>`commit`：{type}: {summary}<br>`types`：bug fix，feature feat<br>`pr`：{summary} |
 | `coding.md` | — | 代码规范：给目标项目写代码时的通用最低要求 | `boundaries.changeCap` | `changeCap`：files 10，lines 400 |
 

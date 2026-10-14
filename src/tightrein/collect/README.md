@@ -5,7 +5,7 @@
 流水线的第一个阶段：收集「疑似问题的线索」(信号)，不做判断；最后一步「去重」就地把信号整理成问题，
 交给评估的直接是问题(新发现或回归)。入口 `collect.run(runtime) -> CollectOutcome`，由调度(protocol/schedule)调用。
 
-## 七个来源
+## 八个来源
 
 | 控制键 | 目录 | 形式 | 项目要做的 | 触发 |
 |---|---|---|---|---|
@@ -16,6 +16,7 @@
 | `collect.api_fuzz` | `api_fuzz/` | 程序(只查 5xx) | 提供接口描述；测生产环境时填允许清单 | 有新部署时 |
 | `collect.static` | `static/` | 程序(调用模型) | 选规则集，可加项目规则 | 有新提交时 |
 | `collect.incidental` | `incidental/` | 程序 | 无 | 每 1h |
+| `collect.github_issues` | `github_issues/` | 程序 | 无(跟着接入清单的 `release.github_issues` 启用，不单列) | 每 1h |
 
 每个来源一个模块 `collect/<来源>/source.py`，提供 `collect(runtime) -> SourceResult`(共用类型在 `common/`)；
 除静态巡检外都不调用模型。以后再加 1.8 埋点分析。
@@ -25,7 +26,7 @@
 1. 补写上次中断的去重交接(`dedup.recover`)；
 2. 刷新部署记录(接入清单启用了 `release.deploy` 时，`release/deploy.py`)：信号的 release 与「有新部署」的判断靠它；
    读不到时沿用已记的，写进说明；
-3. 选出到点的来源(`select`)：接入清单中启用或自定义的 `collect.*`，按 `schedule.every`：
+3. 选出到点的来源(`select`)：接入清单中启用或自定义的 `collect.*`(GitHub Issue 同步启用时另加 `collect.github_issues`)，按 `schedule.every`：
    - 间隔：从 state 表 `collect.schedule:<来源>` 记的上次时间算起；从未跑过的立即跑；错过多个时刻只补跑一次并记下错过次数；
    - `on_commit`、`on_deploy`：仓库 HEAD 或最近一次成功部署的 commit 与上次跑时不同才跑，否则跳过并写明原因；
    - 手动触发(`only`)只跑指定的来源，不看是否到点；
