@@ -1,6 +1,8 @@
 """调用点的模型固定：实际跑下来证明配置的模型不够用的调用点，以后固定改用更强的一档(按项目记在 state 表)。
 
-- 什么时候固定：一次调用成功但用了超过 limits.escalation.pinTurns(缺省 10)轮——固定到升档阶梯上比它强的下一档；
+- 什么时候固定：一次调用成功但模型实际干活的时间超过 controls.<调用点>.pinActive(缺省 3 分钟，编码与深度审查
+  5 分钟)——固定到升档阶梯上比它强的下一档。干活时间只算输出流里相邻两行间隔 60 秒以内的部分(agents/call.py)：
+  断网、限流退避、等测试跑完都不算；不按轮数判：盲审要自己找代码，步数多但很快；
   调用中因超时、轮数到限或格式不符升了档并且成功——固定到成功的那一档；
 - 怎么用：之后这个调用点的每次调用，配置的模型在阶梯上比固定的弱时换成固定的(只升不降；不在阶梯上的模型，如按
   条件选的 fable，不受影响)；盲审调用点升档时已跳过它要独立于的模型(Settings.stronger)；
@@ -15,7 +17,7 @@ from dataclasses import replace
 from typing import Any
 
 from tightrein.agents.params import CallParams, Model
-from tightrein.protocol.naming import Clock, format_iso
+from tightrein.protocol.naming import Clock, format_iso, parse_duration
 from tightrein.settings.load import Settings
 from tightrein.store.tables import state
 
@@ -37,14 +39,19 @@ def pinned(conn: sqlite3.Connection, settings: Settings, point: str) -> Model | 
     return settings.model(str(item["model"]))
 
 
-def learn(conn: sqlite3.Connection, clock: Clock, settings: Settings, point: str, used: Model, *, turns: int,
+def active_limit(settings: Settings, point: str) -> float:
+    """这个调用点允许的实际干活时间(秒)。"""
+    return parse_duration(str(settings.control(point, "pinActive")))
+
+
+def learn(conn: sqlite3.Connection, clock: Clock, settings: Settings, point: str, used: Model, *, active_s: float,
           escalated: bool) -> str | None:
     """按这次成功的调用决定要不要固定；固定了返回说明(写进事件)，否则 None。"""
     target: Model | None
     if escalated:
         target, reason = used, f"调用中升档到 {used.alias} 才成功"
-    elif turns > int(settings.get("limits.escalation.pinTurns")):
-        target, reason = settings.stronger(point, used), f"{used.alias} 用了 {turns} 轮"
+    elif active_s > active_limit(settings, point):
+        target, reason = settings.stronger(point, used), f"{used.alias} 实际干活用了 {active_s / 60:.1f} 分钟"
     else:
         return None
     current = pinned(conn, settings, point)

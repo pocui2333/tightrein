@@ -85,7 +85,8 @@
       "outputTokens": 16000,
       "rounds": 1,
       "access": "read",
-      "network": false
+      "network": false,
+      "pinActive": "3m"
     },
     "collect": {
       "timeout": "30m",
@@ -543,7 +544,8 @@
       "turns": 30,
       "timeout": "30m",
       "checkpointRollbackFindings": 3,
-      "rounds": 3
+      "rounds": 3,
+      "pinActive": "5m"
     },
     "implement.check": {
       "environmentPatterns": [
@@ -641,7 +643,8 @@
       "fallback": "opus-mid",
       "turns": 30,
       "outputTokens": 32000,
-      "timeout": "10m"
+      "timeout": "10m",
+      "pinActive": "5m"
     },
     "release": {
       "mergeMethod": "squash",
@@ -737,8 +740,7 @@
         "opus-mid",
         "opus"
       ],
-      "max": 2,
-      "pinTurns": 10
+      "max": 2
     },
     "retry": {
       "attempts": 2,

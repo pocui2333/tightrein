@@ -75,6 +75,8 @@ MILLION = 1_000_000
 OVERFLOW_REASON = "标准输出超过上限，已被终止"
 OVERFLOW_NOTE = "{hint}。请只输出符合 schema 的结论，大段内容写到文件后在输出中以路径引用。"
 PROGRESS_S = 5.0  # 调用进行中更新 started 标记的最短间隔
+ACTIVE_GAP_S = 60.0  # 两行输出间隔超过它的部分不算干活时间
+_monotonic = time.monotonic  # 测试可替换
 # 进程被程序终止的原因(protocol.process 的 stopped_by 与本模块 on_line 返回的原因) → 统一状态
 STOPPED = {
     "timeout": CallStatus.TIMEOUT, "idle": CallStatus.TIMEOUT, "overflow": CallStatus.SCHEMA_INVALID,
@@ -270,6 +272,7 @@ class _Run:
     progress: Callable[[int, Tokens], None] | None = None  # 调用进行中更新 started 标记(watch 显示实时轮数与 token)
     fallback_from: dict[str, str] | None = None  # 换了备用模型时：原模型别名与它的结束状态(复盘据此记录)
     upgraded: bool = False  # 这次用的是固定的更强模型(agents/pinning.py)
+    active_s: float = 0.0  # 模型实际干活的时间(_Watch.on_line)，判断要不要固定更强的模型
     escalated: bool = False  # 调用中升过档
 
     def add(self, attempt: _Attempt, model: Model) -> None:
@@ -439,6 +442,7 @@ class _Watch:
             context.budget.remaining(params.subject) - run.tokens.weighted(weight)
         self.turns = 0
         self.tokens = Tokens()
+        self.last_line = _monotonic()
         self.counted: set[str] = set()
         self.reason: str | None = None
         self.violations: list[str] = []
@@ -450,6 +454,10 @@ class _Watch:
         self.home = Path(home) if home else None
 
     def on_line(self, line: str) -> str | None:
+        # 模型实际干活的时间：相邻两行输出的间隔，超过 ACTIVE_GAP_S 的部分不算(断网、限流退避、等命令跑完)
+        now = _monotonic()
+        self.run.active_s += min(now - self.last_line, ACTIVE_GAP_S)
+        self.last_line = now
         event = self.adapter.parse_line(line)
         if event.rate_limit is not None and event.rate_limit.status == "rejected":
             return self._stop("quota", f"{event.rate_limit.tool} 的 {event.rate_limit.window} 额度已用完")
@@ -669,12 +677,12 @@ def _finish(params: CallParams, context: AgentContext, result: CallResult, marke
         result.raw_path = _save(params, context, run)
     constraint = _constraint(params, context, run, result)
     _mark(marker, params, run.model, started, result, context.clock, fallback_from=run.fallback_from,
-          constraint=constraint)
+          constraint=constraint, active_s=run.active_s)
     if constraint is not None:
         _emit(context, params, "decision", f"流程约束可能有问题：{constraint}")
     elif result.ok and context.replay is None:
         note = pinning.learn(context.conn, context.clock, context.settings, params.point, run.model,
-                             turns=result.turns or 0, escalated=run.escalated)
+                             active_s=run.active_s, escalated=run.escalated)
         if note is not None:
             _emit(context, params, "decision", note)
     summary = f"{result.tool}/{result.model}：{result.status.value}"
@@ -686,15 +694,15 @@ def _finish(params: CallParams, context: AgentContext, result: CallResult, marke
 
 
 def _constraint(params: CallParams, context: AgentContext, run: _Run, result: CallResult) -> str | None:
-    """已经换上更强的模型(固定的或调用中升档)仍失败或仍超过固定轮数：不再往上换，判为流程的约束、提示或检查
+    """已经换上更强的模型(固定的或调用中升档)仍失败或实际干活仍超过时限：不再往上换，判为流程的约束、提示或检查
     规则有问题，由复盘记一条交给人改(retro/detect.py 的 call-constraint)。"""
     if not (run.upgraded or run.escalated):
         return None
-    limit = int(context.settings.get("limits.escalation.pinTurns"))
     if not result.ok:
         return f"换到 {run.model.alias} 后仍以 {result.status.value} 结束"
-    if (result.turns or 0) > limit:
-        return f"换到 {run.model.alias} 后仍用了 {result.turns} 轮(上限 {limit})"
+    limit = pinning.active_limit(context.settings, params.point)
+    if run.active_s > limit:
+        return f"换到 {run.model.alias} 后实际干活仍用了 {run.active_s / 60:.1f} 分钟(上限 {limit / 60:.0f} 分钟)"
     return None
 
 
@@ -742,7 +750,8 @@ def _separator(number: int, model: Model, outcome: Outcome) -> str:
 
 def _mark(path: Path, params: CallParams, model: Model, started: str, result: CallResult | None,
           clock: Clock, *, turns: int | None = None, tokens: Tokens | None = None,
-          fallback_from: Mapping[str, str] | None = None, constraint: str | None = None) -> None:
+          fallback_from: Mapping[str, str] | None = None, constraint: str | None = None,
+          active_s: float | None = None) -> None:
     """started 标记：endedAt 为空即表示调用正在进行，模型重试或等待时 watch 不会显示成卡死。"""
     if result is not None:
         turns, tokens = result.turns, result.tokens
@@ -757,6 +766,7 @@ def _mark(path: Path, params: CallParams, model: Model, started: str, result: Ca
                                                 "cacheRead": tokens.cache_read, "cacheWrite": tokens.cache_write},
         "fallbackFrom": None if fallback_from is None else dict(fallback_from),
         "constraint": constraint,
+        "activeMs": None if active_s is None else int(active_s * 1000),
     })
 
 

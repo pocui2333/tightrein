@@ -39,6 +39,7 @@
 | `rounds` | `1` |
 | `access` | `"read"` |
 | `network` | `false` |
+| `pinActive` | `"3m"` |
 
 ### 各控制键
 
@@ -258,6 +259,7 @@
 | `implement.code` | `timeout` | `"30m"` |
 | `implement.code` | `checkpointRollbackFindings` | `3` |
 | `implement.code` | `rounds` | `3` |
+| `implement.code` | `pinActive` | `"5m"` |
 | `implement.check` | `environmentPatterns` | <details><summary>12 项</summary><code>["Connection refused", "ConnectionRefusedError", "ECONNREFUSED", "Read timed out", "TimeoutError", "ETIMEDOUT", "ECONNRESET", "ConnectionResetError", "socket\\.timeout", "OSError.*Errno", "address already in use", "EADDRINUSE"]</code></details> |
 | `implement.check` | `environmentRetries` | `1` |
 | `implement.check` | `testFailureExitCodes` | `[1]` |
@@ -309,6 +311,7 @@
 | `implement.review.deep` | `turns` | `30` |
 | `implement.review.deep` | `outputTokens` | `32000` |
 | `implement.review.deep` | `timeout` | `"10m"` |
+| `implement.review.deep` | `pinActive` | `"5m"` |
 | `release` | `mergeMethod` | `"squash"` |
 | `release` | `reviewComment` | `true` |
 | `release.ci` | `watchInterval` | `"30s"` |
@@ -365,7 +368,6 @@
 |---|---|
 | `limits.escalation.ladder` | `["flash", "flash-mid", "flash-high", "sonnet", "opus-mid", "opus"]` |
 | `limits.escalation.max` | `2` |
-| `limits.escalation.pinTurns` | `10` |
 | `limits.retry.attempts` | `2` |
 | `limits.retry.base` | `"1s"` |
 | `limits.retry.max` | `"20s"` |

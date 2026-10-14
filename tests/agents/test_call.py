@@ -750,18 +750,28 @@ def test_escalation_stops_at_the_limit_and_skips_the_reviewed_model(make_world):
     assert (result.status, result.attempts) == (CallStatus.TIMEOUT, 3)  # sonnet → opus-mid → opus，最多升 2 档
 
 
-def test_a_call_over_the_turn_threshold_pins_the_next_model_for_the_point(make_world):
+def test_a_call_working_too_long_pins_the_next_model_for_the_point(make_world, monkeypatch):
+    """按模型实际干活的时间判：相邻两行间隔 60 秒以内的才算(断网、等命令跑完的空白不算)。"""
+    from tightrein.agents import call as calling
     from tightrein.agents import pinning
 
-    many = tuple(("Read", {"file_path": f"f{number}.py"}) for number in range(11))  # 12 轮，超过 10
-    world = make_world(FakeRun(claude_lines(VALID, tools=many)), FakeRun(claude_lines(VALID)),
-                       FakeRun(claude_lines(VALID, tools=many)))
+    now = [0.0]
+
+    def clock(step: float) -> None:
+        monkeypatch.setattr(calling, "_monotonic", lambda: (now.__setitem__(0, now[0] + step), now[0])[1])
+
+    tools = tuple(("Read", {"file_path": f"f{number}.py"}) for number in range(4))  # 共 6 行输出
+    world = make_world(*(FakeRun(claude_lines(VALID, tools=tools)) for _ in range(4)))
     params = world.params(model=world.settings.model("sonnet"), fallback=None)
+    clock(600.0)  # 每行之间隔 10 分钟：只算 60 秒，6 行 6 分钟，超过 3 分钟
     assert call(params, world.context).status is CallStatus.OK
     assert pinning.pinned(world.context.conn, world.settings, params.point).alias == "opus-mid"
+    clock(1.0)
     assert call(params, world.context).model == "opus"  # 之后这个调用点直接用固定的更强模型
-    # 换上更强的模型仍超过轮数：不再往上换，标记成流程约束问题交复盘
+    marker = json.loads(world.file("started", "json").read_text(encoding="utf-8"))
+    assert marker["constraint"] is None and marker["activeMs"] < 60_000
+    clock(60.0)  # 换上更强的模型仍干了 6 分钟：不再往上换，标记成流程约束问题交复盘
     call(params, world.context)
     marker = json.loads(world.file("started", "json").read_text(encoding="utf-8"))
-    assert "仍用了 12 轮" in marker["constraint"]
+    assert "实际干活仍用了" in marker["constraint"]
     assert pinning.pinned(world.context.conn, world.settings, params.point).alias == "opus-mid"
