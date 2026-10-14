@@ -148,7 +148,7 @@ def from_problem(runtime: Runtime, finding: Finding, snapshot: Snapshot, made: C
     existing = same_root(runtime, root_key(causes))
     if existing is not None:
         made.remember(runtime.workspace, existing.id)
-        made.failures += [f"{existing.id}：{reason}" for reason in append(runtime, existing, finding, snapshot)]
+        made.body_problems += [f"{existing.id}：{reason}" for reason in append(runtime, existing, finding, snapshot)]
         made.issues, made.appended = [existing.id], existing.id
         return made
     created = made
@@ -172,7 +172,7 @@ def from_problem(runtime: Runtime, finding: Finding, snapshot: Snapshot, made: C
 
 
 def append(runtime: Runtime, issue: Issue, finding: Finding, snapshot: Snapshot) -> list[str]:
-    """追加到同一根因的 Issue；返回追加的内容没过检查的原因(与新建时一样：文件保留，交接为 failed)。
+    """追加到同一根因的 Issue；返回追加的内容没过检查的原因(与新建时一样：只记进交接的 bodyProblems，Issue 照常)。
 
     已关联的问题再次评估(回归后、手动重新评估)：不重复加入问题列表，新的取证(新的触发条件与事实)同样写进「追加的
     问题」，标题末尾注明「再次评估」。只记一行历史时，回归后再修的方案读不到回归的新情况。"""

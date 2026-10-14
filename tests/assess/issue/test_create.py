@@ -69,7 +69,7 @@ def test_an_appended_problem_is_written_into_the_body_and_the_record(runtime, re
     before = files.read_body(layout, "0001")
     second = finding("P-0002", output=_list_output(good_output), title="订单列表越权")
     made = write(runtime, repo, second)
-    assert made.appended == "0001" and made.failures == []
+    assert made.appended == "0001" and made.body_problems == []
     text = files.read_body(layout, "0001")
     sections = body.split(text)
     assert list(sections)[-2:] == ["appended", "history"]  # 在「历史」之前
@@ -106,7 +106,7 @@ def test_a_linked_problem_assessed_again_writes_its_new_evidence(runtime, repo, 
     again = _list_output(good_output)
     again["report"] = {**again["report"], "title": "[订单] 回归：订单列表仍能读到他人的订单"}
     made = write(runtime, repo, replace(first, output=again))
-    assert made.appended == "0001" and made.failures == []
+    assert made.appended == "0001" and made.body_problems == []
     issue = issues.get(runtime.conn, "0001")
     assert issue.extra["problems"] == ["P-0001"]
     assert issue.extra["history"][-1]["note"] == "问题 P-0001 再次评估，新的取证写进正文「追加的问题」"
@@ -133,13 +133,16 @@ def test_a_second_appended_problem_follows_the_first_and_user_edits_stay(runtime
     assert implement_common.acceptance(text)[-1] == "导出只含自己的订单"
 
 
-def test_an_appended_problem_that_fails_the_checks_fails_the_handoff(runtime, repo, finding, good_output, layout):
+def test_an_appended_problem_that_fails_the_checks_is_recorded_as_a_body_problem(runtime, repo, finding, good_output, layout):
     write(runtime, repo, finding("P-0001"))
     output = _list_output(good_output)
     output["report"]["steps"] = ["昨天下午用户 A 打开订单列表"]
     made = write(runtime, repo, finding("P-0002", output=output))
-    assert made.failures == ["0001：用了相对日期「昨天」"]
-    assert "昨天下午用户 A 打开订单列表" in files.read_body(layout, "0001")  # 与新建时一样：文件保留，交接为 failed
+    assert made.body_problems == ["0001：用了相对日期「昨天」"]
+    assert "昨天下午用户 A 打开订单列表" in files.read_body(layout, "0001")
+    create.write_handoff(runtime, finding("P-0002", output=output), made, None)  # 与新建时一样：只记下，交接为 passed
+    handoff = read_json(layout.issue_dir("0001") / "22-assess.issue-handoff.json")
+    assert handoff["status"] == "passed" and handoff["facts"]["bodyProblems"] == made.body_problems
 
 
 def test_the_code_notes_of_an_appended_problem_are_merged(runtime, repo, finding, good_output, layout):
