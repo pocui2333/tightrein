@@ -62,7 +62,19 @@ def test_urls_and_host_ports_are_not_code_locations(tmp_path: Path) -> None:
     done = complete({"note": text, "facts": [{"location": "processors/ai_review.py:313",
                                               "observation": PROXY_SENTENCE}]}, snapshot)
     assert done.value["note"] == text and done.problems() == []  # 网址里的路径、主机:端口都不补、不报
-    assert checks.is_host("127.0.0.1") and checks.is_host("localhost") and not checks.is_host("ai_review.py")
+
+
+def test_host_port_paths_without_a_scheme_are_not_code_locations(tmp_path: Path) -> None:
+    """不带协议头的「主机:端口/路径」：不能从端口后面截出 `8080/processors/ai_review.py:313` 当成位置。"""
+    snapshot = Snapshot(agy_repo(tmp_path))
+    text = ("打开 localhost:8080/processors/ai_review.py:313 看看，代理 127.0.0.1:8118/src/app/main.py:3、"
+            "proxy.example.com:3128/processors/ai_review.py:7、//cdn.example.com:80/app.js:3")
+    assert checks.locations_in(text) == []
+    done = complete({"note": text}, snapshot)
+    assert done.value["note"] == text and done.problems() == []
+    beside = "打开 localhost:8080/api，调用点 ai_review.py:313 与 ai_review.py:313/379 两处"
+    assert complete({"note": beside}, snapshot).value["note"] == (
+        "打开 localhost:8080/api，调用点 processors/ai_review.py:313 与 processors/ai_review.py:313/379 两处")
 
 
 def test_real_locations_next_to_urls_are_still_completed_and_checked(tmp_path: Path) -> None:

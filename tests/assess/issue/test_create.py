@@ -224,7 +224,8 @@ def test_urls_in_the_body_are_not_checked_as_code_locations(tmp_path):
         "acceptance": "- [ ] 在仅设置 ALL_PROXY（不设置 ai_review.proxy）的环境下 agy 子进程能看到 ALL_PROXY",
         "references": "- `config/config.yaml:89` 默认配置设了 ai_review.proxy: http://127.0.0.1:8118，"
                       "按默认配置运行时 agy 的 http(s) 代理会补上\n"
-                      "- `processors/ai_review.py:286` subprocess.run(cmd, cwd=cwd, env=env, ...)"}, "zh")
+                      "- `processors/ai_review.py:286` subprocess.run(cmd, cwd=cwd, env=env, ...)\n"
+                      "- 本地复现：打开 localhost:8080/processors/ai_review.py:313 看到同样的环境变量"}, "zh")
     snapshot = Snapshot(root)
     assert create.check_body(text, "problem", snapshot) == []
     broken = text.replace("ai_review.py:286", "ai_review.py:986")

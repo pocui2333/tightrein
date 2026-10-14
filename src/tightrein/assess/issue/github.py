@@ -10,17 +10,17 @@
   标题找回，不重复建(正文不留本地标记)；失败只记录，下次按本地状态与镜像状态重算差异重试；只移除仓库里确实存在的旧
   标签(GitHub.issue_labels)；
 - 正文里反引号中的 `路径:行号` 换成取证 commit 的永久链接；「追加的问题」中各问题的位置是按它自己取证时的 commit
-  写的，按它「引用」里的取证 commit 链接(镜像在追加之后才新建时，不会指到 Issue 取证 commit 上的别的行)；
-  `127.0.0.1:8118` 这种主机与端口不换。
+  写的，按它「引用」里的取证 commit 链接(镜像在追加之后才新建时，不会指到 Issue 取证 commit 上的别的行)；与正文
+  检查同一规则(checks.locations_in)排除网址与「主机:端口」，且只换取证 commit 中确有的文件(`proxy.example.com:3128`、
+  `db.internal:5432` 换了是坏链接)。
 """
 
 from __future__ import annotations
 
 import re
-from functools import partial
 from typing import TYPE_CHECKING, Any
 
-from tightrein.assess.checks import is_host
+from tightrein.assess.checks import substitute
 from tightrein.onboard.setup import ModuleStatus
 from tightrein.protocol.git import GitError, PublicRepository
 from tightrein.protocol.git.github import NewIssue
@@ -115,7 +115,8 @@ def mirror_body(runtime: Runtime, record: Issue, text: str) -> str:
     if runtime.github is not None:
         slug = runtime.github.slug
         commit = record.extra.get("triageCommit")
-        kept = "\n".join(_linked(slug, part, at) for part, at in body.by_commit(kept, str(commit) if commit else None))
+        kept = "\n".join(_linked(runtime, slug, at, part) if at else part
+                         for part, at in body.by_commit(kept, str(commit) if commit else None))
     return runtime.redactor.text(kept.rstrip()) + "\n"
 
 
@@ -185,14 +186,19 @@ def _remember_state(runtime: Runtime, issue_id: str, state: str) -> None:
     files.write(runtime, issue)
 
 
-def _linked(slug: str, text: str, commit: str | None) -> str:
-    """text 中反引号里的 `路径:行号` 换成 commit 的永久链接；不知道 commit 时不换。"""
-    return CODE_LOCATION.sub(partial(_link, slug, commit), text) if commit else text
+def _linked(runtime: Runtime, slug: str, commit: str, text: str) -> str:
+    """反引号中的 `路径:行号` 换成取证 commit 的永久链接。网址与「主机:端口」不算(checks.locations_in，与正文检查
+    同一规则)；取证 commit 中没有的文件不换(`db.internal:5432` 换了是坏链接)，同一路径只查一次；git 出错照常抛出，
+    镜像记下错误、下次重试。"""
+    known: dict[str, bool] = {}
 
+    def link(match: re.Match[str]) -> str:
+        path, start, end = match.group(1), match.group(2), match.group(3)
+        if path not in known:
+            known[path] = runtime.git.show(commit, path) is not None
+        if not known[path]:
+            return match.group(0)
+        lines = f"L{start}" + (f"-L{end}" if end else "")
+        return f"[`{path}:{start}{'-' + end if end else ''}`](https://github.com/{slug}/blob/{commit}/{path}#{lines})"
 
-def _link(slug: str, commit: str, match: re.Match[str]) -> str:
-    path, start, end = match.group(1), match.group(2), match.group(3)
-    if is_host(path):  # `127.0.0.1:8118`、`localhost:8080` 是主机与端口，不是代码位置
-        return match.group(0)
-    lines = f"L{start}" + (f"-L{end}" if end else "")
-    return f"[`{path}:{start}{'-' + end if end else ''}`](https://github.com/{slug}/blob/{commit}/{path}#{lines})"
+    return substitute(text, link, CODE_LOCATION)

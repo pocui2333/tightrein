@@ -68,7 +68,7 @@ class FakeBreaker:
 
 
 class FakeGit:
-    """只读 worktree 上的 Git 替身：blame 按 (文件, 行) 查表，log 返回给定的提交。"""
+    """只读 worktree 上的 Git 替身：blame 按 (文件, 行) 查表，log 返回给定的提交，show 读 repo 夹具里的文件。"""
 
     def __init__(self, repo: Path, *, blames: dict[tuple[str, int], str] | None = None,
                  commits: list[Commit] | None = None, error: GitError | None = None) -> None:
@@ -89,6 +89,12 @@ class FakeGit:
         if self.error is not None:
             raise self.error
         return self.commits
+
+    def show(self, rev: str, path: str) -> str | None:
+        """任何版本都按 repo 夹具里的文件算；没有这个文件时为 None。"""
+        self.calls.append(("show", (rev, path)))
+        found = self.repo / path
+        return found.read_text(encoding="utf-8") if found.is_file() else None
 
 
 @dataclass
