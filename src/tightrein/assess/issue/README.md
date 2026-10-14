@@ -18,7 +18,7 @@
 ## 输入与输出
 
 - 文件(Issue 目录 `data/issues/<编号>/`)：`00-issue-record.json`(记录，issues 表是它的索引，可重建)、`00-issue-body.md`(正文，用户可改)、`00-issue-notes.json`(代码笔记)、`22-assess.issue-handoff.json`。
-- issues 表：status、title、severity、kind(bug、feature)、origin(problem、user)、gate、stage、step、round 等；其余在 `extra`：slug、problems、rootCauses、rootKey、triageCommit、treatment、size、taskType、labels、history、closeReason、hold、github 等。
+- issues 表：status、title、severity、kind(bug、feature)、origin(problem、user)、gate、stage、step、round 等；其余在 `extra`：slug、problems、rootCauses、rootKey、plannedFiles(评估预估要改的文件，调度据此不让改同一文件的 Issue 并行)、triageCommit、treatment、size、taskType、labels、history、closeReason、hold、blockedBy(前置 Issue)、github 等。
 - 正文的小节：结论、问题、影响、复现、原因、范围、注意事项、验收标准、修复方向、引用、历史；标题按项目语言(zh、en、ja)，读取时三种语言的标题都认。
 
 ### 修复尝试(`attempts.py`)
@@ -45,7 +45,12 @@
 | CANCEL | 未关闭 | cancelled | 只接受 wont_fix、duplicate、not_a_bug |
 | REOPEN | done、cancelled | todo | |
 | TAKE / GIVE | 未关闭 / held | held / 接管前的状态 | held_by 记接管者 |
-| SPLIT_BACK | needs_decision、todo、implementing | cancelled | 关闭原因 split，`create.split_back` 建新的(第一个继承关联问题、根因键与放行时间，关联问题改挂过去)，出错时新建的文件一并删掉 |
+| SPLIT_BACK | needs_decision、todo、implementing | cancelled | 关闭原因 split，`create.split_back` 建新的(第一个继承关联问题、根因键与放行时间，关联问题改挂过去；后一个的 blockedBy 记前一个)，出错时新建的文件一并删掉 |
+| BLOCK | implementing | todo | 方案发现要等别的 Issue 先合入：`apply_event(blocked_by=…)` 记下 `extra.blockedBy`，不停在关卡、不问用户 |
+
+### 前置 Issue(`blockers.py`)
+
+`extra.blockedBy` 只出现在待修上(离开待修时状态机一并清除)：调度挑 Issue 时跳过还有前置没落地的；落地指已合并(accepting、done)，取消的与不存在的不再挡着。实施推导下一步时，上一版方案在等的前置都落地了就从准备重新做起(worktree 快进到最新主干，前置的改动才在里面)，还没落地(例如手动指定了它)就再次退回待修，不调用模型。
 
 状态到推进阶段的映射(`stages.py`)只定义一处：todo、implementing 由实施推进(实施中的优先)，releasing、accepting 由发布推进，其余不自动推进；调度与实施入口都读它，不各自判断。
 

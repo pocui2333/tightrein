@@ -589,6 +589,20 @@ class Git:
 
         return once(scope, "merge", (branch, target), action, merged, expected=expected, observe=self.state)
 
+    def fast_forward(self, ref: str, *, scope: WriteScope) -> str:
+        """`merge --ff-only`：分支上还没有自己的提交时把它移到 ref，不产生合并提交；不能快进时报错，不退而合并。"""
+        branch = self._refuse_main()
+        target = self.rev_parse(ref)
+
+        def moved() -> str | None:
+            return target if self.head().commit == target else None
+
+        def action() -> str:
+            self._run("merge", "--ff-only", "--quiet", target, read=False)
+            return self.head().commit or ""
+
+        return once(scope, "fast-forward", (branch, target), action, moved)
+
     def revert(self, commit: str, *, scope: WriteScope, expected: Mapping[str, str | None] | None = None) -> str:
         """在当前分支上撤销 commit，返回新的 HEAD。合并提交(有第二个父提交)加 `-m 1` 取主干一侧；
         冲突时抛 MergeConflict，撤销停在进行中，不自行取舍。"""

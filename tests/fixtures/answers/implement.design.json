@@ -46,6 +46,7 @@
     "lines": 2
   },
   "oversize": null,
+  "blockedBy": null,
   "protectedTouches": [],
   "flags": {
     "design": {

@@ -424,6 +424,9 @@ implement.design 的输出：方案(只留编码、定案与审查用得上的�
 | `oversize.parts[].title` | 字符串 | 是 | — |
 | `oversize.parts[].goal` | 字符串 | 是 | — |
 | `oversize.parts[].acceptance` | 数组(元素：字符串) | 是 | — |
+| `blockedBy` | 对象 或 null | 是 | — |
+| `blockedBy.issues` | 数组(元素：字符串(`^[0-9]{4,}$`)) | 是 | — |
+| `blockedBy.reason` | 字符串 | 是 | — |
 | `protectedTouches` | 数组(元素：对象) | 是 | — |
 | `protectedTouches[].path` | 字符串 | 是 | — |
 | `protectedTouches[].change` | 字符串 | 是 | — |

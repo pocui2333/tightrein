@@ -100,6 +100,26 @@ def test_prepare_creates_the_worktree_and_checks_the_base_once_per_commit(world:
     assert again.status is Status.PASSED and again.facts["baseChecks"]["cached"] and world.runner.others() == []
 
 
+def test_an_untouched_worktree_moves_up_to_the_latest_main_when_prepared_again(world: Any) -> None:
+    """等前置 Issue 合入后重来：还没有自己的提交与改动的 worktree 快进到最新主干；有改动的不动。"""
+    _with_origin(world)
+    issues.save(world.runtime.conn, _issue(world, branch=None, title="orders today"), world.clock)
+    world.respond(("pytest",), {"stdout": "1 passed\n"})
+    world.respond(("ruff",), {"stdout": "All checks passed!\n"})
+    first = workspace.run(world.runtime, world.context())
+    landed = world.repo.commit("feat: 排序接口", {"src/sort.py": "def by(key):\n    return key\n"})
+    world.repo.git("push", "-q", "origin", "main")
+    again = workspace.run(world.runtime, world.context())
+    path = world.runtime.workspace.worktree("0018")
+    assert first.facts["baseCommit"] == world.repo.base and again.facts["baseCommit"] == landed
+    assert (path / "src/sort.py").is_file() and again.facts["branch"] == first.facts["branch"]
+    # 已经有改动的不动(同步主干由发布负责)
+    (path / "src/orders.py").write_text("changed\n", encoding="utf-8")
+    world.repo.commit("feat: 又一个", {"src/more.py": "X = 1\n"})
+    world.repo.git("push", "-q", "origin", "main")
+    assert workspace.run(world.runtime, world.context()).facts["baseCommit"] == landed
+
+
 def test_a_failing_base_is_a_configuration_error(world: Any) -> None:
     _with_origin(world)
     world.respond(("pytest",), {"exit_code": 1, "stdout": "1 failed\n"})

@@ -2,7 +2,8 @@
 
 - 分支名按项目约定生成(protocol/git/format：项目写明 → 历史推断经确认 → 通用格式)；项目要求个人前缀时必须配置，
   且不能是 AI 或工具名称；分支名已存在(别人的，或本 Issue 上一次修复尝试留下的)时依次加 `-2`、`-3`…；
-- worktree 经 protocol/git/worktrees 从 origin/<主分支> 新建；已存在就复用(中断后重来不重复建)；回归或重开后的又一次
+- worktree 经 protocol/git/worktrees 从 origin/<主分支> 新建；已存在就复用(中断后重来不重复建)，复用时分支上还没有
+  自己的提交、也没有改动就快进到最新的主干(等前置 Issue 合入后重来，前置的改动才在里面)；回归或重开后的又一次
   修复(assess/issue/attempts)用新的目录 `worktrees/<编号>_<次>`，不接着用上一次已合并的分支与目录；
 - 检查点快照：每一步完成时把 worktree 的内容(含未跟踪的新文件)记成一个不挂在任何分支上的 commit，写进
   handoff 的 `worktreeCommit`；中断后把 worktree 恢复到上一个检查点，不续接半截状态。只写对象库与临时索引，
@@ -26,7 +27,7 @@ from tightrein.implement.prepare import baseline
 from tightrein.protocol.git import Git
 from tightrein.protocol.git.format import BranchRejected, branch_name, branch_type, kebab, resolve
 from tightrein.protocol.git.git import CommandFailed, failure, launch
-from tightrein.protocol.git.worktrees import create_fix
+from tightrein.protocol.git.worktrees import create_fix, refresh_fix
 from tightrein.protocol.handoff import Handoff, Metrics, Status
 from tightrein.protocol.naming import FileName
 from tightrein.protocol.process import Command
@@ -55,9 +56,11 @@ def run(runtime: Runtime, context: ImplementContext) -> Handoff:
         branch = _branch(runtime, issue, path)
     except BranchRejected as error:
         return _handoff(runtime, issue, Status.FAILED, f"分支名不合规：{error}", {"reason": "branch_rejected"})
-    if not path.is_dir():
-        links = tuple(runtime.settings.section(POINT).get("links") or ())
-        with REPOSITORY_LOCK:  # 几个 Issue 并行实施时，在共用的主仓库上建 worktree 与分支一个一个来，不抢 git 的锁
+    links = tuple(runtime.settings.section(POINT).get("links") or ())
+    with REPOSITORY_LOCK:  # 几个 Issue 并行实施时，在共用的主仓库上建 worktree、分支与 fetch 一个一个来，不抢 git 的锁
+        if path.is_dir():
+            refresh_fix(runtime.git, path, scope=runtime.scope(issue.id, POINT))
+        else:
             create_fix(runtime.git, path, branch, links=links, scope=runtime.scope(issue.id, POINT))
     tree = runtime.git.at(path)
     base = tree.head().commit or ""

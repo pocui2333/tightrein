@@ -117,6 +117,7 @@ flowchart TB
 | 运行 | `workspaces/<项目>/data/runs/<运行编号>/`：各来源与去重的交接、事件记录 `events.jsonl` |
 | 复盘记录 | `workspaces/<项目>/data/retro/` |
 | 知识库 | `workspaces/<项目>/knowledge/<类>/` |
+| 项目设计文档 | `workspaces/<项目>/designs/`(可无)：Issue 正文以 `designs/<文件>` 引用，实施时 agent 只读 |
 
 数据库(`data/tightrein.db`)坏了可以 `tightrein admin rebuild` 从文件重建。
 

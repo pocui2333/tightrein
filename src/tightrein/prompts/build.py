@@ -2,7 +2,7 @@
 
 拼出来的顺序固定，前面的部分对同一个调用点每次都一样，用得上提示缓存：
 
-角色 → 要做的事 → 规则与边界(+ common/boundaries.md、common/notes.md) → 输出语言(common/language.md)
+角色 → 要做的事 → 规则与边界(+ common/boundaries.md、common/notes.md、common/designs.md) → 输出语言(common/language.md)
 → 输出(+ common/output.md、schema 说明) → 本次输入(唯一的变动部分)
 """
 
@@ -26,8 +26,8 @@ LANGUAGE_NAMES = {"zh": "简体中文", "en": "English", "ja": "日本語"}
 # 能按 schema 约束输出的工具(claude、agy 用 --json-schema，codex 用 --output-schema；replay 回放录制)；
 # 其余工具看不到 schema 文件，只能在提示里附上展开后的全文
 NATIVE_SCHEMA_TOOLS = frozenset({"claude", "agy", "codex", "replay"})
-# 模板用到这个变量时才附上「代码笔记的用法」
-NOTES_VARIABLE = "notes"
+# 模板用到这些变量时才附上同名的共用片段：代码笔记的用法(common/notes.md)、项目设计文档在哪(common/designs.md)
+FRAGMENT_VARIABLES = ("notes", "designs")
 SCHEMA_NOTE = (
     "只输出一个符合输出格式(schema)的 JSON 对象，不要输出其他文字。"
     "格式由调用方提供，不在项目里，不要去找这个文件。"
@@ -78,13 +78,9 @@ def build(
     if problems:
         raise PromptError(point, problems)
 
-    fragments = ["boundaries", "language", "output"]
-    if NOTES_VARIABLE in template.variables:
-        fragments.append(NOTES_VARIABLE)
-    common = {name: _read(root / "common" / f"{name}.md") for name in fragments}
-    rules = [template.sections["规则与边界"], common["boundaries"]]
-    if NOTES_VARIABLE in common:
-        rules.append(common[NOTES_VARIABLE])
+    used = [name for name in FRAGMENT_VARIABLES if name in template.variables]
+    common = {name: _read(root / "common" / f"{name}.md") for name in ["boundaries", "language", "output", *used]}
+    rules = [template.sections["规则与边界"], common["boundaries"], *(common[name] for name in used)]
     output = [template.sections["输出"], common["output"]]
     if schema is not None:
         output.append(SCHEMA_NOTE)

@@ -7,7 +7,8 @@
 4. 各阶段依次推进，每一步(每个对象的每一步)包在独立的错误边界里：一步出错只记为该步失败，其余照常；
 5. 每开始一步、一个新对象前查暂停：暂停在当前这一步做完后生效；
 6. 额度到了留余量的门槛时不开始新的对象(评估新问题、开始新 Issue)，手上的照常做完；
-7. 实施同时只处理一个 Issue：有进行中的先做它，没有才按严重度开始一个新的；
+7. 实施缺省同时只处理一个 Issue：有进行中的先做它，没有才按严重度开始一个新的；并行时会改到同一文件的不同时做；
+   还在等前置 Issue 合入的、停在关卡等用户而还没有新决定的不挑；
 8. 对象熔断：同一对象连续失败或推进后没有前进，达到次数即不再处理、交给人(手动接管)；停在人工关卡不计数；
 9. 每次运行结束都执行复盘。
 运行期间后台线程每隔 limits.lock.heartbeat 续运行锁与 runs 表的心跳：一步可能跑半小时，心跳停了别的进程会判它中断。
@@ -17,22 +18,24 @@ from __future__ import annotations
 
 import socket
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from collections.abc import Set as AbstractSet
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta, tzinfo
 from enum import StrEnum
 from functools import partial
+from pathlib import Path
 from time import monotonic
 from typing import Any
 
+from tightrein.assess.issue import blockers
 from tightrein.assess.issue.stages import IMPLEMENT, RELEASE, stage_for, statuses_for
 from tightrein.onboard.check import READY_KEY
 from tightrein.protocol import recovery
 from tightrein.protocol.git.worktrees import ReadonlyRestoreFailed, recover_readonly
-from tightrein.protocol.handoff import Status
-from tightrein.protocol.naming import STAGES, format_iso, kind_of, parse_duration, parse_iso
+from tightrein.protocol.handoff import Status, read
+from tightrein.protocol.naming import STAGES, FileName, format_iso, kind_of, parse_duration, parse_iso
 from tightrein.protocol.records import EventLog
 from tightrein.protocol.runtime import Runtime, isolated
 from tightrein.protocol.schedule.launchd import log_paths, rotate
@@ -51,9 +54,10 @@ WAKE_KEY = "schedule.lastWake"  # state 表：上次定时醒来的时间
 MISSED_KEY = "schedule.missed"  # state 表：上次定时醒来之前漏掉的醒来次数(机器睡眠、定时器没装好)
 AUTOMATIC = frozenset({"schedule", "event"})
 REFILL_POLL_S = 5.0  # 并行实施时多久看一次空位
+REFILL_FACTOR = 2  # resources.refillMax 为 null 时：一轮最多开始 sessions 的这么多倍个 Issue
 RUN_ORDER = ("implement", "release", "collect", "assess", "retro")  # 一轮之内的先后(见 _stages)
 FOR_ASSESS = ("new", "regressed")
-TODO, ACCEPTING = "todo", "accepting"
+TODO, IMPLEMENTING, ACCEPTING = "todo", "implementing", "accepting"
 FOR_IMPLEMENT = statuses_for(IMPLEMENT)  # 状态 → 阶段只在 assess/issue/stages.py 定义
 FOR_RELEASE = statuses_for(RELEASE)
 SEVERITY_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
@@ -61,6 +65,8 @@ SEVERITY_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 MAX_STEPS = 40
 BREAKER_PREFIX = "breaker.object."  # protocol/limits.py 中对象熔断计数的键
 BREAKER_HOLDER = "tightrein:breaker"  # 熔断后以这个名字接管，`tightrein give` 交还
+PLANNED_FILES = "plannedFiles"  # issues.extra：评估预估要改的文件(assess/issue/create.py 写入)
+PREPARE_POINT, DESIGN_POINT = "implement.prepare", "implement.design"  # 读它们的交接判断 Issue 会改到哪些文件
 
 
 class StepStatus(StrEnum):
@@ -273,7 +279,7 @@ def _assess(runtime: Runtime, subject: str | None, outcome: Outcome, heartbeat: 
 def _implement(runtime: Runtime, subject: str | None, outcome: Outcome, heartbeat: _Heartbeat) -> None:
     """指定对象时只推进它；否则同时推进至多 resources.concurrency.sessions 个互不相关的 Issue(见
     _issues_to_implement)，每个在自己的线程里、用自己的数据库连接(protocol/runtime.isolated)，各自的 worktree 与分支
-    互不干扰。"""
+    互不干扰。同批还有没做完的时按 _Refill 补人，一轮开始的总数到 resources.refillMax 为止。"""
     if subject is not None:
         issue = _issue_to_implement(runtime, subject)
         if issue is not None:
@@ -285,12 +291,13 @@ def _implement(runtime: Runtime, subject: str | None, outcome: Outcome, heartbea
         for issue in chosen:
             _drive_issue(runtime, outcome, heartbeat, issue)
         return
-    refill_s = runtime.settings.duration("resources.refillAfter")
+    refill = _Refill.of(runtime.settings, sessions)
     started = {issue.id for issue in chosen}
     with ThreadPoolExecutor(max_workers=sessions, thread_name_prefix="implement") as pool:
         running: dict[Future[None], issues.Issue] = {
             pool.submit(_drive_isolated, runtime, outcome, heartbeat, issue): issue for issue in chosen}
         freed: list[float] = []  # 空出来的位置各自从什么时候开始空着
+        exhausted: tuple[frozenset[str], int, int] | None = None  # 上次没补满时的(在做的、空位数、该补数)
         while running:
             done, _ = wait(running, timeout=REFILL_POLL_S, return_when=FIRST_COMPLETED)
             for future in done:
@@ -299,16 +306,43 @@ def _implement(runtime: Runtime, subject: str | None, outcome: Outcome, heartbea
                 freed.append(monotonic())
             if not running or _halted(runtime, heartbeat) is not None:
                 continue
-            # 同批还有没做完的，空位又等过了 resources.refillAfter：从队列里补上(根因文件不与正在做的重叠)
-            due = [at for at in freed if monotonic() - at >= refill_s]
-            if not due:
+            room = min(refill.count(freed, monotonic()), refill.most - len(started))
+            seen = (frozenset(issue.id for issue in running.values()), len(freed), room)
+            if room <= 0 or seen == exhausted:  # 上次没补满之后什么都没变：不每隔几秒空查一遍
                 continue
-            busy = set().union(*(_cause_files(issue) for issue in running.values()))
-            for issue in _issues_to_implement(runtime, len(due), skip=started, busy=busy):
+            busy = set().union(*(_touched_files(runtime, issue) for issue in running.values()))
+            found = _issues_to_implement(runtime, room, skip=started, busy=busy)
+            for issue in found:
                 started.add(issue.id)
                 freed.remove(min(freed))
-                _emit(runtime, issue.id, "decision", "同批还有没做完的，空位等过了时限，补上这个 Issue")
+                _emit(runtime, issue.id, "decision", "同批还有没做完的，补上空位")
                 running[pool.submit(_drive_isolated, runtime, outcome, heartbeat, issue)] = issue
+            if len(found) < room:
+                exhausted = (frozenset(issue.id for issue in running.values()), len(freed),
+                             min(refill.count(freed, monotonic()), refill.most - len(started)))
+
+
+@dataclass(frozen=True)
+class _Refill:
+    """并行实施时什么时候补人(protocol/resources.md「并行实施时补人」)：同时空出 when_free 个位置就一起补上；不到这个数
+    时，单个空位等过 after_s 也补(兜底)；一轮开始的总数到 most 为止。"""
+
+    when_free: int
+    after_s: float
+    most: int
+
+    @classmethod
+    def of(cls, settings: Settings, sessions: int) -> _Refill:
+        when_free, most = settings.get("resources.refillWhenFree"), settings.get("resources.refillMax")
+        return cls(when_free=int(when_free) if when_free is not None else max(1, sessions // 2),
+                   after_s=settings.duration("resources.refillAfter"),
+                   most=int(most) if most is not None else REFILL_FACTOR * sessions)
+
+    def count(self, freed: Sequence[float], now: float) -> int:
+        """freed 为各空位开始空着的时刻：现在该补几个。"""
+        if len(freed) >= self.when_free:
+            return len(freed)
+        return sum(now - at >= self.after_s for at in freed)
 
 
 def _drive_isolated(runtime: Runtime, outcome: Outcome, heartbeat: _Heartbeat, issue: issues.Issue) -> None:
@@ -452,16 +486,22 @@ def _issue_to_implement(runtime: Runtime, subject: str | None) -> issues.Issue |
 
 def _issues_to_implement(runtime: Runtime, limit: int, *, skip: AbstractSet[str] = frozenset(),
                          busy: AbstractSet[str] = frozenset()) -> list[issues.Issue]:
-    """这一轮要推进的 Issue：进行中的先做，再按严重度、编号开始待修的，至多 limit 个；根因文件与已选的(以及 busy，
-    正在做的)有重叠的不同时做(各自的 PR 改同一个文件，后合并的要重新同步、可能冲突)，留到下一轮。skip 为这一轮已经
-    推进过的(停在关卡的仍是进行中，不再重复挑)。"""
+    """这一轮要推进的 Issue：进行中的先做，再按严重度、编号开始待修的，至多 limit 个；会改到的文件(_touched_files)与
+    已选的(以及 busy，正在做的)有重叠的不同时做(各自的 PR 改同一个文件，后合并的要重新同步、可能冲突)，留到下一轮。
+    skip 为这一轮已经推进过的(停在关卡的仍是进行中，不再重复挑)。还在等前置 Issue 合入的(assess/issue/blockers.py)、
+    停在关卡等用户而还没有新决定的(implement.waiting_for_user)不挑：推了也马上停下，白占一个位置。"""
+    from tightrein.implement.implement import waiting_for_user
+
+    known = blockers.statuses(runtime.conn)
     candidates = [item for status in FOR_IMPLEMENT for item in sorted(
-        (found for found in issues.find(runtime.conn, status=status) if found.held_by is None and found.id not in skip),
+        (found for found in issues.find(runtime.conn, status=status) if found.held_by is None and found.id not in skip
+         and not blockers.waiting(blockers.of(found), known)
+         and not (found.status == IMPLEMENTING and waiting_for_user(runtime, found.id))),
         key=lambda item: (SEVERITY_ORDER.get(item.severity or "", len(SEVERITY_ORDER)), item.id))]
     chosen: list[issues.Issue] = []
     taken: set[str] = set(busy)
     for item in candidates:
-        files = _cause_files(item)
+        files = _touched_files(runtime, item)
         if taken & files:
             continue
         chosen.append(item)
@@ -471,9 +511,26 @@ def _issues_to_implement(runtime: Runtime, limit: int, *, skip: AbstractSet[str]
     return chosen
 
 
-def _cause_files(issue: issues.Issue) -> set[str]:
-    return {str(cause["file"]) for cause in issue.extra.get("rootCauses") or []
-            if isinstance(cause, dict) and cause.get("file")}
+def _touched_files(runtime: Runtime, issue: issues.Issue) -> set[str]:
+    """这个 Issue 会改到的文件：根因所在的文件、评估预估要改的(extra.plannedFiles)、方案的文件清单与各步的文件、修复
+    worktree 中已经改动的(未提交的与未跟踪的)。只认列出来的，不按源文件去推测测试文件。只看根因文件不够：根因不同的
+    几个 Issue 曾同时改了同一个存储模块与它的测试，发布时合并主干后有两个要退回实施重新审查。"""
+    found = {str(cause["file"]) for cause in issue.extra.get("rootCauses") or []
+             if isinstance(cause, dict) and cause.get("file")}
+    found |= {str(path) for path in issue.extra.get(PLANNED_FILES) or [] if path}
+    design = _facts(runtime, issue.id, DESIGN_POINT)
+    found |= {str(item["path"]) for item in design.get("files") or [] if isinstance(item, dict) and item.get("path")}
+    found |= {str(item["file"]) for item in design.get("steps") or [] if isinstance(item, dict) and item.get("file")}
+    worktree = _facts(runtime, issue.id, PREPARE_POINT).get("worktree")
+    if worktree and Path(str(worktree)).is_dir():
+        found |= set(runtime.git.at(Path(str(worktree))).status().changed_paths)
+    return found
+
+
+def _facts(runtime: Runtime, issue: str, point: str) -> dict[str, Any]:
+    """Issue 某个实施小步骤最近一次交接的事实；还没做到时为空。"""
+    path = runtime.workspace.step_file(issue, FileName(point, "handoff", "json"))
+    return dict(read(path).facts) if path.is_file() else {}
 
 
 def _status(runtime: Runtime, issue: str) -> str | None:

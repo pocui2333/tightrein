@@ -109,6 +109,11 @@ class WorkspaceLayout:
     def scripts_dir(self) -> Path:
         return self.root / "scripts"
 
+    @property
+    def designs_dir(self) -> Path:
+        """项目的设计文档(需求、交互与技术设计)：Issue 正文以 `designs/<文件>` 引用，实施的 agent 只读。"""
+        return self.root / "designs"
+
     # 知识库
     @property
     def knowledge_dir(self) -> Path:

@@ -139,6 +139,15 @@ def test_notes_usage_is_added_only_when_the_template_uses_notes(root: Path) -> N
     assert "## 代码笔记的用法" not in text.text
 
 
+def test_design_documents_usage_is_added_only_when_the_template_uses_designs(root: Path) -> None:
+    assert "## 项目设计文档" not in make(root).text
+    (root / "implement.locate.md").write_text(TEMPLATE + "\n## 项目设计文档\n\n{{designs}}\n", encoding="utf-8")
+    text = build("implement.locate", {"claim": "x", "notes": "y", "designs": "无"}, language="zh", schema=None,
+                 tool="claude", root=root).text
+    rules = text.split("# 输出语言")[0]
+    assert "## 项目设计文档\n\n本次输入中的「项目设计文档」" in rules and "## 代码笔记的用法" in rules
+
+
 def test_the_hash_changes_with_the_template_or_a_fragment(root: Path, tmp_path: Path) -> None:
     before = make(root).hash
     other = tmp_path / "other"

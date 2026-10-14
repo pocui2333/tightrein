@@ -7,7 +7,7 @@
 1. 读本次输入中的代码笔记：其中的位置与原文直接采用，只打开要写进修改位置的那几行核对，不在整个项目里重新搜索。
 2. 先在 `analysis` 中写出根因的依据与可选的修法，再收敛成一条根因假说(`hypothesis`)。
 3. 按假说给出方案：步骤、文件清单、改动量预估、对应的验收标准、不做什么、需要用户拍板的点。
-4. 停止条件：假说收敛到一条、每处修改位置都核对过原文就输出；有多种可能又排除不到一条时，写进 `userDecisions` 交用户，不同时按几种可能各改一点。
+4. 停止条件：假说收敛到一条、每处修改位置都核对过原文就输出；有多种可能又排除不到一条时，写进 `userDecisions` 交用户，不同时按几种可能各改一点；要等别的 Issue 先合入才能做时按下面「前置 Issue」的规则输出。
 
 # 规则与边界
 
@@ -17,6 +17,7 @@
 - 根因假说：`cause` 写成「在什么条件下 → 哪段代码做了什么 → 导致什么结果」，只写一条；`evidence` 写支撑它的位置与在那里读到的代码事实，不写推测；`edits` 写修改前代码的位置与在那里改什么。`files` 中每个要修改的已有文件(测试文件除外)至少有一处 `edits`；只新建文件时可以没有。位置会被程序逐个核对。
 - 文件清单 `files` 列出全部要改的文件；修改位置所在的文件都要在其中；新建文件标 `isNew` 并写明为什么没有合适的现有落点。
 - 改动量 `estimate` 预估文件数与行数，都不含测试文件。本次输入给出的单个 PR 上限是硬上限：确实一个 PR 放不下时，不出大方案，填写 `oversize`，说明为什么放不下、可以拆成哪几个各自能单独合入的部分，程序会把 Issue 退回评估拆分；放得下时 `oversize` 写 null。
+- 前置 Issue：方案要用到的代码(接口、字段、组件、数据结构)要由本次输入「其他未完成的 Issue」中的某几个先合入主干才有、现在的代码里还没有时，不出方案，也不问用户：填写 `blockedBy`，`issues` 写那几个 Issue 的本地编号(列表开头的四位编号；正文中的 `#25` 这类是 GitHub 编号，按列表换成本地编号)，`reason` 一句话写要等它们的什么。程序会让本 Issue 等它们合入后从最新的主干重新出方案。能在本 Issue 内独立做完的不算前置；「要不要等别的 Issue 合入再做」也不写进 `userDecisions`。列表里没有的不能写。列表每行为「本地编号(GitHub 编号)，状态：标题」，状态 todo 待修、implementing 实施中、releasing 已交付等合并、needs_decision 等用户决定、held 有人手动接管。不用等时 `blockedBy` 写 null。填写 `blockedBy` 时其余字段按目前能确定的内容照常填写，程序不核对它们。
 - 受保护文件：要改的文件在高风险清单中的，每个都写进 `protectedTouches`(改什么、为什么)；禁改清单中的文件不能出现在方案里。
 - 逻辑、接口、数据处理类的改动，步骤中写明要一起写或更新的测试；纯界面、配置、文档、文案类的改动不写测试。不写「修复前失败、修复后通过」的复现测试。
 - 三类标记 `flags`：`design`(根因在设计本身，局部修补无法根治)、`dataStructure`(数据结构或存量数据)、`publicContract`(公共实现或接口契约)，命中的写明理由。本次输入写明用户已同意按设计层面修复时，`design` 照常标出，但照常给出完整方案。
@@ -35,6 +36,7 @@
 - `files`：`path`、`isNew`、`reason`。
 - `estimate`：`files`、`lines`。
 - `oversize`：一个 PR 放不下时的 `reason` 与 `parts`(每部分 `title`、`goal`、`acceptance`)；放得下时为 null。
+- `blockedBy`：要等别的 Issue 先合入时的 `issues`(本地编号)与 `reason`；不用等时为 null。
 - `protectedTouches`：`path`、`change`、`reason`。
 - `flags`：`design`、`dataStructure`、`publicContract`，各为 `flagged` 与 `reason`。
 - `migration`、`newDependencies`、`deletions`：没有时写 null 或空数组。
@@ -79,6 +81,14 @@
 
 {{knowledge}}
 
+## 其他未完成的 Issue
+
+{{open_issues}}
+
 ## 需要处理的问题
 
 {{feedback}}
+
+## 项目设计文档
+
+{{designs}}

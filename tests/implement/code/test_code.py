@@ -88,6 +88,7 @@ def test_a_completed_round_reports_the_change(world: Any, monkeypatch: pytest.Mo
     request = fake.requests[0]
     assert request.point == code.POINT and request.access is Access.WRITE and request.resume_session is None
     assert request.allowed_commands == ("pytest -q", "ruff check .")  # `{tests}` 去掉后的前缀也算
+    assert request.read_paths == () and request.variables["designs"] == "无"  # 没有项目设计文档
     # 编码只拿实施要用的字段：根因假说不带证据
     assert "秘密证据" not in request.variables["plan"] and "按 days 过滤" in request.variables["plan"]
     facts = result.facts
@@ -140,10 +141,14 @@ def test_the_next_round_continues_the_session_with_the_local_problems(world: Any
                  "category": LOCAL, "trigger": "days 为 0"}]
     reviewed = world.handoff(REVIEW, {"blockers": blockers}, Status.FAILED, at=world.clock.now())
     coded, reviewed = replace(coded, round=1), replace(reviewed, round=1)
+    designs = world.runtime.workspace.designs_dir
+    designs.mkdir(parents=True)
+    (designs / "orders.md").write_text("# 订单\n", encoding="utf-8")
     fake = _install(monkeypatch, world, (FIX, _output(), CallStatus.OK))
     result = code.run(world.runtime, _context(world, round=2, implement_code=coded, implement_review=reviewed))
     request = fake.requests[0]
     assert request.point == CONTINUE and request.resume_session == "S-1"
+    assert request.read_paths == (designs,) and "`designs/orders.md`" in request.variables["designs"]
     assert request.variables["corrections"] == ("- [review/root-cause-unfixed] src/orders.py:2：仍只取当天"
                                                 "(触发条件：days 为 0)")
     assert result.round == 2

@@ -403,7 +403,9 @@
 
 | 键 | 缺省值 |
 |---|---|
+| `resources.refillWhenFree` | `null` |
 | `resources.refillAfter` | `"3m"` |
+| `resources.refillMax` | `null` |
 | `resources.concurrency.sessions` | `1` |
 | `resources.concurrency.modelCalls` | `4` |
 | `resources.concurrency.collectSources` | `4` |

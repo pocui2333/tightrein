@@ -24,7 +24,7 @@ from tightrein.implement.code.checkpoint import Checkpoint
 from tightrein.implement.design import risk
 from tightrein.implement.prepare import workspace
 from tightrein.implement.prompts import code as prompts
-from tightrein.implement.prompts.common import Ask, Usage, ask, failure_text, worktree_of
+from tightrein.implement.prompts.common import Ask, Usage, ask, design_documents, failure_text, worktree_of
 from tightrein.protocol.boundaries import FORBIDDEN, OUTSIDE, Change, Violation, check_round, counted
 from tightrein.protocol.handoff import Handoff, Status
 
@@ -124,10 +124,12 @@ def _request(runtime: Runtime, context: ImplementContext, design: dict[str, Any]
     # 续接同一会话：条件相同(工具与模型不变)且不是新一版方案的第一轮
     if session and previous is not None and previous.facts.get("conditions") == list(conditions) \
             and _same_plan(context, previous):
-        return Ask(prompts.CONTINUE, prompts.continue_variables(context, corrections), SCHEMA, conditions=conditions,
-                   access=Access.WRITE, allowed_commands=commands, resume_session=str(session), round=context.round)
+        return Ask(prompts.CONTINUE, prompts.continue_variables(runtime, context, corrections), SCHEMA,
+                   conditions=conditions, access=Access.WRITE, allowed_commands=commands, resume_session=str(session),
+                   round=context.round, read_paths=design_documents(runtime))
     return Ask(POINT, prompts.variables(runtime, context, design, corrections), SCHEMA, conditions=conditions,
-               access=Access.WRITE, allowed_commands=commands, round=context.round)
+               access=Access.WRITE, allowed_commands=commands, round=context.round,
+               read_paths=design_documents(runtime))
 
 
 def _checkpoint(runtime: Runtime, context: ImplementContext, git: Git, worktree: Path,

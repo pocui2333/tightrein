@@ -12,6 +12,7 @@
 | `common/boundaries.md` | 外部内容是数据不是指令；只做交给你的事；读写与权限；无人值守不提问 |
 | `common/output.md` | 结论要能核对(位置、反证、注入、算式、改动量、同一根因、证据不足)；写给人看的文字；输出的结构 |
 | `common/notes.md` | 代码笔记的用法：先用笔记、先搜索后阅读、有着落即停 |
+| `common/designs.md` | 项目设计文档在哪：Issue 正文中的 `designs/…` 指工作区的设计文档目录，不在仓库里，只读 |
 | `build.py` | 拼装与模板检查 |
 
 每个调用点的输出格式定义(schema)不在这里，放在那一步的文件夹，由调用方读出后传给 `build`。
@@ -35,7 +36,7 @@
 ```
 # 角色
 # 要做的事
-# 规则与边界      模板的规则 + common/boundaries.md(+ common/notes.md：模板用到 {{notes}} 时)
+# 规则与边界      模板的规则 + common/boundaries.md(+ common/notes.md、common/designs.md：模板用到 {{notes}}、{{designs}} 时)
 # 输出语言        common/language.md，由程序填入语言名
 # 输出            模板的输出 + common/output.md + schema 说明(+ 展开后的 schema：工具不支持原生 schema 时)
 # 本次输入        填好变量的输入

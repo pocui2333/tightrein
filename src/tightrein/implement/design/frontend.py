@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from tightrein.implement.prompts import frontend as prompts
-from tightrein.implement.prompts.common import Ask, Usage, ask, failure_text
+from tightrein.implement.prompts.common import Ask, Usage, ask, design_documents, failure_text
 from tightrein.protocol.boundaries import matching_pattern
 
 if TYPE_CHECKING:
@@ -45,7 +45,8 @@ def design(runtime: Runtime, context: ImplementContext, plan: Mapping[str, Any],
     files = frontend_files(runtime, [str(item["path"]) for item in plan.get("files") or []])
     if not files:
         return None
-    result = ask(runtime, context, Ask(POINT, prompts.variables(runtime, context, plan, files), SCHEMA), usage)
+    result = ask(runtime, context, Ask(POINT, prompts.variables(runtime, context, plan, files), SCHEMA,
+                                       read_paths=design_documents(runtime)), usage)
     if result.ok and result.output is not None:
         return FrontendDesign(files, dict(result.output), None)
     return FrontendDesign(files, None, f"前端设计说明没有产出，编码只按方案实施：{failure_text(result)}")

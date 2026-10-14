@@ -44,6 +44,7 @@ def move(issue: Issue, event: IssueEvent, clock, reason: str | None = None) -> I
     (E.REOPEN, "cancelled", None, "problem", "todo"),
     (E.TAKE, "implementing", None, "problem", "held"),
     (E.SPLIT_BACK, "implementing", None, "problem", "cancelled"),
+    (E.BLOCK, "implementing", None, "problem", "todo"),  # 要等别的 Issue 先合入
 ])
 def test_transition_table(clock, event, source, reason, origin, target):
     before = record(source, origin=origin, closeReason={"done": "fixed", "cancelled": "wont_fix"}.get(source))
@@ -61,6 +62,7 @@ def test_transition_table(clock, event, source, reason, origin, target):
     (E.REOPEN, "todo", None),
     (E.GIVE, "todo", None),
     (E.SPLIT_BACK, "releasing", None),
+    (E.BLOCK, "todo", None),
 ])
 def test_illegal_transitions_name_the_allowed_events(clock, event, source, reason):
     with pytest.raises(InvalidTransition) as error:
@@ -247,6 +249,17 @@ def test_a_failed_transition_restores_the_files(runtime, linked, layout, monkeyp
     assert issues.get(runtime.conn, "0007").status == "todo"
     assert problems.get(runtime.conn, "P-0001").status == "ongoing"
     assert not persist.snapshot_path(layout, "P-0001").exists()
+
+
+def test_blocking_goes_back_to_todo_with_the_prerequisites_until_it_starts_again(runtime, make_issue):
+    """BLOCK 退回待修并记下前置 Issue，不留阶段与步骤；blockedBy 只在待修上，开始实施(或取消)时一并清除。"""
+    make_issue("0007", status="implementing", stage="implement", step="implement.design")
+    blocked = transitions.apply_event(runtime, "0007", E.BLOCK, actor="tightrein", note="等 0008 合入",
+                                      blocked_by=["0008"])
+    assert (blocked.status, blocked.stage, blocked.step) == ("todo", None, None)
+    assert blocked.extra["blockedBy"] == ["0008"] and blocked.extra["history"][-1]["event"] == "block"
+    assert "blockedBy" not in move(blocked, E.START, runtime.clock).extra
+    assert "blockedBy" not in move(blocked, E.CANCEL, runtime.clock, "wont_fix").extra
 
 
 def test_regressions_reopen_closed_issues_and_fail_accepting_ones(runtime, make_issue):

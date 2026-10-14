@@ -596,6 +596,28 @@ def test_reading_hidden_directories_or_credential_files_is_a_boundary_violation(
     assert result.violations == ["hidden_read：Read 访问了凭据文件(匹配 .env) .env"]
 
 
+def test_project_design_documents_are_readable_but_the_rest_of_the_workspace_data_is_not(make_world):
+    """工作区的 designs/ 作为额外可读目录交给 agent 时读它不越界；data/ 照样不能读，designs/ 也不能写。"""
+    world = make_world()
+    designs = world.layout.designs_dir
+    designs.mkdir(parents=True)
+    (designs / "relevance.md").write_text("# 设计\n", encoding="utf-8")
+    data = world.layout.data_dir / "issues" / "0018" / "handoff.json"
+    world.runner.runs.append(FakeRun(claude_lines(VALID, tools=(("Read", {"file_path": str(designs / "relevance.md")}),
+                                                                 ("Glob", {"path": str(designs)})))))
+    assert call(world.params(read_paths=(designs,)), world.context).status is CallStatus.OK
+    world.runner.runs.append(FakeRun(claude_lines(VALID, tools=(("Read", {"file_path": str(data)}),))))
+    assert call(world.params(read_paths=(designs,)), world.context).violations == [
+        f"hidden_read：Read 访问了隐藏目录 {data}"]
+
+    def edit(command: Command) -> None:
+        (designs / "relevance.md").write_text("改过\n", encoding="utf-8")
+
+    world.runner.runs.append(FakeRun(codex_lines(), action=edit))
+    assert call(world.codex(read_paths=(designs,)), world.context).violations == [
+        f"outside：agent 不可写的 {designs / 'relevance.md'} 被修改"]
+
+
 def test_writes_outside_the_worktree_to_protected_paths_are_a_boundary_violation(make_world):
     def write(*paths: Path) -> Callable[[Command], None]:
         def act(command: Command) -> None:

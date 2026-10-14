@@ -68,6 +68,10 @@ tightrein project config boundaries.changeCap --explain     # 每一层给出的
 
 两个文件都不提交。
 
+## 设计文档
+
+项目的需求、交互与技术设计文档可以放在工作区的 `designs/`(与 `settings.json` 同级，可以有子目录)。Issue 正文里写 `designs/<文件>` 引用它们：实施的定位、方案、前端设计说明与编码把这个目录作为额外可读目录交给 agent，并在提示里列出其中的文件；agent 只能读，改了算越界。目录不在时提示里写「无」。
+
 ## 自定义脚本的协议
 
 `custom` 模块与项目探针的脚本都按同一协议调用(`src/tightrein/protocol/scripts.py`)：

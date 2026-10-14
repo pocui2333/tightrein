@@ -257,6 +257,21 @@ def test_after_a_stop_the_users_decision_decides(world: Any) -> None:
     assert _decide(world) == implement.Next(Kind.RUN, DESIGN)
 
 
+def test_an_issue_waiting_at_a_gate_says_so_until_the_user_decides(world: Any) -> None:
+    """调度据此不挑停在关卡、还没有新决定的 Issue(与 decide 得出 WAIT 同一套判断)。"""
+    assert not implement.waiting_for_user(world.runtime, ISSUE)
+    _planned(world)
+    assert not implement.waiting_for_user(world.runtime, ISSUE)
+    _save(world, CODE, round=1)
+    _save(world, CHECK, round=1)
+    _save(world, REVIEW, Status.FAILED, {"blockers": [_blocker("needs_user")]}, round=1)  # 审查要人拍板
+    assert implement.waiting_for_user(world.runtime, ISSUE)
+    _save(world, APPROVE, Status.PENDING, {"gate": {"decision": "确认方案", "command": "tightrein approve 0018"}})
+    assert implement.waiting_for_user(world.runtime, ISSUE)
+    _decision(world, "approve", step=APPROVE)
+    assert not implement.waiting_for_user(world.runtime, ISSUE)
+
+
 # 推进一步
 
 
@@ -316,8 +331,41 @@ def test_an_oversized_issue_is_split_back(world: Any, steps: Steps) -> None:
     assert record is not None and record.status == IssueStatus.CANCELLED
     created = [item for item in issues.find(world.runtime.conn) if item.extra.get("parent") == ISSUE]
     assert [item.title for item in created] == ["拆分 1", "拆分 2"]
-    assert all(item.status == IssueStatus.TODO for item in created) and created[1].extra["dependsOn"] == created[0].id
+    assert all(item.status == IssueStatus.TODO for item in created)
+    assert "blockedBy" not in created[0].extra and created[1].extra["blockedBy"] == [created[0].id]  # 按顺序做
     assert f"拆成 {created[0].id}、{created[1].id}" in outcome.summary and outcome.next_point is None
+
+
+def test_waiting_for_another_issue_goes_back_to_todo_and_starts_over_once_it_lands(world: Any, steps: Steps) -> None:
+    """方案要等别的 Issue 先合入：退回待修、记下前置 Issue，不停在关卡、不写待办文档；前置没落地前再推进也只是退回，
+    落地后从准备重新做起。"""
+    issues.save(world.runtime.conn, issues.Issue(id="0019", status=IssueStatus.TODO, title="排序接口", kind="feature",
+                                                 origin="user"), world.clock)
+    found = issues.get(world.runtime.conn, ISSUE)
+    issues.save(world.runtime.conn, replace(found, stage="implement"), world.clock)  # 实施中的带着阶段
+    for _ in range(2):
+        implement.implement(world.runtime, ISSUE)
+    steps.plan(DESIGN, Status.FAILED, {"reason": implement.BLOCKED_REASON, "blockedBy": ["0019"],
+                                       "blockedReason": "要用排序接口"})
+    outcome = implement.implement(world.runtime, ISSUE)
+    assert (outcome.point, outcome.status, outcome.next_point) == (DESIGN, Status.PASSED, None)
+    assert "等 0019 合入后再做" in outcome.summary
+    record = issues.get(world.runtime.conn, ISSUE)
+    assert record is not None and record.status == IssueStatus.TODO and record.extra["blockedBy"] == ["0019"]
+    assert (record.stage, record.step, record.gate) == (None, None, None)
+    assert not world.runtime.workspace.human_document(ISSUE, "pending").exists()
+    assert not world.runtime.workspace.human_document(ISSUE, "failure").exists()
+    # 指定它再推进：前置还没落地，不调用任何一步，照样退回
+    assert implement.implement(world.runtime, ISSUE).status is Status.PASSED and steps.ran == [PREPARE, LOCATE, DESIGN]
+    assert issues.get(world.runtime.conn, ISSUE).status == IssueStatus.TODO  # type: ignore[union-attr]
+    # 前置合入后：从准备重新做起(交接留着，不当成上一次修复尝试归档)
+    found = issues.get(world.runtime.conn, "0019")
+    issues.save(world.runtime.conn, replace(found, status=IssueStatus.ACCEPTING, stage="release"), world.clock)
+    outcome = implement.implement(world.runtime, ISSUE)
+    assert (outcome.point, outcome.next_point) == (PREPARE, LOCATE) and steps.ran[-1] == PREPARE
+    record = issues.get(world.runtime.conn, ISSUE)
+    assert record is not None and record.status == IssueStatus.IMPLEMENTING and "blockedBy" not in record.extra
+    assert [implement.implement(world.runtime, ISSUE).point for _ in range(2)] == [LOCATE, DESIGN]
 
 
 def test_delivery_hands_the_issue_to_release(world: Any, steps: Steps) -> None:

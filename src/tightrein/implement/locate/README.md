@@ -12,7 +12,7 @@
 
 ## 输入与输出
 
-- 输入：Issue 正文、已有代码笔记、知识条目、用户的决定；
+- 输入：Issue 的类型、正文、已有代码笔记、知识条目、用户的决定、项目设计文档(工作区 `designs/`，作为额外可读目录交给 agent)；类型决定找什么：缺陷(`bug`)找根因与出问题的位置，需求(`feature`)找改动的落点(入口、要修改或扩展的文件与函数)与可复用的实现，核心位置即要改的地方(`prompts/locate.KINDS`，模板仍是一份)；
 - 输出：交接事实 `skipped`(跳过的原因，没跳过为 null)、`added`、`files`、`trigger`、`missing`、`affectedEndpoints`、`affectedPages`、`incidentalFindings`、`baseCommit`、`knowledgeSuggestions`；没通过时为 `problems`；模型输出格式 `locate.schema.json`。
 - `incidentalFindings`：任务外发现，每条结构照 `collect/incidental/finding.schema.json`(schema 中复制同样的结构，类别限 defect、security、performance、data)；`baseCommit` 是定位时的基准 commit，采集任务外发现时据此记发现的版本(`controls."collect.incidental".points`)。
 
@@ -23,6 +23,7 @@
 ## 设计依据
 
 - 先搜索后阅读、有着落即停、错误的「已有实现」比「无」危害大(#5、#8：曾单次 340 万 token、同一文件反复读 5 次)，写在 `prompts/implement.locate.md` 与 `prompts/common/notes.md`；
+- 需求不按缺陷的说法找根因：需求照「根因」去找时曾跑了 8 分钟、一处笔记也没留下；
 - 位置由程序核对、原文由程序截取，不来自模型(#5)；位置核对与补全只有一份实现，评估的证据、定位、方案的根因假说共用(旧 `evaluation/scorers/code.py:location_problem`、`pipeline/common/locations.py:complete`)。
 
 ## 不做什么

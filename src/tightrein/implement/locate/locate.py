@@ -15,7 +15,7 @@ from tightrein.assess import notes as notes_file
 from tightrein.assess.notes import CodeNotes
 from tightrein.implement.locate import brief
 from tightrein.implement.prompts import locate as prompts
-from tightrein.implement.prompts.common import Ask, Usage, ask, failure_text, worktree_of
+from tightrein.implement.prompts.common import Ask, Usage, ask, design_documents, failure_text, worktree_of
 from tightrein.protocol.handoff import Handoff, Status
 
 if TYPE_CHECKING:
@@ -41,7 +41,8 @@ def run(runtime: Runtime, context: ImplementContext) -> Handoff:
     problems: list[str] = []
     for _ in range(rounds + 1):
         result = ask(runtime, context, Ask(POINT, prompts.variables(runtime, context, feedback), SCHEMA,
-                                           conditions=prompts.conditions(runtime, context)), usage)
+                                           conditions=prompts.conditions(runtime, context),
+                                           read_paths=design_documents(runtime)), usage)
         if not result.ok or result.output is None:
             problems.append(failure_text(result))
             continue

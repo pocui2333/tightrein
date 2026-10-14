@@ -83,6 +83,7 @@ class Ask:
     allowed_commands: tuple[str, ...] = ()
     resume_session: str | None = None
     round: int | None = None
+    read_paths: tuple[Path, ...] = ()  # 工作目录之外额外可读的目录(项目设计文档)
 
 
 def ask(runtime: Runtime, context: ImplementContext, request: Ask, usage: Usage) -> CallResult:
@@ -94,7 +95,8 @@ def ask(runtime: Runtime, context: ImplementContext, request: Ask, usage: Usage)
     params = params_for(request.point, settings=runtime.settings, run=runtime.run, subject=context.issue.id,
                         prompt=prompt.text, schema=schema, workdir=workdir, conditions=request.conditions,
                         access=request.access, allowed_commands=request.allowed_commands,
-                        resume_session=request.resume_session, round=request.round, prompt_hash=prompt.hash)
+                        read_paths=request.read_paths, resume_session=request.resume_session, round=request.round,
+                        prompt_hash=prompt.hash)
     result = call(params, runtime.agents)
     usage.add(result, prompt.hash)
     return result
@@ -122,6 +124,25 @@ def failure_text(result: CallResult) -> str:
 def issue_text(context: ImplementContext) -> str:
     """Issue 正文含日志、报错等外部原文：整体当作数据包住。正文已以「# <编号> <标题>」开头，不再另加标题。"""
     return external(f"issue {context.issue.id}", context.body.strip())
+
+
+def design_documents(runtime: Runtime) -> tuple[Path, ...]:
+    """项目设计文档的目录(工作区 designs/)：有就作为额外可读目录交给定位、方案与编码的 agent，Issue 正文会引用它们。"""
+    found = runtime.workspace.designs_dir
+    return (found,) if found.is_dir() else ()
+
+
+def designs_text(runtime: Runtime) -> str:
+    """设计文档的目录与其中的文件(`designs/<相对路径>`，与 Issue 正文中的写法一致)；没有时写「无」。"""
+    found = design_documents(runtime)
+    if not found:
+        return NONE
+    root = found[0]
+    relative = (path.relative_to(root) for path in root.rglob("*") if path.is_file())
+    files = sorted(item.as_posix() for item in relative if not any(part.startswith(".") for part in item.parts))
+    if not files:
+        return NONE
+    return f"目录 `{root}`，其中：\n" + list_text([f"`designs/{name}`" for name in files])
 
 
 def notes_text(context: ImplementContext) -> str:

@@ -12,7 +12,7 @@ handoff.json 与用户的决定接着做，没做完的那一步整个丢掉，w
 | 任一步 | 通过 | 按 STEPS 的顺序；定案之后开新一轮编码，编码 → 自检 → 审查同一轮，审查通过后交付 |
 | 任一步 | 待决定 | 有了用户的新决定就重做这一步(由它取用决定)，否则继续等 |
 | 编码、自检、审查 | 没通过 | 越界：第一次撤回重做这一轮，再越界停下；检查没跑起来停下；不通过项按性质只处理最靠前的一类：设计问题停下、需要用户等决定、方案缺口重出方案、局部问题交回编码(轮数上限 controls.implement.review.rounds，连续两轮阻断项相同或 diff 没变即停) |
-| 方案 | 没通过 | 一个 PR 放不下：退回评估拆分(SPLIT_BACK)；其余停下 |
+| 方案 | 没通过 | 一个 PR 放不下：退回评估拆分(SPLIT_BACK)；要等别的 Issue 先合入：前置还没落地就退回待修(BLOCK)，都落地了从准备重新做起；其余停下 |
 | 定案 | 没通过(用户否决) | 按原因重出方案，上限 controls.implement.design.rounds |
 | 停下之后 | 用户给了新决定 | approve：编码类的接着开一轮，其余重做那一步；reject：重出方案 |
 
@@ -29,7 +29,7 @@ from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
-from tightrein.assess.issue import attempts
+from tightrein.assess.issue import attempts, blockers
 from tightrein.assess.issue import files as issue_files
 from tightrein.assess.issue.create import split_back
 from tightrein.assess.issue.stages import IMPLEMENT, stage_for
@@ -67,6 +67,7 @@ RUNNERS = {
 }
 GATE_DESIGN = "design"  # 方案确认(可配置的关卡)
 DESIGN_ISSUE_REASON = "design_issue"  # 方案停在「根因在设计本身」(implement/design/design.py)
+BLOCKED_REASON = "blocked"  # 方案发现要等别的 Issue 先合入(implement/design/design.py)
 GATE_DECISION = "needs_decision"  # 需要拍板(固定人工)
 CONTINUE = "tightrein approve {issue} --note \"<补充说明>\""
 RERUNS = "reruns"  # 同一步同一轮没通过后重跑的次数(implement.py 记)
@@ -79,6 +80,7 @@ class Kind(StrEnum):
     WAIT = "wait"  # 停在关卡等用户
     STOP = "stop"  # 停下交人
     SPLIT = "split"  # 一个 PR 放不下，退回评估拆分
+    BLOCKED = "blocked"  # 要等别的 Issue 先合入，退回待修
     DONE = "done"  # 交付完成，交给发布
 
 
@@ -102,6 +104,7 @@ class Next:
     advice: str = ""
     gate: dict[str, Any] = field(default_factory=dict)
     parts: tuple[str, ...] = ()  # 退回评估时拆成的几个 Issue 的说明(第一行为标题)
+    blocked_by: tuple[str, ...] = ()  # 退回待修时要等的前置 Issue
 
 
 class NotImplementable(Exception):
@@ -118,8 +121,9 @@ def implement(runtime: Runtime, issue: str) -> StepOutcome:
     if record.held_by is not None or record.status == IssueStatus.HELD:
         raise NotImplementable(f"Issue {issue} 已由 {record.held_by} 手动接管，tightrein 不再碰它")
     if record.status == IssueStatus.TODO:
-        # 回归、重开后的又一次修复：先把上一次尝试的交接挪进归档，各步不沿用上一次的「已完成」(attempts.py)
-        if attempts.archive(runtime.workspace, record) is not None:
+        # 回归、重开后的又一次修复：先把上一次尝试的交接挪进归档，各步不沿用上一次的「已完成」(attempts.py)；
+        # 等前置 Issue 退回待修的仍是这一次尝试，交接留着
+        if not blockers.of(record) and attempts.archive(runtime.workspace, record) is not None:
             _emit(runtime, issue, STAGE, f"第 {attempts.current(record)} 次修复：上一次的交接已归档")
         apply_event(runtime, issue, IssueEvent.START, actor=ACTOR)
     elif stage_for(record.status) != IMPLEMENT:
@@ -160,6 +164,15 @@ def decide(runtime: Runtime, context: ImplementContext) -> Next:
     return _dispatch(runtime, context, done, last)
 
 
+def waiting_for_user(runtime: Runtime, issue: str) -> bool:
+    """停在关卡等用户、之后还没有新决定(decide 得出 WAIT)：调度挑要推进的 Issue 时跳过它，免得占着并行的位置、一推又
+    马上停下(status 与 watch 照常列为要人处理)。最后完成的一步通过了的不会是 WAIT，不读上下文。"""
+    done = _history(runtime, issue)
+    if not done or done[-1].status is Status.PASSED:
+        return False
+    return decide(runtime, load(runtime, issue)).kind is Kind.WAIT
+
+
 def _now_automatic(runtime: Runtime, context: ImplementContext, last: Handoff) -> bool:
     """停在方案关卡之后才开了全自动(方案关卡 auto_all)：「按设计层面修」与定案不再等人，重跑那一步。
     定案还有固定人工的原因(要拍板、改受保护文件)时不重跑，照常等人(否则会反复重跑、不写待办文档)。"""
@@ -198,6 +211,8 @@ def _retry(context: ImplementContext, last: Handoff, decision: Decision) -> Next
 
 def _dispatch(runtime: Runtime, context: ImplementContext, done: Sequence[Handoff], last: Handoff) -> Next:
     if last.point == DESIGN:
+        if last.facts.get("reason") == BLOCKED_REASON:
+            return _prerequisites(runtime, last)
         if last.facts.get("reason") == "oversize":
             parts = tuple(_part_text(item) for item in (last.facts.get("splitBack") or {}).get("parts") or [])
             return Next(Kind.SPLIT, DESIGN, reason=last.summary, parts=parts)
@@ -256,6 +271,16 @@ def _local(runtime: Runtime, context: ImplementContext, done: Sequence[Handoff],
         return _stop(last, code="no_progress", reason=f"连续两轮没有进展(阻断项相同或改动没变)：{last.summary}",
                      tried=tried, advice="换个思路：补充说明后接着做，或否决方案重出")
     return Next(Kind.RUN, CODE, round=current + 1)
+
+
+def _prerequisites(runtime: Runtime, last: Handoff) -> Next:
+    """方案在等别的 Issue 先合入：还有没落地的就退回待修(调度在它们落地前不再挑它)；都落地了从准备重新做起，
+    worktree 快进到含前置改动的最新主干(prepare/workspace.py)，再定位、出方案。"""
+    found = [str(item) for item in last.facts.get("blockedBy") or []]
+    waiting = blockers.waiting(found, blockers.statuses(runtime.conn))
+    if waiting:
+        return Next(Kind.BLOCKED, DESIGN, reason=last.summary, blocked_by=tuple(waiting))
+    return Next(Kind.RUN, PREPARE)
 
 
 def _replan(runtime: Runtime, context: ImplementContext, last: Handoff, why: str) -> Next:
@@ -361,6 +386,12 @@ def _settle(runtime: Runtime, context: ImplementContext, found: Next, ran: Hando
         created = split_back(runtime, issue, found.parts)
         _emit(runtime, issue, found.point, f"退回评估拆成 {'、'.join(created)}：{found.reason}")
         return StepOutcome(issue, point, Status.PASSED, f"{found.reason}：拆成 {'、'.join(created)}", None)
+    if found.kind is Kind.BLOCKED:
+        waiting = "、".join(found.blocked_by)
+        apply_event(runtime, issue, IssueEvent.BLOCK, actor=ACTOR, note=f"等 {waiting} 合入：{found.reason}",
+                    blocked_by=found.blocked_by)
+        _emit(runtime, issue, found.point, f"等前置 Issue {waiting} 合入，退回待修：{found.reason}")
+        return StepOutcome(issue, point, Status.PASSED, f"等 {waiting} 合入后再做：{found.reason}", None)
     if found.kind is Kind.DONE:
         record = issues.get(runtime.conn, issue)
         if record is not None and record.status == IssueStatus.IMPLEMENTING:  # 交付一步通常已转给发布

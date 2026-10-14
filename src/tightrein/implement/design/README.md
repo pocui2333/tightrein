@@ -8,13 +8,13 @@
 
 1. 方案前风险判定(笔记涉及的文件 + 评估的标记)：高风险带 `high_risk` 条件选模型；
 2. 调用模型，程序核对(`design.check`)：根因假说的位置真实存在且不越界；修改位置的文件都在文件清单里；要改的已有非测试文件都有修改位置；已有文件存在；禁改文件不能出现；高风险文件写进 `protectedTouches`；预估不超单个 PR 上限；验收标准逐条对应、每步至少对应一条。不合格带原因重出，模型没给结果也算一次，上限 `controls.implement.design.rounds`；
-3. 根因在设计本身而用户没同意按设计层面修复：停在关卡(用户自己提的需求视为已同意)；一个 PR 放不下(`oversize`)：退回评估拆分；
+3. 要等别的 Issue 先合入(`blockedBy`，提示中列出其他未完成的 Issue 的本地编号、GitHub 编号、状态与标题)：编号核对(`prerequisite_problems`：存在、不是自己、还没合入或取消、不互相等待)不合格带原因重出，合格就结束这一步，不停在关卡、不问用户，由 implement.py 退回待修；根因在设计本身而用户没同意按设计层面修复：停在关卡(用户自己提的需求视为已同意)；一个 PR 放不下(`oversize`)：退回评估拆分；
 4. 通过后：有前端文件时出前端设计说明(失败不阻断，原因记下)；按方案再判一次风险；记下方案哈希 `planHash`。
 
 ## 输入与输出
 
-- 输入：Issue 正文与验收标准、代码笔记、风险判定、单个 PR 的上限与受保护文件、上一次的问题(用户否决、方案缺口)、用户的决定、知识条目；
-- 输出：交接事实为方案本身(不含 `analysis`，分析放备注；含模型给出的 `knowledgeSuggestions`)加 `version`、`planHash`、`risk`、`highRiskPaths`(命中的高风险文件，status 与 watch 显示)、`frontendFiles`、`frontendDesign`、`frontendError`、`acceptance`；停在关卡时为 `reason: design_issue` 与 `gate`；没通过时为 `reason`(`oversize` 带 `splitBack`、`plan_rejected` 带 `problems`、`design_declined`)；模型输出格式 `design.schema.json`、`frontend.schema.json`。
+- 输入：Issue 正文与验收标准、代码笔记、风险判定、单个 PR 的上限与受保护文件、上一次的问题(用户否决、方案缺口)、用户的决定、知识条目、其他未完成的 Issue、项目设计文档(工作区 `designs/`，作为额外可读目录交给 agent)；
+- 输出：交接事实为方案本身(不含 `analysis`，分析放备注；含模型给出的 `knowledgeSuggestions`)加 `version`、`planHash`、`risk`、`highRiskPaths`(命中的高风险文件，status 与 watch 显示)、`frontendFiles`、`frontendDesign`、`frontendError`、`acceptance`；停在关卡时为 `reason: design_issue` 与 `gate`；没通过时为 `reason`(`blocked` 带 `blockedBy`、`blockedReason`，`oversize` 带 `splitBack`、`plan_rejected` 带 `problems`、`design_declined`)；模型输出格式 `design.schema.json`、`frontend.schema.json`。
 
 ## 配置
 

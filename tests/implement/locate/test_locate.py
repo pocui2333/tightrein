@@ -86,6 +86,16 @@ def test_locations_are_completed_checked_and_fed_back(world: Any, monkeypatch: p
     assert result.notes == "从路由追到 recent()" and result.metrics.calls == 2
 
 
+def test_design_documents_are_readable_while_locating(world: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    designs = world.runtime.workspace.designs_dir
+    designs.mkdir(parents=True)
+    (designs / "relevance.md").write_text("# 设计\n", encoding="utf-8")
+    fake = _install(monkeypatch, _output(["src/orders.py:2"]))
+    locate.run(world.runtime, world.context())
+    assert fake.requests[0].read_paths == (designs,)
+    assert fake.requests[0].variables["designs"].endswith("- `designs/relevance.md`")
+
+
 def test_stale_core_locations_are_asked_again(world: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _install(monkeypatch, _output(["src/orders.py:2"]))
     context = world.context()

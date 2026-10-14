@@ -1,7 +1,8 @@
 """worktree 的新建、复用、只读锁定与清理(protocol/git.md)。不动用户的主工作区。
 
 - 修复 worktree：先 fetch(只读)，从 origin/<主分支> 用 `worktree add -b` 新建；已存在且分支对应时直接复用。项目要求的
-  被忽略目录(如 `.claude/`、`node_modules`)从主工作区软链接进去，否则测试与 agent 跑不起来。
+  被忽略目录(如 `.claude/`、`node_modules`)从主工作区软链接进去，否则测试与 agent 跑不起来。复用时分支上还没有
+  自己的提交、也没有改动的，`merge --ff-only` 快进到最新的 origin/<主分支>(refresh_fix)。
 - 只读 worktree：游离 HEAD，不建分支；切换时目标 commit 本地已有就不 fetch；不干净说明有东西写入，停下不清理(保留
   现场)。agent 运行期间再去掉写权限(chmod)：先写标记文件(原权限、进程号、主机)再改权限，中途崩溃也能按标记恢复；
   这是工具只读权限与快照比对之外的又一层。
@@ -70,6 +71,21 @@ def create_fix(git: Git, path: Path, branch: str, *, links: Sequence[str] = (), 
             target.parent.mkdir(parents=True, exist_ok=True)
             target.symlink_to(git.repo / name)
     return path
+
+
+def refresh_fix(git: Git, path: Path, *, scope: WriteScope) -> bool:
+    """已有的修复 worktree 还没有自己的提交、也没有改动时，快进到 fetch 后的 origin/<主分支>，返回是否移动了；有提交或
+    改动的不动(同步主干由发布负责)。等过别的 Issue 合入再重来时(implement 的前置 Issue)，要在含前置改动的主干上做。"""
+    tree = git.at(path)
+    if not tree.status().clean:
+        return False
+    git.fetch()
+    target = git.rev_parse(f"origin/{git.main_branch}")
+    head = tree.head().commit
+    if head is None or head == target or not tree.is_ancestor(head, target):
+        return False
+    tree.fast_forward(target, scope=scope)
+    return True
 
 
 def create_readonly(git: Git, path: Path, *, scope: WriteScope) -> Path:

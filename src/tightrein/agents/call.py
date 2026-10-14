@@ -652,11 +652,12 @@ def _compare(before: _Before, context: AgentContext) -> list[str]:
 
 
 def _protected(params: CallParams, context: AgentContext) -> list[Path]:
-    """worktree 之外 agent 不可写的路径：工作区配置(接入清单、settings、sites、secrets、脚本)与 tightrein 自身的代码、
-    全局配置、外部 skills。与工作目录互相包含的不算(在工作目录里写是本步骤的工作)。"""
+    """worktree 之外 agent 不可写的路径：工作区配置(接入清单、settings、sites、secrets、脚本)、项目设计文档(实施时作为
+    额外可读目录交给 agent，只读)与 tightrein 自身的代码、全局配置、外部 skills。与工作目录互相包含的不算(在工作目录里
+    写是本步骤的工作)。"""
     layout, tool = context.layout, context.tool
     candidates = (layout.setup, layout.setup_md, layout.settings, layout.sites, layout.secrets, layout.scripts_dir,
-                  tool.root / "src", tool.settings_dir, tool.vendor_dir)
+                  layout.designs_dir, tool.root / "src", tool.settings_dir, tool.vendor_dir)
     workdir = params.workdir.resolve()
     return [path for path in candidates
             if not (workdir.is_relative_to(path.resolve()) or path.resolve().is_relative_to(workdir))]

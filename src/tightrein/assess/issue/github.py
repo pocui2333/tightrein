@@ -117,9 +117,14 @@ def mirror_body(runtime: Runtime, record: Issue, text: str) -> str:
 
 def public_id(record: Issue) -> str:
     """对外的 Issue 编号：有 GitHub 镜像时用 GitHub 编号(人在 GitHub 上看到的)，否则用本地编号。分支名与 PR 标题用它。"""
+    return mirror_number(record) or record.id
+
+
+def mirror_number(record: Issue) -> str | None:
+    """GitHub 镜像的编号；没有镜像时为 None。"""
     found: Any = record.extra.get(MIRROR)
     number = found.get("number") if isinstance(found, dict) else found
-    return str(number) if isinstance(number, int | str) and str(number).isdigit() else record.id
+    return str(number) if isinstance(number, int | str) and str(number).isdigit() else None
 
 
 def label_of(runtime: Runtime, status: str) -> str | None:

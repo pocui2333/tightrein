@@ -29,6 +29,7 @@ from tightrein.assess.claims import Claim, signal_evidence
 from tightrein.assess.issue import body, files, github, remote
 from tightrein.assess.issue.transitions import (
     APPROVED_AT,
+    BLOCKED_BY,
     CLOSED,
     HISTORY,
     PROBLEMS,
@@ -289,7 +290,8 @@ def write_request_handoff(runtime: Runtime, problem: str, made: Created) -> None
 
 
 def split_back(runtime: Runtime, issue: str, parts: Sequence[str]) -> list[str]:
-    """实施方案时发现一个 PR 放不下：拆成几个新 Issue(按顺序依赖前一个)，原 Issue 取消并关联新的。"""
+    """实施方案时发现一个 PR 放不下：拆成几个新 Issue(按顺序依赖前一个：blockedBy 记前一个，等它合入再做)，原 Issue
+    取消并关联新的。"""
     original = issues.get(runtime.conn, issue)
     if original is None:
         raise LookupError(f"没有 Issue {issue}")
@@ -320,7 +322,7 @@ def _split(runtime: Runtime, original: Issue, parts: Sequence[str], created: lis
         extra: dict[str, Any] = {
             "slug": normalize(title, int(runtime.settings.section(POINT)["slugMaxLength"])) or f"split-{number}",
             PROBLEMS: list(original.extra.get(PROBLEMS) or []) if index == 0 else [],
-            "parent": issue, "dependsOn": created[-1] if created else None,
+            "parent": issue, **({BLOCKED_BY: [created[-1]]} if created else {}),  # 按顺序：等前一个合入再做
             APPROVED_AT: original.extra.get(APPROVED_AT) or format_iso(runtime.clock.now()),
             "rootKey": list(original.extra.get("rootKey") or []) if index == 0 else [],
             HISTORY: [_entry(runtime, "create", f"由 Issue {issue} 拆出(第 {index + 1}/{len(parts)} 个)")]}
@@ -365,7 +367,9 @@ def _new_record(runtime: Runtime, finding: Finding, split: bool) -> tuple[Issue,
         id=identifier, status=status, title=title, kind="feature" if finding.task_type == "feature" else "bug",
         origin="problem", severity=finding.severity, gate=None if auto else GATE,
         extra={"slug": slug(finding, int(section["slugMaxLength"])), PROBLEMS: [problem.id],
-               "rootCauses": causes, "rootKey": root_key(causes), "triageCommit": finding.commit,
+               "rootCauses": causes, "rootKey": root_key(causes),
+               "plannedFiles": [str(item["path"]) for item in (finding.output.get("assessment") or {}).get("files") or []],
+               "triageCommit": finding.commit,
                "treatment": finding.treatment, "size": finding.size, "taskType": finding.task_type,
                "impactKind": finding.impact_kind, "labels": list(finding.labels),
                "introducedBy": [dict(item) for item in finding.introduced], "source": problem.source,

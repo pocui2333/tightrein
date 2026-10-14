@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
+import pytest
+
 from tightrein.agents.params import FRONTEND
+from tightrein.agents.result import CallResult, CallStatus
 from tightrein.assess.notes import CORE, CodeNotes, NoteEntry
 from tightrein.implement.code.code import SCHEMA as CODE_SCHEMA
 from tightrein.implement.context import Decision, Risk
@@ -76,7 +80,7 @@ def test_every_template_gets_exactly_its_variables(world: Any) -> None:
                                               feedback=[], design_accepted=True), DESIGN_SCHEMA),
         "implement.design.frontend": (frontend.variables(runtime, context, PLAN, ["web/Orders.vue"]), FRONTEND_SCHEMA),
         "implement.code": (code.variables(runtime, context, PLAN, ["修正一处"]), CODE_SCHEMA),
-        code.CONTINUE: (code.continue_variables(context, ["修正一处"]), CODE_SCHEMA),
+        code.CONTINUE: (code.continue_variables(runtime, context, ["修正一处"]), CODE_SCHEMA),
     }
     texts = {point: build(point, variables, language="zh", schema=load_schema(schema), tool="claude").text
              for point, (variables, schema) in built.items()}
@@ -97,6 +101,36 @@ def test_every_template_gets_exactly_its_variables(world: Any) -> None:
     assert design_text["risk"].startswith("高风险") and "10 个文件、400 行" in design_text["limits"]
     assert design_text["decisions"].startswith(design.DESIGN_ACCEPTED)
     assert built[code.CONTINUE][0]["round"] == "1"
+    # 用到 {{designs}} 的都带上「项目设计文档」的用法：正文里的 designs/… 不在仓库里
+    assert all("Issue 正文中写作 `designs/…` 的路径" in text and "不要在仓库中找" in text for text in texts.values())
+
+
+def test_feature_issues_are_located_by_where_the_change_goes(world: Any) -> None:
+    """需求不找根因：类型写进定位的提示，模板按类型说明找什么(同一份模板)。"""
+    context = world.context()
+    bug = locate.variables(world.runtime, context, [])
+    context.issue = replace(context.issue, kind="feature", origin="user")
+    feature = locate.variables(world.runtime, context, [])
+    assert bug["kind"] == locate.KINDS["bug"] and feature["kind"] == locate.KINDS["feature"]
+    text = build("implement.locate", feature, language="zh", schema=load_schema(LOCATE_SCHEMA), tool="claude").text
+    assert "## 类型\n\n`feature`：需求，找改动的落点" in text
+    assert "`feature`(需求)：要新增或改变功能" in text and "`bug`(缺陷)：找出问题的根因" in text
+
+
+def test_ask_passes_the_read_paths_to_the_call(world: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    designs = world.runtime.workspace.designs_dir
+    designs.mkdir(parents=True)
+    seen: list[Any] = []
+
+    def call(params: Any, agents: Any) -> CallResult:
+        seen.append(params)
+        return CallResult(CallStatus.OK, "claude", "opus", output={})
+
+    monkeypatch.setattr(common, "call", call)
+    request = common.Ask("implement.locate", locate.variables(world.runtime, world.context(), []), LOCATE_SCHEMA,
+                         read_paths=common.design_documents(world.runtime))
+    common.ask(world.runtime, world.context(), request, common.Usage())
+    assert seen[0].read_paths == (designs,)
 
 
 def test_locating_uses_the_frontend_condition_for_frontend_notes(world: Any) -> None:

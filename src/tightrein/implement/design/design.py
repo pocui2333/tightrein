@@ -10,7 +10,9 @@
 - 每条验收标准原文都出现在 acceptanceMapping 中，每一步至少对应一条(对应不上的是未授权的额外改动)；只能在部署后
   确认的验收阶段标准不要求对应(prompts/common.acceptance 不列出它，由发布的验收确认)。
 
-另外两种结局：
+另外三种结局：
+- 要等别的 Issue 先合入(blockedBy)：不停在关卡、不问用户；编号核对过(存在、不是自己、还没落地、不互相等)就交接带上
+  前置 Issue，implement.py 据此退回待修，调度等它们合入后再挑；编号不对带原因重出；
 - 根因在设计本身(flags.design)而用户还没同意按设计层面修复：停在关卡等用户(Issue 是用户亲自提的需求时视为已同意)；
 - 一个 PR 放不下(oversize)：交接带上可拆的几部分，implement.py 据此把 Issue 退回评估拆分。
 方案通过后，方案中有前端文件时再出一份前端设计说明(design/frontend.py)，并按方案再判一次风险(design/risk.py)。
@@ -25,15 +27,25 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from tightrein.assess.checks import parse_location
+from tightrein.assess.issue import blockers
 from tightrein.implement.check.findings import PLAN_GAP, from_facts
 from tightrein.implement.design import frontend, risk
 from tightrein.implement.locate.brief import location_problem
 from tightrein.implement.prompts import design as prompts
-from tightrein.implement.prompts.common import Ask, Usage, acceptance, ask, failure_text, worktree_of
+from tightrein.implement.prompts.common import (
+    Ask,
+    Usage,
+    acceptance,
+    ask,
+    design_documents,
+    failure_text,
+    worktree_of,
+)
 from tightrein.protocol.boundaries import forbidden, gate_is_auto_all, high_risk, matching_pattern
 from tightrein.protocol.handoff import Handoff, Status
 from tightrein.protocol.recovery import CHECKPOINT_COMMIT
 from tightrein.settings.load import Settings
+from tightrein.store.tables import issues
 
 if TYPE_CHECKING:
     from tightrein.implement.context import Decision, ImplementContext
@@ -44,6 +56,7 @@ SCHEMA = Path(__file__).with_name("design.schema.json")
 APPROVED = "approve"
 REJECTED = "reject"
 USER_ORIGIN = "user"
+BLOCKED = "blocked"  # 交接的 reason：要等别的 Issue 先合入(implement.py 的 BLOCKED_REASON)
 # 交接中不带分析过程(只给人看，放备注)
 DROPPED = ("analysis",)
 # 方案之后的步骤：其中失败的「方案缺口」与用户的否决是重出方案的原因
@@ -71,11 +84,19 @@ def run(runtime: Runtime, context: ImplementContext) -> Handoff:
     for _ in range(rounds + 1):
         variables = prompts.variables(runtime, context, risk=before, replan=replan, feedback=feedback,
                                       design_accepted=accepted)
-        result = ask(runtime, context, Ask(POINT, variables, SCHEMA, conditions=risk.conditions(before)), usage)
+        result = ask(runtime, context, Ask(POINT, variables, SCHEMA, conditions=risk.conditions(before),
+                                           read_paths=design_documents(runtime)), usage)
         if not result.ok or result.output is None:
             problems.append(failure_text(result))
             continue
         plan = dict(result.output)
+        if plan.get("blockedBy"):
+            found = prerequisite_problems(runtime, context.issue.id, plan["blockedBy"]["issues"])
+            if found:
+                feedback = found
+                problems += found
+                continue
+            return _blocked(runtime, context, plan, version, usage)
         if plan["flags"]["design"]["flagged"] and not accepted:
             return _design_issue(runtime, context, plan, version, usage)
         if plan.get("oversize"):
@@ -130,6 +151,23 @@ def hypothesis_problems(plan: Mapping[str, Any], worktree: Path, settings: Setti
     return problems
 
 
+def prerequisite_problems(runtime: Runtime, issue: str, prerequisites: Sequence[str]) -> list[str]:
+    """前置 Issue 的核对：存在、不是自己、还没落地(已合并或取消的不用等)、没有反过来在等本 Issue。"""
+    found = {item.id: item for item in issues.find(runtime.conn)}
+    problems: list[str] = []
+    for number in prerequisites:
+        other = found.get(number)
+        if number == issue:
+            problems.append(f"blockedBy 写了本 Issue 自己({number})")
+        elif other is None:
+            problems.append(f"blockedBy 中的 {number} 不存在：只能写「其他未完成的 Issue」中的本地编号")
+        elif other.status in blockers.SETTLED:
+            problems.append(f"blockedBy 中的 {number} 已是 {other.status}，不用等：按主干上的现状出方案")
+        elif issue in blockers.of(other):
+            problems.append(f"blockedBy 中的 {number} 也在等本 Issue 合入，互相等待：本 Issue 不能等它")
+    return problems
+
+
 def design_accepted(context: ImplementContext) -> bool:
     """用户已同意按设计层面修复(一经记录持续有效)，或 Issue 是用户亲自提的需求(正文就是用户给的修复方向)。"""
     return context.issue.origin == USER_ORIGIN or any(
@@ -174,6 +212,15 @@ def _passed(runtime: Runtime, context: ImplementContext, plan: dict[str, Any], c
     facts["version"] = version
     summary = f"方案(第 {version} 版)：{plan['summary']}；预估 {plan['estimate']['files']} 个文件、{plan['estimate']['lines']} 行"
     return _handoff(runtime, context, Status.PASSED, summary, facts, usage, notes=plan.get("analysis"))
+
+
+def _blocked(runtime: Runtime, context: ImplementContext, plan: Mapping[str, Any], version: int,
+             usage: Usage) -> Handoff:
+    found = plan["blockedBy"]
+    waiting = [str(item) for item in found["issues"]]
+    return _handoff(runtime, context, Status.FAILED, f"要等 {'、'.join(waiting)} 先合入：{found['reason']}",
+                    {"version": version, "reason": BLOCKED, "blockedBy": waiting, "blockedReason": found["reason"]},
+                    usage, notes=plan.get("analysis"))
 
 
 def _design_issue(runtime: Runtime, context: ImplementContext, plan: Mapping[str, Any], version: int,

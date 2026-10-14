@@ -29,6 +29,7 @@ workspaces/<项目>/
   secrets.json    密钥(不提交，权限 600)
   scripts/        自定义模块的脚本
   knowledge/      知识库条目(conventions/、patterns/、lessons/)
+  designs/        项目的设计文档(可无)：Issue 正文以 designs/<文件> 引用，实施的定位、方案、编码作为额外可读目录交给 agent(只读)
   data/           运行中产生的一切(数据库、issues/、problems/、runs/)
   worktrees/      实施用的 worktree；试跑的只读基线 worktree 为 worktrees/baseline
 ```

@@ -8,12 +8,24 @@
 
 | 项 | 键 | 缺省 | 出处 |
 |---|---|---|---|
-| 同时跑的 agent 会话(同时处理的 Issue) | sessions | 1 | 两个工具都按订阅计费，缺省只占一个会话的额度，给用户自己留用；调大后实施阶段同时推进这么多个根因文件互不重叠的 Issue，各在自己的线程、worktree 与分支里(protocol/schedule `_issues_to_implement`) |
-| 空位补人(并行实施时) | refillAfter(在 resources 下，不在 concurrency 里) | 3m | 同批里有 Issue 先做完、空位等过这个时间而同批还有没做完的，就从队列里补一个根因文件不重叠的进来；同批全做完就不再补，进入发布。0 为一空就补，很大则等于一批一批地做 |
+| 同时跑的 agent 会话(同时处理的 Issue) | sessions | 1 | 两个工具都按订阅计费，缺省只占一个会话的额度，给用户自己留用；调大后实施阶段同时推进这么多个会改到的文件互不重叠的 Issue，各在自己的线程、worktree 与分支里(protocol/schedule `_issues_to_implement`) |
+| 空位补人(并行实施时) | refillWhenFree、refillAfter、refillMax(都在 resources 下，不在 concurrency 里) | 见下 | 见下「并行实施时补人」 |
 | 全局同时进行的模型调用 | modelCalls | 4 | 推断；`agents/call.py` 每次调用持有一个 |
 | 采集时并行的来源 | collectSources | 4 | 推断：大多是查询外部平台，不占本机资源 |
 | 测试并行 | tests | 按 CPU 核数，最多 8 | pytest-xdist |
 | 每个外部平台的接口 | platformRps | 每秒 5 个请求 | 推断；对方返回 429 时按 limits 的退避 |
+
+### 并行实施时补人
+
+`sessions` 大于 1 时，实施阶段先开一批(至多 `sessions` 个会改到的文件互不重叠的 Issue)；同批有先做完的、还有没做完的，就从队列里补会改到的文件不与正在做的重叠的进来。会改到的文件取根因所在的文件、评估预估要改的文件、方案的文件清单与各步的文件、修复 worktree 中已经改动的文件之和(只认列出来的，不按源文件推测测试文件)；还在等前置 Issue 合入的不挑(`assess/issue/blockers.py`)。同批全做完就不再补，进入发布：做完的 Issue 要等实施阶段结束才合并。
+
+| 键 | 缺省 | 含义 |
+|---|---|---|
+| `resources.refillWhenFree` | null，即 max(1, sessions ÷ 2 取整)：sessions 为 2 时 1，4 与 5 时 2 | 同时空出这么多个位置就一起补满所有空位 |
+| `resources.refillAfter` | 3m | 兜底：空位不到 refillWhenFree 个时，单个空位等过这个时间也补上。0 为一空就补 |
+| `resources.refillMax` | null，即 sessions 的 2 倍 | 一轮之内开始的 Issue(含第一批)到这个数就不再补，等手上的做完进入发布；小于 sessions 时第一批照常开 sessions 个 |
+
+取值的道理：refillWhenFree 太小(1)接近完全滚动，空一个补一个，这一轮迟迟结束不了，做完的修复一直等着合并；太大(等于 sessions)接近一批一批地做，先做完的位置空等最慢的那个；取一半是两者的折中。refillAfter 防止一个位置因为凑不够数而长时间空着；refillMax 给一轮封顶：曾经一空就补，一轮开了 11 个 Issue，7 个做完的一直等发布。
 
 ## 预算：按订阅额度，不按美元
 

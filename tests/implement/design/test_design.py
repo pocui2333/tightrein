@@ -17,6 +17,8 @@ from tightrein.implement.design import design, frontend
 from tightrein.implement.prompts.design import DESIGN_ACCEPTED
 from tightrein.protocol.handoff import Status, load_schema, schema_errors
 from tightrein.protocol.naming import format_iso
+from tightrein.store.tables import issues
+from tightrein.store.tables.issues import Issue
 
 CRITERIA = ["列表显示最近 7 天的订单", "接口 GET /api/orders 返回 200"]
 
@@ -31,7 +33,7 @@ def _plan(**changes: Any) -> dict[str, Any]:
                        "edits": [{"location": "src/orders.py:2", "change": "按 days 计算起始日"}]},
         "steps": [{"file": "src/orders.py", "change": "recent 按 days 过滤", "verification": "pytest"}],
         "files": [{"path": "src/orders.py", "isNew": False, "reason": None}],
-        "estimate": {"files": 1, "lines": 4}, "oversize": None, "protectedTouches": [],
+        "estimate": {"files": 1, "lines": 4}, "oversize": None, "blockedBy": None, "protectedTouches": [],
         "flags": {"design": dict(flag), "dataStructure": dict(flag), "publicContract": dict(flag)},
         "migration": None, "newDependencies": [], "deletions": [],
         "acceptanceMapping": [{"criterion": item, "steps": [1]} for item in CRITERIA],
@@ -174,6 +176,54 @@ def test_an_oversized_issue_goes_back_to_assessment(world: Any, monkeypatch: pyt
     result = design.run(world.runtime, world.context())
     assert result.status is Status.FAILED and result.facts["reason"] == "oversize"
     assert result.facts["splitBack"]["parts"] == parts
+
+
+def _others(world: Any) -> None:
+    """其他 Issue：0019 待修(镜像为 GitHub #25)，0020 已完成，0021 在等本 Issue(0018)，0022 已交付等合并。"""
+    for issue_id, status, extra in (("0019", "todo", {"github": {"number": 25}}), ("0020", "done", {}),
+                                    ("0021", "todo", {"blockedBy": ["0018"]}), ("0022", "releasing", {})):
+        issues.save(world.runtime.conn, Issue(id=issue_id, status=status, title=f"功能 {issue_id}", kind="feature",
+                                              origin="user", extra=extra), world.clock)
+
+
+def test_waiting_for_other_issues_ends_the_step_without_asking(world: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """要等别的 Issue 先合入：不停在关卡、不问用户，交接带上前置 Issue；编号不对的带原因重出。"""
+    _others(world)
+    wrong = _plan(blockedBy={"issues": ["0018", "0020", "0021", "0099"], "reason": "要用排序接口"})
+    fake = _install(monkeypatch, wrong, _plan(blockedBy={"issues": ["0019", "0022"], "reason": "要用 #25 的排序接口"}))
+    result = design.run(world.runtime, world.context())
+    assert result.status is Status.FAILED and result.facts["reason"] == design.BLOCKED
+    assert result.facts["blockedBy"] == ["0019", "0022"] and "gate" not in result.facts
+    assert result.summary == "要等 0019、0022 先合入：要用 #25 的排序接口"
+    assert fake.requests[1].variables["feedback"].splitlines() == [
+        "- blockedBy 写了本 Issue 自己(0018)",
+        "- blockedBy 中的 0020 已是 done，不用等：按主干上的现状出方案",
+        "- blockedBy 中的 0021 也在等本 Issue 合入，互相等待：本 Issue 不能等它",
+        "- blockedBy 中的 0099 不存在：只能写「其他未完成的 Issue」中的本地编号"]
+    # 方案看得到其他还没合入的 Issue：本地编号、GitHub 编号、状态与标题；已完成的与本 Issue 不列
+    listed = fake.requests[0].variables["open_issues"]
+    assert "- 0019(GitHub #25)，todo：功能 0019" in listed and "- 0022，releasing：功能 0022" in listed
+    assert "0020" not in listed and "0018" not in listed and listed.startswith("<external")
+
+
+def test_design_documents_are_readable_and_listed(world: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """工作区有 designs/ 时作为额外可读目录交给方案与前端设计说明，提示里列出其中的文件；没有时写「无」。"""
+    fake = _install(monkeypatch, _plan())
+    design.run(world.runtime, world.context())
+    assert fake.requests[0].read_paths == () and fake.requests[0].variables["designs"] == "无"
+    designs = world.runtime.workspace.designs_dir
+    (designs / "ui").mkdir(parents=True)
+    (designs / "2026-10-06-question-relevance.md").write_text("# 设计\n", encoding="utf-8")
+    (designs / "ui" / "orders.md").write_text("# 订单\n", encoding="utf-8")
+    (designs / ".DS_Store").write_text("", encoding="utf-8")
+    plan = _plan(files=[*_plan()["files"], {"path": "web/Orders.vue", "isNew": True, "reason": "新页面"}])
+    sketch = {"pages": [{"location": "/orders", "structure": "表格"}], "layout": [], "interactions": [], "states": [],
+              "styling": [], "mobile": [], "copy": [], "planConflicts": []}
+    fake = _install(monkeypatch, plan, frontend_outputs=[sketch])
+    design.run(world.runtime, world.context())
+    assert [request.read_paths for request in fake.requests] == [(designs,), (designs,)]
+    assert fake.requests[1].variables["designs"] == fake.requests[0].variables["designs"] == (
+        f"目录 `{designs}`，其中：\n- `designs/2026-10-06-question-relevance.md`\n- `designs/ui/orders.md`")
 
 
 def test_replanning_stops_at_the_limit(world: Any, monkeypatch: pytest.MonkeyPatch) -> None:

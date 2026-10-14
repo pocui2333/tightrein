@@ -35,6 +35,7 @@ class Stages:
         self.assess_pending: Callable[..., Any] = lambda runtime: []
         self.assess: Callable[..., Any] = lambda runtime, problem: assessed(problem)
         self.implement: Callable[..., Any] = lambda runtime, issue: stepped(issue, "implement.deliver", None)
+        self.waiting: set[str] = set()  # 停在关卡等用户、还没有新决定的 Issue
         self.release: Callable[..., Any] = lambda runtime, issue: stepped(issue, "release.accept", None)
         self.queue: Callable[..., Any] = lambda runtime: []
         self.retro: Callable[..., Any] = lambda runtime: SimpleNamespace()
@@ -78,7 +79,8 @@ def stages(monkeypatch: pytest.MonkeyPatch) -> Stages:
             assess_pending=lambda runtime: fake.record("assess_pending", None, fake.assess_pending(runtime))),
         "tightrein.implement.implement": module(
             "implement",
-            implement=lambda runtime, issue: fake.record("implement", issue, fake.implement(runtime, issue))),
+            implement=lambda runtime, issue: fake.record("implement", issue, fake.implement(runtime, issue)),
+            waiting_for_user=lambda runtime, issue: issue in fake.waiting),
         "tightrein.release.release": module(
             "release", release=lambda runtime, issue: fake.record("release", issue, fake.release(runtime, issue))),
         "tightrein.release.queue": module(

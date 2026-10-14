@@ -37,6 +37,7 @@ def test_a_problem_with_the_same_root_cause_is_appended_and_raises_the_severity(
     assert issue.extra["problems"] == ["P-0001", "P-0002"] and issue.severity == "P1"
     assert issue.extra["history"][-1]["note"] == "追加问题 P-0002，严重度由 P2 提升为 P1"
     assert issue.extra["rootKey"] == ["services/orders.py#OrderService.get"]  # 文件#方法，没有方法名时用行号
+    assert issue.extra["plannedFiles"] == ["services/orders.py"]  # 评估预估要改的文件：调度据此不让改同一文件的并行
 
 
 def test_root_keys_use_the_symbol_or_the_line():
@@ -166,7 +167,7 @@ def test_split_back_creates_ordered_issues_and_cancels_the_original(runtime, rep
     assert original.status == "cancelled" and original.extra["closeReason"] == "split"
     first, second = (issues.get(runtime.conn, issue) for issue in created)
     assert first.title == "先改查询" and first.extra["problems"] == ["P-0001"] and first.extra["rootKey"]
-    assert second.extra["dependsOn"] == "0002" and second.extra["problems"] == [] and second.status == "todo"
+    assert second.extra["blockedBy"] == ["0002"] and second.extra["problems"] == [] and second.status == "todo"
     assert first.extra["approvedAt"] == original.extra["approvedAt"]  # 排队位置跟着原 Issue
     assert problems.get(runtime.conn, "P-0001").issue == "0002"  # 关联问题改挂到拆出的第一个 Issue
 

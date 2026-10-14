@@ -16,6 +16,7 @@ from tightrein.implement.prompts.common import (
     NONE,
     PLAN_FOR_CODE,
     decisions_text,
+    designs_text,
     issue_text,
     json_text,
     knowledge_text,
@@ -46,12 +47,13 @@ def variables(runtime: Runtime, context: ImplementContext, design: Mapping[str, 
         "corrections": list_text(corrections),
         "decisions": decisions_text(context.decisions),
         "knowledge": knowledge_text(runtime, context),
+        "designs": designs_text(runtime),
     }
 
 
-def continue_variables(context: ImplementContext, corrections: Sequence[str]) -> dict[str, str]:
+def continue_variables(runtime: Runtime, context: ImplementContext, corrections: Sequence[str]) -> dict[str, str]:
     return {"round": str(context.round), "corrections": list_text(corrections),
-            "decisions": decisions_text(context.decisions)}
+            "decisions": decisions_text(context.decisions), "designs": designs_text(runtime)}
 
 
 def allowed_commands(runtime: Runtime) -> tuple[str, ...]:

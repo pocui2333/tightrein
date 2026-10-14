@@ -6,9 +6,9 @@
 
 | 文件 | 调用点 |
 |---|---|
-| `common.py` | 共用：`ask`(拼提示、取参数、调用、累计用量)、`Usage`、Issue 正文(外部内容包住)、代码笔记、用户的决定、知识条目、验收标准解析、方案字段裁剪 |
-| `locate.py` | `implement.locate`：笔记涉及前端文件时带 `frontend` 条件 |
-| `design.py` | `implement.design`：风险判定、上限与受保护文件、重出原因；用户已同意按设计层面修复时加一句说明 |
+| `common.py` | 共用：`ask`(拼提示、取参数、调用、累计用量)、`Usage`、Issue 正文(外部内容包住)、代码笔记、用户的决定、知识条目、验收标准解析、方案字段裁剪、项目设计文档(工作区 `designs/` 有就作为额外可读目录，`designs_text` 列出其中的文件) |
+| `locate.py` | `implement.locate`：Issue 的类型(缺陷找根因，需求找落点)；笔记涉及前端文件时带 `frontend` 条件 |
+| `design.py` | `implement.design`：风险判定、上限与受保护文件、重出原因、其他未完成的 Issue(本地编号、GitHub 编号、状态、标题)；用户已同意按设计层面修复时加一句说明 |
 | `frontend.py` | `implement.design.frontend` |
 | `code.py` | `implement.code` 与续接 `implement.code.continue`；允许的检查命令 |
 

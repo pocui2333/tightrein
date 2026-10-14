@@ -15,7 +15,7 @@ CANCEL、FAIL 的 reason 为关闭原因或停下原因的代码(见 CLOSE_REASO
 from __future__ import annotations
 
 import copy
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
@@ -55,6 +55,7 @@ class IssueEvent(StrEnum):
     TAKE = "take"
     GIVE = "give"
     SPLIT_BACK = "split_back"
+    BLOCK = "block"  # 方案发现要等别的 Issue 先合入：退回待修，记下前置 Issue(blockers.py)
 
 
 class Effect(StrEnum):
@@ -98,6 +99,7 @@ HISTORY = "history"
 PROBLEMS = "problems"
 DUPLICATE_OF = "duplicateOf"
 APPROVED_AT = "approvedAt"
+BLOCKED_BY = "blockedBy"  # 要等它们合入才能做的前置 Issue；只出现在待修上
 
 
 class InvalidTransition(Exception):
@@ -178,6 +180,8 @@ TRANSITIONS: tuple[Rule, ...] = (
     Rule(IssueEvent.GIVE, frozenset({_S.HELD}), RESTORE),
     Rule(IssueEvent.SPLIT_BACK, frozenset({_S.NEEDS_DECISION, _S.TODO, _S.IMPLEMENTING}), _S.CANCELLED,
          effects=(Effect.GITHUB,), close_reason=SPLIT),
+    # 方案发现要等别的 Issue 先合入：不停在关卡、不问用户，退回待修；前置都合入后调度再挑它，从准备重新做起
+    Rule(IssueEvent.BLOCK, frozenset({_S.IMPLEMENTING}), _S.TODO),
 )
 
 
@@ -219,6 +223,8 @@ def transition(issue: IssueRecord, event: IssueEvent, *, reason: str | None, clo
                        "status": issue.status}
     elif status != _S.NEEDS_DECISION:
         extra.pop(HOLD, None)
+    if status != _S.TODO:
+        extra.pop(BLOCKED_BY, None)  # 离开待修(开始实施、取消等)时一并清除，开始后由方案重新判断要不要等
     if event is IssueEvent.APPROVE and issue.status == _S.NEEDS_DECISION and not extra.get(APPROVED_AT):
         # 合并队列按第一次放行的时间排序：发布中停下后再放行，不重新排到队尾
         extra[APPROVED_AT] = format_iso(clock.now())
@@ -258,11 +264,12 @@ def check(issue: IssueRecord) -> None:
 
 def apply_event(runtime: Runtime, issue_id: str, event: IssueEvent, *, reason: str | None = None,
                 actor: str = USER, note: str | None = None, updates: Mapping[str, Any] | None = None,
-                duplicate_of: str | None = None, sync_github: bool = True) -> IssueRecord:
+                duplicate_of: str | None = None, blocked_by: Sequence[str] = (),
+                sync_github: bool = True) -> IssueRecord:
     """转换并执行副作用，文件、索引与数据库在一个事务中；失败时恢复 Issue 文件原文并重新抛出。
 
-    updates 可一并写入 branch、pr、merge_commit、deploy、step、round；sync_github 为假时不回写 GitHub(由 GitHub 上的
-    操作读回引起的转换)。"""
+    updates 可一并写入 branch、pr、merge_commit、deploy、step、round；blocked_by 为 BLOCK 记下的前置 Issue；
+    sync_github 为假时不回写 GitHub(由 GitHub 上的操作读回引起的转换)。"""
     from tightrein.assess.issue import files, github
     from tightrein.store.db import transaction
     from tightrein.store.tables import issues
@@ -280,6 +287,8 @@ def apply_event(runtime: Runtime, issue_id: str, event: IssueEvent, *, reason: s
         after = replace(after, **updates)
     if duplicate_of:
         after.extra[DUPLICATE_OF] = duplicate_of
+    if blocked_by:
+        after.extra[BLOCKED_BY] = list(blocked_by)
     effects = resolve(before, event, reason).effects
     after.extra.setdefault(HISTORY, []).append(history_entry(runtime.clock, event, actor, reason, note))
     from tightrein.assess import persist

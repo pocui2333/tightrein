@@ -3,6 +3,7 @@ import json
 import os
 import threading
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
@@ -13,7 +14,9 @@ from tightrein.assess.issue import transitions
 from tightrein.onboard.check import READY_KEY
 from tightrein.protocol import recovery, schedule
 from tightrein.protocol.git import worktrees
-from tightrein.protocol.naming import format_iso
+from tightrein.protocol.handoff import Handoff, write
+from tightrein.protocol.handoff import Status as HandoffStatus
+from tightrein.protocol.naming import FileName, format_iso
 from tightrein.protocol.schedule import RunStatus, StepStatus
 from tightrein.settings.load import Settings
 from tightrein.store.db import connect
@@ -23,6 +26,7 @@ for package in ("tightrein.collect", "tightrein.implement", "tightrein.release",
     importlib.import_module(package)  # conftest 替换各阶段入口时要在包上设属性：包先导入
 
 HOST = "test-host"
+RUN_ID = "R-20261008T030000Z-run"
 NOW = datetime(2026, 10, 8, 3, 0, tzinfo=UTC)  # 与 conftest 的时钟相同
 
 
@@ -31,9 +35,11 @@ def run(runtime: Any, **options: Any) -> schedule.Outcome:
     return schedule.run(runtime, host=HOST, alive=lambda pid: True, **options)
 
 
-def add_issue(runtime: Any, issue_id: str, status: str, severity: str = "P2", held_by: str | None = None) -> None:
+def add_issue(runtime: Any, issue_id: str, status: str, severity: str = "P2", held_by: str | None = None,
+              **extra: Any) -> None:
     issues.save(runtime.conn, issues.Issue(id=issue_id, status=status, title=f"Issue {issue_id}", kind="bug",
-                                           origin="problem", severity=severity, held_by=held_by), runtime.clock)
+                                           origin="problem", severity=severity, held_by=held_by, extra=extra),
+                runtime.clock)
 
 
 def add_problem(runtime: Any, problem_id: str, status: str = "new") -> None:
@@ -44,6 +50,22 @@ def add_problem(runtime: Any, problem_id: str, status: str = "new") -> None:
 
 def ready(runtime: Any) -> None:
     state.put(runtime.conn, READY_KEY, format_iso(NOW), runtime.clock)
+
+
+@contextmanager
+def separate(runtime: Any) -> Any:
+    """与真实的 isolated 一样，在线程里另开数据库连接(并行实施的测试替换 schedule.isolated)。"""
+    from tightrein.protocol.limits import Breaker
+    from tightrein.protocol.resources import IssueBudget, Quota
+
+    conn = connect(runtime.workspace.database)
+    clock, settings = runtime.clock, runtime.settings
+    agents = SimpleNamespace(**{**vars(runtime.agents), "conn": conn, "breaker": Breaker(conn, clock, settings),
+                                "quota": Quota(conn, clock, settings), "budget": IssueBudget(conn, clock, settings)})
+    try:
+        yield SimpleNamespace(**{**vars(runtime), "conn": conn, "agents": agents})
+    finally:
+        conn.close()
 
 
 def window(kit: Any, start: str, end: str, days: list[str]) -> Settings:
@@ -364,25 +386,9 @@ def test_startup_restores_read_only_worktrees_locked_by_dead_processes(stages, m
 
 
 def test_several_unrelated_issues_are_implemented_at_once(stages, make_runtime, monkeypatch):
-    """resources.concurrency.sessions 个互不相关的 Issue 同时推进；根因文件重叠的留到下一轮。"""
-
-    @contextmanager
-    def separate(runtime):  # 与真实的 isolated 一样，在线程里另开数据库连接
-        from tightrein.protocol.limits import Breaker
-        from tightrein.protocol.resources import IssueBudget, Quota
-
-        conn = connect(runtime.workspace.database)
-        clock, settings = runtime.clock, runtime.settings
-        agents = SimpleNamespace(**{**vars(runtime.agents), "conn": conn, "breaker": Breaker(conn, clock, settings),
-                                    "quota": Quota(conn, clock, settings),
-                                    "budget": IssueBudget(conn, clock, settings)})
-        try:
-            yield SimpleNamespace(**{**vars(runtime), "conn": conn, "agents": agents})
-        finally:
-            conn.close()
-
+    """resources.concurrency.sessions 个互不相关的 Issue 同时推进；根因文件重叠的留到下一轮(这里不补人)。"""
     monkeypatch.setattr(schedule, "isolated", separate)
-    runtime = make_runtime({"resources": {"concurrency": {"sessions": 2}}})
+    runtime = make_runtime({"resources": {"refillWhenFree": 2, "refillAfter": "1h", "concurrency": {"sessions": 2}}})
     for issue_id, file in (("0001", "a.py"), ("0002", "a.py"), ("0003", "b.py")):
         issues.save(runtime.conn, issues.Issue(id=issue_id, status="todo", title=f"Issue {issue_id}", kind="bug",
                                                origin="problem", severity="P2",
@@ -411,26 +417,11 @@ def test_one_issue_at_a_time_by_default(stages, make_runtime):
 @pytest.mark.parametrize("refill, expected", [("0s", ["0001", "0002", "0003"]), ("1h", ["0001", "0002"])])
 def test_a_free_slot_is_refilled_after_waiting_while_others_still_run(stages, make_runtime, monkeypatch, refill,
                                                                       expected):
-    """同批里先做完的空出位置，等过 refillAfter 而同批还有没做完的，就补一个；等不到就留到下一轮。"""
+    """空位不到 refillWhenFree 个时的兜底：同批里先做完的空出位置，等过 refillAfter 而同批还有没做完的，就补一个；
+    等不到就留到下一轮。"""
     monkeypatch.setattr(schedule, "REFILL_POLL_S", 0.05)
-
-    @contextmanager
-    def separate(runtime):
-        from tightrein.protocol.limits import Breaker
-        from tightrein.protocol.resources import IssueBudget, Quota
-
-        conn = connect(runtime.workspace.database)
-        clock, settings = runtime.clock, runtime.settings
-        agents = SimpleNamespace(**{**vars(runtime.agents), "conn": conn, "breaker": Breaker(conn, clock, settings),
-                                    "quota": Quota(conn, clock, settings),
-                                    "budget": IssueBudget(conn, clock, settings)})
-        try:
-            yield SimpleNamespace(**{**vars(runtime), "conn": conn, "agents": agents})
-        finally:
-            conn.close()
-
     monkeypatch.setattr(schedule, "isolated", separate)
-    runtime = make_runtime({"resources": {"refillAfter": refill, "concurrency": {"sessions": 2}}})
+    runtime = make_runtime({"resources": {"refillAfter": refill, "refillWhenFree": 2, "concurrency": {"sessions": 2}}})
     for issue_id, file in (("0001", "a.py"), ("0002", "b.py"), ("0003", "c.py")):
         issues.save(runtime.conn, issues.Issue(id=issue_id, status="todo", title=f"Issue {issue_id}", kind="bug",
                                                origin="problem", severity="P2",
@@ -448,3 +439,120 @@ def test_a_free_slot_is_refilled_after_waiting_while_others_still_run(stages, ma
     stages.implement = implement
     run(runtime, stage="implement")
     assert sorted(value for name, value in stages.calls if name == "implement") == expected
+
+
+def test_issues_waiting_for_prerequisites_are_skipped_until_those_land(stages, make_runtime):
+    """blockedBy 中还有没合并的(待修、实施中、已交付等合并)就不挑；合并(验收观察中、已完成)或取消后照常挑。"""
+    runtime = make_runtime()
+    add_issue(runtime, "0001", "todo", severity="P0", blockedBy=["0002", "0003"])
+    add_issue(runtime, "0002", "releasing")
+    add_issue(runtime, "0003", "cancelled", closeReason="wont_fix")
+    add_issue(runtime, "0004", "todo", severity="P3")
+    run(runtime, stage="implement")
+    assert [value for name, value in stages.calls if name == "implement"] == ["0004"]
+    assert [item.subject for item in run(runtime, stage="implement", dry_run=True).planned] == ["0004"]
+    found = issues.get(runtime.conn, "0002")
+    issues.save(runtime.conn, replace(found, status="accepting"), runtime.clock)
+    assert [item.subject for item in run(runtime, stage="implement", dry_run=True).planned] == ["0001"]
+
+
+def test_issues_waiting_at_a_gate_without_a_new_decision_are_not_chosen(stages, make_runtime):
+    """停在关卡等用户的实施中 Issue 不占位置；有了新决定(implement.waiting_for_user 为假)才挑它。"""
+    runtime = make_runtime({"resources": {"concurrency": {"sessions": 2}}})
+    add_issue(runtime, "0001", "implementing", severity="P0")
+    add_issue(runtime, "0002", "todo")
+    stages.waiting = {"0001", "0002"}  # 只对实施中的问：待修的还没开始，不会停在关卡
+    assert [item.id for item in schedule._issues_to_implement(runtime, 2)] == ["0002"]
+    stages.waiting = set()
+    assert [item.id for item in schedule._issues_to_implement(runtime, 2)] == ["0001", "0002"]
+
+
+def test_issues_that_will_touch_the_same_files_are_not_run_at_the_same_time(make_runtime, tmp_path):
+    """根因不同、但评估预估的文件、方案的文件或 worktree 中已改动的文件有重叠的，不同时做(只看根因文件时曾同时改了
+    同一个文件，发布时要退回实施)。"""
+    runtime = make_runtime({"resources": {"concurrency": {"sessions": 3}}})
+    add_issue(runtime, "0001", "todo", rootCauses=[{"file": "a.py", "line": 1}], plannedFiles=["shared.py"])
+    add_issue(runtime, "0002", "todo", rootCauses=[{"file": "b.py", "line": 1}], plannedFiles=["shared.py"])
+    assert [item.id for item in schedule._issues_to_implement(runtime, 3)] == ["0001"]
+    # 方案的文件清单与步骤、修复 worktree 中已改动的文件同样算
+    write(runtime.workspace.step_file("0002", FileName("implement.design", "handoff", "json")),
+          Handoff(point="implement.design", subject="0002", run=RUN_ID, status=HandoffStatus.PASSED, summary="方案",
+                  facts={"files": [{"path": "b.py"}], "steps": [{"file": "tests/test_b.py"}]}))
+    add_issue(runtime, "0003", "todo", rootCauses=[{"file": "c.py", "line": 1}], plannedFiles=["tests/test_b.py"])
+    tree = tmp_path / "worktree-0004"
+    tree.mkdir()
+    write(runtime.workspace.step_file("0004", FileName("implement.prepare", "handoff", "json")),
+          Handoff(point="implement.prepare", subject="0004", run=RUN_ID, status=HandoffStatus.PASSED, summary="准备",
+                  facts={"worktree": str(tree)}))
+    add_issue(runtime, "0004", "implementing", rootCauses=[{"file": "d.py", "line": 1}])
+    runtime.git = SimpleNamespace(at=lambda path: SimpleNamespace(
+        status=lambda: SimpleNamespace(changed_paths=("c.py",) if path == tree else ())))
+    found = schedule._issues_to_implement(runtime, 3)
+    assert [item.id for item in found] == ["0004", "0001"]  # 0002 与 0001 撞 shared.py；0003 与 0004 撞 c.py
+    assert [item.id for item in schedule._issues_to_implement(runtime, 3, busy={"a.py", "d.py"})] == ["0002"]
+
+
+def add_independent(runtime: Any, count: int) -> None:
+    """count 个根因文件互不重叠的待修 Issue(0001 起)。"""
+    for number in range(1, count + 1):
+        issues.save(runtime.conn, issues.Issue(id=f"{number:04d}", status="todo", title=f"Issue {number}", kind="bug",
+                                               origin="problem", severity="P2",
+                                               extra={"rootCauses": [{"file": f"{number}.py", "line": 1}]}),
+                    runtime.clock)
+
+
+@pytest.mark.parametrize("sessions, when_free", [(1, 1), (2, 1), (4, 2), (5, 2)])
+def test_refill_when_free_defaults_to_half_the_sessions(make_runtime, sessions, when_free):
+    refill = schedule._Refill.of(make_runtime().settings, sessions)
+    assert (refill.when_free, refill.most) == (when_free, 2 * sessions)
+    assert refill.count([0.0], 1.0) == (1 if when_free == 1 else 0)  # refillAfter 缺省 3m：单个空位还没等够
+
+
+def test_slots_freed_together_are_refilled_together(stages, make_runtime, monkeypatch):
+    """同时空出 refillWhenFree(缺省 sessions 的一半)个位置才一起补满；只空一个、又没等过 refillAfter 时不补。"""
+    monkeypatch.setattr(schedule, "REFILL_POLL_S", 0.05)
+    monkeypatch.setattr(schedule, "isolated", separate)
+    runtime = make_runtime({"resources": {"refillAfter": "1h", "concurrency": {"sessions": 4}}})
+    add_independent(runtime, 6)
+    started: list[str] = []
+    lone: list[str] = []  # 只空着一个位置的那段时间结束时已开始的
+    refilled = threading.Event()
+
+    def implement(runtime, issue):
+        started.append(issue)
+        if issue == "0002":  # 0001 一开始就做完：只空一个位置，多看几次空位也不补
+            threading.Event().wait(0.3)
+            lone.extend(started)
+        if issue in ("0003", "0004"):  # 等补进来的两个都开始了再结束
+            refilled.wait(timeout=2)
+        if {"0005", "0006"} <= set(started):
+            refilled.set()
+        return SimpleNamespace(subject=issue, point="implement.deliver", status="passed", summary="交付",
+                               next_point=None)
+
+    stages.implement = implement
+    run(runtime, stage="implement")
+    assert sorted(lone) == ["0001", "0002", "0003", "0004"]
+    assert sorted(started) == ["0001", "0002", "0003", "0004", "0005", "0006"] and refilled.is_set()
+
+
+def test_refilling_stops_once_a_round_has_started_refill_max_issues(stages, make_runtime, monkeypatch):
+    """一轮开始的 Issue 到 resources.refillMax(缺省 sessions 的 2 倍)就不再补：做完的等着进入发布，不一直补到队列空。"""
+    monkeypatch.setattr(schedule, "REFILL_POLL_S", 0.05)
+    monkeypatch.setattr(schedule, "isolated", separate)
+    runtime = make_runtime({"resources": {"refillAfter": "0s", "concurrency": {"sessions": 2}}})
+    add_independent(runtime, 6)
+    fourth_done = threading.Event()
+
+    def implement(runtime, issue):
+        if issue == "0001":  # 一直做到别的都做完：期间空位照常要补
+            fourth_done.wait(timeout=2)
+            threading.Event().wait(0.3)  # 再留几次看空位的时间：封顶了就不会再补
+        if issue == "0004":
+            fourth_done.set()
+        return SimpleNamespace(subject=issue, point="implement.deliver", status="passed", summary="交付",
+                               next_point=None)
+
+    stages.implement = implement
+    run(runtime, stage="implement")
+    assert sorted(value for name, value in stages.calls if name == "implement") == ["0001", "0002", "0003", "0004"]

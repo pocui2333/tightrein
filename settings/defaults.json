@@ -799,7 +799,9 @@
     "shutdownGrace": "30s"
   },
   "resources": {
+    "refillWhenFree": null,
     "refillAfter": "3m",
+    "refillMax": null,
     "concurrency": {
       "sessions": 1,
       "modelCalls": 4,

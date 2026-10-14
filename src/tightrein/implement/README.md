@@ -32,6 +32,7 @@
 - **轮数与没有进展**：局部问题交回编码最多 `controls.implement.review.rounds`(3)轮，按这一版方案(或用户最近一次决定)之后算；连续两轮阻断项(位置 + 类型)相同或本轮 diff 哈希与上一轮相同(`protocol.limits.no_progress`)立即停下。
 - **越界**：编码一轮结束后程序检查本轮改动，越出 worktree 或碰了禁改文件即撤回本轮全部改动；第一次带原因重做这一轮，再越界停下。
 - **超出范围**：方案发现一个 PR 放不下(`oversize`)，Issue 经 `SPLIT_BACK` 退回评估拆成几个新 Issue，实施阶段不拆子任务。
+- **前置 Issue**：方案发现要用到的代码要由别的 Issue 先合入(`blockedBy`)，不停在关卡、不问用户：Issue 经 `BLOCK` 退回待修并记下 `extra.blockedBy`(`assess/issue/blockers.py`)，调度在它们合入前不再挑它；都合入后从准备重新做起，准备把还没动过的 worktree 快进到最新主干，再定位、出方案。
 - **用量上限**：每次推进前看 `resources.issueTokens`(`protocol.resources.IssueBudget`)，超了停下。
 - **给人看的文档**：停在关卡写 `90-issue-pending.md`，停下写 `90-issue-failure.md`(`protocol/documents.py`)；Issue 的 `step`、`round`、`gate` 随之更新供 watch 与 status 显示。
 
@@ -43,7 +44,7 @@
 | 任一步 | 通过 | 按顺序；定案之后开新一轮编码(轮次接着往下编号)，编码 → 自检 → 审查同一轮，审查通过后交付，交付通过后转发布(`DELIVER`) |
 | 任一步 | 待决定 | 有了用户的新决定就重做这一步(由它取用决定)，否则继续等 |
 | 编码、自检、审查 | 没通过 | 越界、检查没跑起来、按性质分派(见上) |
-| 方案 | 没通过 | `oversize` 退回评估，其余停下 |
+| 方案 | 没通过 | `oversize` 退回评估；`blocked` 前置还没落地就退回待修，都落地了从准备重新做起；其余停下 |
 | 定案 | 没通过(用户否决) | 按原因重出方案，上限 `controls.implement.design.rounds`(1) |
 | 交付 | 没通过 | 交接写了 `backTo`(自检或审查之后又有改动)回到那一步重做一次；其余停下 |
 | 停下之后 | 用户给了新决定 | `approve`：编码类的接着开一轮，其余重做那一步；`reject`：重出方案 |
