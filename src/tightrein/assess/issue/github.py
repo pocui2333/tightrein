@@ -5,8 +5,9 @@
 
 - 字段归属：开关状态以 GitHub 为准，其余以本地为准；在 GitHub 上关闭读回为用户关闭(不修)，PR 按 Closes 自动关闭的
   (本地在发布或验收中)只记状态，不当成用户关闭；读回引起的转换不再回写；
+- 不留工具痕迹：正文不带标记，缺省不打状态标签，只在新建时按类型打仓库里已有的 bug、enhancement；
 - 安全与幂等：公开仓库整次跳过(正文含内部错误与代码位置)；正文去掉历史并整体脱敏；建 Issue 用幂等键，中断后按
-  正文中的本地标记找回，不重复建；失败只记录，下次按本地状态与镜像状态重算差异重试；只移除仓库里确实存在的旧
+  标题找回，不重复建(正文不留本地标记)；失败只记录，下次按本地状态与镜像状态重算差异重试；只移除仓库里确实存在的旧
   标签(GitHub.issue_labels)；
 - 正文里反引号中的 `路径:行号` 换成取证 commit 的永久链接。
 """
@@ -111,15 +112,26 @@ def mirror_body(runtime: Runtime, record: Issue, text: str) -> str:
     if commit and runtime.github is not None:
         slug = runtime.github.slug
         kept = CODE_LOCATION.sub(lambda match: _link(slug, str(commit), match), kept)
-    return runtime.redactor.text(kept.rstrip()) + f"\n\n{marker_of(runtime, record.id)}\n"
+    return runtime.redactor.text(kept.rstrip()) + "\n"
 
 
-def marker_of(runtime: Runtime, issue: str) -> str:
-    return f"<!-- tightrein:{runtime.workspace.project}:{issue} -->"
+def public_id(record: Issue) -> str:
+    """对外的 Issue 编号：有 GitHub 镜像时用 GitHub 编号(人在 GitHub 上看到的)，否则用本地编号。分支名与 PR 标题用它。"""
+    found: Any = record.extra.get(MIRROR)
+    number = found.get("number") if isinstance(found, dict) else found
+    return str(number) if isinstance(number, int | str) and str(number).isdigit() else record.id
 
 
-def label_of(runtime: Runtime, status: str) -> str:
-    return f"{runtime.settings.section(POINT)['github']['labelPrefix']}{status}"
+def label_of(runtime: Runtime, status: str) -> str | None:
+    """状态标签：缺省不打(statusLabels 为假)，人不会随着进度反复改标签，带工具前缀的标签也一眼看得出来。"""
+    found = runtime.settings.section(POINT)["github"]
+    return f"{found['labelPrefix']}{status}" if found.get("statusLabels") else None
+
+
+def kind_label(github: Any, record: Issue) -> tuple[str, ...]:
+    """新建时按类型打一个仓库里已有的标签(缺陷 bug、需求 enhancement)；仓库没有就不打，不替人新建标签。"""
+    wanted = "enhancement" if record.kind == "feature" else "bug"
+    return (wanted,) if wanted in github.labels() else ()
 
 
 def _apply(runtime: Runtime, record: Issue, mirror: dict[str, Any]) -> dict[str, Any]:
@@ -129,15 +141,15 @@ def _apply(runtime: Runtime, record: Issue, mirror: dict[str, Any]) -> dict[str,
     assert github is not None
     scope = runtime.scope(record.id, POINT)
     label = label_of(runtime, record.status)
-    if label not in github.labels():
-        github.label_create(label, "ededed", "tightrein", scope=scope)
+    if label is not None and label not in github.labels():
+        github.label_create(label, "ededed", "", scope=scope)
     if not mirror.get("number"):
         text = mirror_body(runtime, record, files.read_body(runtime.workspace, record.id))
-        ref = github.issue_create(NewIssue(title=record.title, body=text, marker=marker_of(runtime, record.id),
-                                           labels=(label,)), scope=scope)
+        ref = github.issue_create(NewIssue(title=record.title, body=text, marker="",
+                                           labels=(label,) if label else kind_label(github, record)), scope=scope)
         mirror = {"number": ref.number, "url": ref.url, "state": "open", "label": label}
     number = int(mirror["number"])
-    if mirror.get("label") != label:
+    if label is not None and mirror.get("label") != label:
         github.issue_labels(number, [label], [mirror["label"]] if mirror.get("label") else [], scope=scope)
         mirror["label"] = label
     wanted = "closed" if record.status in LOCAL_CLOSED else "open"

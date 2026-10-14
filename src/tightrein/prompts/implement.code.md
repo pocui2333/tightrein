@@ -35,7 +35,13 @@
 - `incidentalFindings`：与本 Issue 无关、顺带发现的缺陷，每条 `file`、`line`(不确定写 null)、`symbol`(函数或方法名，没有写 null)、`category`(defect、security、performance、data；命名、风格、重构建议不收)、`confidence`(confirmed 看到了代码证据，suspected 疑似)、`evidence`(一句证据)、`text`(一句话写现象)；没有时写空数组。
 - `outOfScope`：没有修、超出范围的部分与原因。
 - `knowledgeSuggestions`：建议沉淀进项目知识库的规律(下次还用得上的约定、反复出现的问题写法、经验)，一条一句；没有时写空数组，不硬凑。
-- `release`：中止时为 null；否则用项目语言写 `scope`(模块或功能名，没有合适的写 null)、`subject`(提交信息第一行，一句话说清改了什么)、`why`(为什么这样改)、`prTitle`(一句祈使语气的完整话)、`problem`、`approach`、`limitations`(PR 描述的三段：解决什么问题、为什么选这个做法、不足与局限，没有时写明没有)。验证结果由程序附上，不要写。
+- `release`：中止时为 null；否则用项目语言写给提交与 PR，读起来要像这个项目的开发者自己顺手写的，不能看出是工具或 AI 写的：
+  - `subject`：提交标题，一句话说清改了什么，中文不超过 30 个字；不带 `fix:`、`feat(x):` 这类前缀(程序按项目格式加)，不带句号，不复述 Issue 标题，不堆技术细节；
+  - `scope`：模块或功能名，没有合适的写 null；
+  - `why`：提交正文，一两句说为什么这样改，口语化，不写成报告；
+  - `prTitle`：PR 标题里的描述部分，同 `subject` 的要求(编号由程序按项目格式加)；
+  - `problem`、`approach`、`limitations`：PR 描述的三段，各一两句到一小段：出了什么问题、怎么改的和为什么这样改、还有什么没顾到。没有局限就写空字符串，不要写「无」「暂无」；
+  - 都不要出现「本 PR」「本次修改」「综上」「值得注意的是」这类套话，不加小标题、不加表情、不提 tightrein、AI、模型、Issue 的本地编号(0006 这种)，也不写「自动生成」。测试情况由程序补一句，不要写。
 
 # 本次输入
 

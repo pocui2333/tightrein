@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from collections.abc import Mapping
 from dataclasses import asdict
@@ -19,6 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from tightrein.assess.issue import attempts
+from tightrein.assess.issue.github import public_id
 from tightrein.implement.prepare import baseline
 from tightrein.protocol.git import Git
 from tightrein.protocol.git.format import BranchRejected, branch_name, branch_type, kebab, resolve
@@ -36,6 +38,7 @@ if TYPE_CHECKING:
 
 POINT = "implement.prepare"
 URGENT = "P0"  # 立即修的 P0 用 hotfix 分支
+TOOL_SLUG_PREFIX = re.compile(r"^(?:static|probe|error|alert|latency|server-error|incidental|authz)-")
 # 快照 commit 的作者：不是提交到分支上的 commit，不经 Git.commit，也就不涉及署名规则
 SNAPSHOT_IDENTITY = {"GIT_AUTHOR_NAME": "tightrein", "GIT_AUTHOR_EMAIL": "tightrein@localhost",
                      "GIT_COMMITTER_NAME": "tightrein", "GIT_COMMITTER_EMAIL": "tightrein@localhost"}
@@ -117,8 +120,9 @@ def _branch(runtime: Runtime, issue: Issue, path: Path) -> str:
     if issue.branch:
         return issue.branch
     conventions = resolve(runtime.settings, runtime.git.repo)
-    kind = branch_type(issue.kind, urgent=issue.severity == URGENT, types=conventions.types)
-    name = branch_name(conventions, kind=kind, issue=issue.id, slug=_slug(issue))
+    kind = branch_type(issue.kind, urgent=issue.severity == URGENT, types=conventions.types,
+                       task_type=issue.extra.get("taskType"))
+    name = branch_name(conventions, kind=kind, issue=public_id(issue), slug=_slug(issue))
     number = 1
     found = name
     while runtime.git.branch_exists(found):
@@ -128,8 +132,10 @@ def _branch(runtime: Runtime, issue: Issue, path: Path) -> str:
 
 
 def _slug(issue: Issue) -> str:
-    """分支名里的简称：评估写下的英文简称优先，其次标题中的英文词，都没有时用种类。"""
-    return kebab(str(issue.extra.get("slug") or "")) or kebab(issue.title) or issue.kind
+    """分支名里的简称：评估写下的英文简称优先，其次标题中的英文词，都没有时用种类。旧版简称开头带的检查类别
+    (`static-…`、`probe-…`)去掉：分支名要像人起的。"""
+    found = TOOL_SLUG_PREFIX.sub("", kebab(str(issue.extra.get("slug") or "")))
+    return found or kebab(issue.title) or issue.kind
 
 
 def _worktree_tree(git: Git, head: str) -> str:

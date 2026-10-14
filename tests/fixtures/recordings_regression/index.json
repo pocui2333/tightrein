@@ -28,7 +28,7 @@
       "dir": "03-implement.code-r1",
       "tool": "claude",
       "exitCode": 0,
-      "sha256": "f28a8346828dc9beabf621b70ca1fd9c9c854d76fde02633cffee588e11f4280"
+      "sha256": "32292ab03850980cfe446b3d43be44121e69d5ad23dac8fedba40814d08d6e55"
     },
     {
       "point": "implement.review",
@@ -58,7 +58,7 @@
       "dir": "06-retro.idea",
       "tool": "claude",
       "exitCode": 0,
-      "sha256": "65f6e42f22c23b4ef8113ea8dc0610073098d775b9bb28c3ead3b8a246a44030"
+      "sha256": "0d0139a47d58fab4aa7642a9dc02255dc4cf39f450e9431009b9101b5439bcfd"
     },
     {
       "point": "implement.design",
@@ -68,7 +68,7 @@
       "dir": "07-implement.design-c2",
       "tool": "claude",
       "exitCode": 0,
-      "sha256": "fbfd60a311c10b13a5ba176d8fd7440916ecfb458dee1576c4ce3c43ef6fcd7a"
+      "sha256": "5cc8d9b29bcbdcaa471d3b4b03bf043f10922d3af9cc52fffc64ce935bfd8257"
     },
     {
       "point": "implement.code",
@@ -78,7 +78,7 @@
       "dir": "08-implement.code-r1-c2",
       "tool": "claude",
       "exitCode": 0,
-      "sha256": "b832a8b2eea932888004190d2396afcafebe995321e5bda3dd95b4ccf0f3bcf4"
+      "sha256": "6d21afa60a62a81efff8c47578f6934721709bac4f2143d69f51a2353d914c6d"
     },
     {
       "point": "implement.review",
@@ -88,7 +88,7 @@
       "dir": "09-implement.review-r1-c2",
       "tool": "claude",
       "exitCode": 0,
-      "sha256": "9f133b863cb93c3c243e206a4e6d052365408cdbbdd04f8468a595a32b25602f"
+      "sha256": "d277165f476d32866914a9c90cd8db5fb3cb71a3b8cb6d08e229f046395f6b7b"
     },
     {
       "point": "implement.review.deep",

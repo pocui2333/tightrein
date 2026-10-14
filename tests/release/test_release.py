@@ -52,7 +52,7 @@ def test_one_call_goes_from_commit_to_merge(kit, github_runtime, fake_github, re
     pushed = repos.git(repos.origin, "rev-parse", f"refs/heads/{kit.BRANCH}").strip()
     assert load_state(issue).pushed == pushed
     assert ("pr-merge", 186, pushed, "squash", False) in fake_github.calls
-    assert len(fake_github.pulls[186]["comments"]) == 1
+    assert fake_github.pulls[186]["comments"] == []  # 缺省不在 PR 下贴审查结论(开发者不会给自己的 PR 贴审查报告)
     names = sorted(path.name for path in github_runtime.workspace.issue_dir("0007").glob("4*-handoff.json"))
     assert names == ["41-release.pr-handoff.json", "42-release.ci-handoff.json", "43-release.merge-handoff.json"]
     assert simple_transitions == [("0007", "merge", None)]

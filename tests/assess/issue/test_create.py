@@ -123,7 +123,10 @@ def test_slugs_are_truncated_without_a_trailing_dash_and_fall_back_to_the_source
     assert create.normalize("API Orders---", 6) == "api-or"
     assert create.normalize("abc-def", 4) == "abc"
     empty = finding("P-0002", source="collect.alerts", check_type="", location=None)
-    assert create.slug(empty, 40, 7) == "alerts-7"
+    assert create.slug(empty, 40, 7) == "issue-7"
+    static = finding("P-0003", source="collect.static", check_type="static", location="a.py:3",
+                     flags={"symbol": "Runner._acquireLock"})
+    assert create.slug(static, 40, 8) == "acquire-lock"  # 不带 static 这种来源名
 
 
 def test_code_notes_follow_the_problem_to_the_issue(runtime, repo, finding, layout):

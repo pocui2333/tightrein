@@ -2,8 +2,7 @@
 
 - 分支名先复核：不符合项目的分支格式、或个人前缀是 AI 或工具名时停下，给出建议名；
 - 标题与描述不调用模型：标题取编码时 agent 给的一句话(没有时取 Issue 标题)，按项目约定的格式拼出；描述取交付的文字，
-  之后是关联(有 GitHub 镜像 Issue 时写 `Closes #<编号>`，合并后 GitHub 自动关闭)，最后是程序生成的检查结果与接受的
-  未通过项；项目有 PR 模板时按模板标题放进同样的内容(protocol/git/format.fill_template)；
+  之后是测试情况(一两句人话)与接受的未通过项，最后是关联(有 GitHub 镜像 Issue 时写 `Closes #<编号>`)；项目有 PR 模板时按模板标题放进同样的内容(protocol/git/format.fill_template)；
 - 先查后做：该分支已有打开的 PR 时只在描述有变化时更新(protocol/git 的 GitHub.create_pr)；做决定时记下该分支上打开的
   PR(GitHub.pull_state)作为 expected：新建前再观察一次，不同即抛 Stale、不新建(由 release.py 停到下次重新观察)；
 - 审查结论只作说明发一条评论，同一 PR 同一轮只发一次；不是批准，是否合并按 merge.py 的条件。
@@ -14,12 +13,13 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any
 
+from tightrein.assess.issue.github import public_id
 from tightrein.protocol.git import Conventions, GitHub, PullText
 from tightrein.protocol.git.format import (
-    HOTFIX,
     BranchRejected,
     branch_name,
     branch_problem,
+    branch_type,
     fill_template,
     kebab,
     pull_body,
@@ -31,17 +31,16 @@ from tightrein.store.tables.issues import Issue
 
 URGENT = "P0"
 PREFIX_PLACEHOLDER = "<个人前缀>"
-# PR 上程序生成的几行字按项目语言写；字段名、路径、命令不翻译
+# PR 上程序补的几句按项目语言写，口吻和开发者自己写的一样，不出现工具名与「自动生成」之类的字样；字段名、命令不翻译
 LABELS: dict[str, dict[str, str]] = {
-    "zh": {"checks": "检查结果(程序生成)：", "passed": "通过", "failed": "未通过", "accepted": "接受的未通过项",
-           "review": "以下是 tightrein 的审查结论，只作说明，不是批准。", "round": "第 {round} 轮审查：",
-           "none": "无"},
-    "en": {"checks": "Checks (generated):", "passed": "passed", "failed": "failed", "accepted": "Accepted failure",
-           "review": "tightrein review summary, for information only; this is not an approval.",
-           "round": "Review round {round}:", "none": "none"},
-    "ja": {"checks": "チェック結果(自動生成)：", "passed": "合格", "failed": "不合格", "accepted": "受け入れた不合格項目",
-           "review": "以下は tightrein のレビュー結果です。説明のみで、承認ではありません。",
-           "round": "第 {round} ラウンドのレビュー：", "none": "なし"},
+    "zh": {"sep": "、", "ran": "本地跑过 {names}，都通过了。", "failed": "{name} 没过：{detail}", "failed_bare": "{name} 没过。",
+           "accepted": "{item}，这次先不处理。", "review": "自己又过了一遍改动：", "none": "没发现问题。"},
+    "en": {"sep": ", ", "ran": "Ran {names} locally; all passed.", "failed": "{name} failed: {detail}", "failed_bare": "{name} failed.",
+           "accepted": "{item} — leaving this for now.", "review": "Went over the change once more:",
+           "none": "Nothing found."},
+    "ja": {"sep": "、", "ran": "ローカルで {names} を実行し、すべて通りました。", "failed": "{name} が失敗：{detail}",
+           "failed_bare": "{name} が失敗しました。", "accepted": "{item}（今回は対応しません）",
+           "review": "変更をもう一度見直しました：", "none": "問題は見つかりませんでした。"},
 }
 
 
@@ -59,8 +58,8 @@ def open_pull(runtime: Runtime, issue: Issue, delivery: Delivery, conventions: C
     if problem is not None:
         raise ReleaseBlocked(POINT_PR, f"{problem}；建议改名为 {suggest(issue, conventions)}，改名后再发布")
     labels = LABELS.get(runtime.language, LABELS["zh"])
-    heading = title(conventions.title, kind=conventions.types[issue.kind],
-                    summary=delivery.text.title or delivery.text.summary or issue.title)
+    heading = title(conventions.title, kind=_kind(issue, conventions),
+                    summary=delivery.text.title or delivery.text.summary or issue.title, issue=public_id(issue))
     body = pull_text(issue, delivery, conventions, labels)
     main = runtime.git.main_branch
     decided = github.pull_state(delivery.branch)
@@ -76,14 +75,18 @@ def pull_text(issue: Issue, delivery: Delivery, conventions: Conventions, labels
                     limitations=text.limitations or "", relations=(f"Closes #{mirror}",) if mirror else (),
                     verification=verification(delivery, labels))
     if conventions.template:
-        return fill_template(conventions.template, pull, labels["checks"])
-    return pull_body(pull, labels["checks"])
+        return fill_template(conventions.template, pull)
+    return pull_body(pull)
 
 
 def verification(delivery: Delivery, labels: dict[str, str]) -> tuple[str, ...]:
-    lines = [f"{check.name}：{labels['passed'] if check.passed else labels['failed']}"
-             + (f"({check.detail})" if check.detail and not check.passed else "") for check in delivery.checks]
-    lines += [f"{labels['accepted']}：{item}" for item in delivery.accepted]
+    """测试情况写成一两句话：全部通过一句带过；没过的逐个说，用户接受的未通过项写明这次先不处理。"""
+    passed = [check.name for check in delivery.checks if check.passed]
+    failed = [check for check in delivery.checks if not check.passed]
+    lines = [labels["ran"].format(names=labels["sep"].join(passed))] if passed and not failed else []
+    lines += [labels["failed"].format(name=check.name, detail=check.detail) if check.detail
+              else labels["failed_bare"].format(name=check.name) for check in failed]
+    lines += [labels["accepted"].format(item=item) for item in delivery.accepted]
     return tuple(lines)
 
 
@@ -102,18 +105,24 @@ def post_review(runtime: Runtime, issue: str, number: int, delivery: Delivery, s
 
 
 def review_body(delivery: Delivery, labels: dict[str, str]) -> str:
-    lines = [labels["review"], "", labels["round"].format(round=delivery.review_round)]
-    lines += [f"- {item}" for item in delivery.review] or [f"- {labels['none']}"]
+    lines = [labels["review"], ""]
+    lines += [f"- {item}" for item in delivery.review] or [labels["none"]]
     return "\n".join(lines) + "\n"
 
 
 def suggest(issue: Issue, conventions: Conventions) -> str:
     """建议的分支名；项目要求个人前缀而没有配置或用了 AI 名称时，前缀留给用户填写。"""
-    kind = HOTFIX if issue.severity == URGENT else conventions.types[issue.kind]
+    kind = _kind(issue, conventions)
+    slug = kebab(str(issue.extra.get("slug") or "")) or kebab(issue.title) or issue.kind
     try:
-        return branch_name(conventions, kind=kind, issue=issue.id, slug=kebab(issue.title))
+        return branch_name(conventions, kind=kind, issue=public_id(issue), slug=slug)
     except BranchRejected:
-        return branch_name(_without_prefix(conventions), kind=kind, issue=issue.id, slug=kebab(issue.title))
+        return branch_name(_without_prefix(conventions), kind=kind, issue=public_id(issue), slug=slug)
+
+
+def _kind(issue: Issue, conventions: Conventions) -> str:
+    return branch_type(issue.kind, urgent=issue.severity == URGENT, types=conventions.types,
+                       task_type=issue.extra.get("taskType"))
 
 
 def mirror_number(issue: Issue) -> int | None:

@@ -57,7 +57,7 @@
 | `controls.assess.issue.titleMaxLength` | 80 | 标题字数上限，超长截断加省略号 |
 | `controls.assess.issue.slugMaxLength` | 40 | 英文简称(也用于分支名)的长度上限 |
 | `controls.assess.issue.newAcceptanceMax` | 5 | `new` 的验收标准超过几条时提示拆分 |
-| `controls.assess.issue.github` | 标签前缀 `tightrein:` | GitHub 镜像的参数；开关在接入清单 `release.github_issues` |
+| `controls.assess.issue.github` | 不打状态标签(`statusLabels` 假) | GitHub 镜像的参数；开关在接入清单 `release.github_issues`。写到仓库的文字不留工具痕迹：正文不带标记，只在新建时按类型打仓库已有的 bug、enhancement |
 | `boundaries.gates.issue` | `auto_low_risk` | 放行关卡 |
 
 ## 设计依据

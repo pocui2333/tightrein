@@ -20,7 +20,8 @@ def test_the_body_is_short_and_closes_the_mirror(kit, runtime, tmp_path):
     body = pull_text(issue, parse_delivery(facts, "0007"), resolve(runtime.settings, tmp_path), LABELS["zh"])
     assert body.startswith("订单页翻到第二页时显示第一页")
     assert "Closes #42" in body
-    assert "- pytest：通过" in body and "- lint：未通过(E501)" in body and "- 接受的未通过项：lint：行太长" in body
+    assert "lint 没过：E501" in body and "lint：行太长，这次先不处理。" in body and "生成" not in body
+    assert body.rstrip().endswith("Closes #42")
     assert attribution_lines(body) == []
 
 
@@ -31,7 +32,7 @@ def test_a_project_template_receives_the_same_content(kit, runtime, repos, tmp_p
     body = pull_text(issue, parse_delivery(kit.delivery_facts(tmp_path, ["src/order.py"]), "0007"),
                      resolve(runtime.settings, repos.repo), LABELS["zh"])
     assert "## Summary\n\n订单页翻到第二页时显示第一页" in body
-    assert "- pytest：通过" in body and "- [ ] tests added" in body
+    assert "本地跑过 pytest，都通过了。" in body and "- [ ] tests added" in body
 
 
 def test_mirror_numbers():
@@ -72,10 +73,12 @@ def test_the_review_summary_is_posted_once_per_round(kit, github_runtime, fake_g
     found = parse_delivery(kit.delivery_facts(tmp_path, ["src/order.py"]), "0007")
     pull = open_pull(github_runtime, issue, found, resolve(github_runtime.settings, tmp_path), fake_github)
     state = ReleaseState()
+    assert not post_review(github_runtime, "0007", pull.number, found, state, fake_github)  # 缺省不贴
+    github_runtime.settings = kit.make_settings({"controls": {"release": {"reviewComment": True}}})
     assert post_review(github_runtime, "0007", pull.number, found, state, fake_github)
     assert not post_review(github_runtime, "0007", pull.number, found, state, fake_github)
     comments = fake_github.pulls[pull.number]["comments"]
-    assert len(comments) == 1 and "不是批准" in comments[0] and "light：通过" in comments[0]
+    assert len(comments) == 1 and "tightrein" not in comments[0] and "light：通过" in comments[0]
     second = parse_delivery(kit.delivery_facts(tmp_path, ["src/order.py"], review={"round": 2, "conclusions": []}),
                             "0007")
     assert post_review(github_runtime, "0007", pull.number, second, state, fake_github)

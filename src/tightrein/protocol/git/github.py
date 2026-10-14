@@ -117,7 +117,7 @@ class RepositoryFacts:
 class NewIssue:
     title: str
     body: str
-    marker: str  # 正文中的本地标记 `<!-- tightrein:<项目>:<编号> -->`，中断后据此在远端找回
+    marker: str  # 正文中的本地标记，中断后据此在远端找回；为空时不加标记，按标题找回(正文里不留工具痕迹)
     labels: tuple[str, ...] = ()
     parent: int | None = None
     blocked_by: int | None = None
@@ -268,12 +268,20 @@ class GitHub:
         found = sorted((item["number"], item["url"]) for item in items if marker in (item.get("body") or ""))
         return IssueRef(*found[0]) if found else None
 
+    def find_title(self, title: str) -> IssueRef | None:
+        """标题完全相同的打开的 Issue；有多个时取编号最大的(刚建的那个)。"""
+        items = self._json("issue", "list", "--state", "open", "--json", "number,url,title", "--limit",
+                           str(LIST_LIMIT))
+        found = sorted((item["number"], item["url"]) for item in items if item.get("title") == title)
+        return IssueRef(*found[-1]) if found else None
+
     def issue_create(self, issue: NewIssue, *, scope: WriteScope) -> IssueRef:
         """建镜像 Issue：公开仓库拒绝；正文带本地标记，中断后按标记在远端找回，不重复建。parent、blocked_by 为 GitHub
         原生的子 Issue 与阻塞关系(gh 2.94 起支持)。"""
         if not self.repository().private:
             raise PublicRepository(f"{self.slug} 是公开仓库，不建镜像 Issue(正文含内部错误与代码位置)")
-        body = issue.body if issue.marker in issue.body else f"{issue.body.rstrip()}\n\n{issue.marker}\n"
+        body = issue.body if not issue.marker or issue.marker in issue.body \
+            else f"{issue.body.rstrip()}\n\n{issue.marker}\n"
         relations = [*(("--parent", str(issue.parent)) if issue.parent is not None else ()),
                      *(("--blocked-by", str(issue.blocked_by)) if issue.blocked_by is not None else ())]
 
@@ -285,10 +293,10 @@ class GitHub:
             return {"number": int(match.group("number")), "url": match.group(0)}
 
         def recovered() -> dict[str, Any] | None:
-            ref = self.find_marker(issue.marker)
+            ref = self.find_marker(issue.marker) if issue.marker else self.find_title(issue.title)
             return None if ref is None else {"number": ref.number, "url": ref.url}
 
-        result = once(scope, "issue-create", (issue.marker,), action, recovered)
+        result = once(scope, "issue-create", (issue.marker or issue.title,), action, recovered)
         return IssueRef(result["number"], result["url"])
 
     def issue_edit(self, number: int, title: str, body: str, *, scope: WriteScope) -> int:

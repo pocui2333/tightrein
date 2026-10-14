@@ -103,19 +103,27 @@ def test_history_inference_only_reports_a_uniform_style():
     assert few.commit.format is None and few.branch.format is None
 
 
-def test_the_generic_pr_body_has_no_fixed_sections_and_ends_with_the_verification():
-    body = git_format.pull_body(PULL, "验证结果(程序生成)：")
-    assert "## " not in body
-    assert body.index("导出时") < body.index("分组 key") < body.index("旧数据") < body.index("Closes #3") < body.index(
-        "验证结果")
+def test_the_generic_pr_body_has_no_fixed_sections_and_ends_with_the_relations():
+    body = git_format.pull_body(PULL)
+    assert "## " not in body and "---" not in body and "生成" not in body
+    assert body.index("导出时") < body.index("分组 key") < body.index("旧数据") < body.index("复现测试") < body.index(
+        "Closes #3")
     assert git_format.attribution_lines(body) == []
+
+
+def test_subjects_drop_the_models_own_prefix_and_stay_short():
+    long = "fix(AI整理): agy 报告发布成功后由程序 verify_only 核对线上题数，ok 按严格布尔判断，核对不通过记为发布失败并提醒。"
+    assert git_format.plain_subject(long) == "agy 报告发布成功后由程序 verify_only 核对线上题数"
+    assert git_format.commit_message("{type}: {summary}", kind="fix", scope=None, summary="fix: 修好翻页",
+                                     why=None) == "fix: 修好翻页\n"
+    assert git_format.title("#{issue} {summary}", kind="bugfix", summary="修好翻页", issue="0033") == "#33 修好翻页"
 
 
 def test_a_template_receives_the_same_content_under_its_headings():
     template = "## 背景\n\n<!-- 说明问题 -->\n\n## 方案\n\n## 检查清单\n\n- [ ] 已更新文档\n\n## 测试\n\n"
-    body = git_format.fill_template(template, PULL, "验证结果(程序生成)：")
+    body = git_format.fill_template(template, PULL)
     assert "## 背景\n\n导出时同一主问题拆成两条。\n\n旧数据需要重新导出。" in body
     assert "## 方案\n\n分组 key 改为主问题，改动最小。" in body and "## 检查清单\n\n- [ ] 已更新文档" in body
-    assert "## 测试\n\n- 复现测试" in body and body.rstrip().endswith("Closes #3")
-    plain = git_format.fill_template("请按团队规范填写。\n", PULL, "验证结果(程序生成)：")
+    assert "## 测试\n\n复现测试" in body and body.rstrip().endswith("Closes #3")
+    plain = git_format.fill_template("请按团队规范填写。\n", PULL)
     assert plain.startswith("请按团队规范填写。\n\n导出时")

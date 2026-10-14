@@ -8,7 +8,8 @@
 从历史推断(infer)只给出结果交接入时确认，不自动采用。
 
 格式串的占位符：分支 `{prefix}`(个人前缀，带结尾的 /，没有时为空)、`{type}`、`{issue}`(不补零的编号)、`{slug}`；
-提交 `{type}`、`{scope}`(带括号，没有范围时为空)、`{summary}`；PR 标题 `{type}`、`{summary}`。
+提交 `{type}`、`{scope}`(带括号，没有范围时为空)、`{summary}`；PR 标题 `{type}`、`{summary}`、`{issue}`。
+分支与 PR 标题里的编号是对外的编号：Issue 有 GitHub 镜像时用 GitHub 编号(人在 GitHub 上看到的)，否则用本地编号。
 不带 AI 署名：提交信息完全由程序按格式串拼出，不加 Co-Authored-By、Generated with 之类的行；个人前缀不能是 AI 或工具名。
 """
 
@@ -29,9 +30,13 @@ if TYPE_CHECKING:
 
 BRANCH_PLACEHOLDERS = ("prefix", "type", "issue", "slug")
 COMMIT_PLACEHOLDERS = ("type", "scope", "summary")
-TITLE_PLACEHOLDERS = ("type", "summary")
+TITLE_PLACEHOLDERS = ("type", "summary", "issue")
 CONVENTIONAL_COMMIT = "{type}{scope}: {summary}"
+SUBJECT_WIDTH = 64  # 提交与 PR 标题里 summary 的宽度上限(中日文一个字算 2)
+_TYPE_PREFIX = re.compile(r"^(?:feat|fix|hotfix|refactor|perf|docs|test|chore|style|build|ci|revert)(?:\([^)]*\))?!?\s*[:：]\s*",
+                          re.IGNORECASE)
 HOTFIX = "hotfix"
+REFACTOR = "refactor"
 SETTINGS, PROJECT, GENERIC = "settings", "project", "generic"
 # 个人前缀与署名里不能出现的 AI 与工具名称(小写比较)
 AI_NAMES = frozenset({"ai", "agent", "bot", "claude", "anthropic", "codex", "openai", "gpt", "gemini", "agy",
@@ -157,9 +162,13 @@ def kebab(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
 
 
-def branch_type(kind: str, *, urgent: bool, types: Mapping[str, str]) -> str:
-    """立即修的 P0 为 hotfix，其余按 Issue 种类映射。"""
-    return HOTFIX if urgent else types[kind]
+def branch_type(kind: str, *, urgent: bool, types: Mapping[str, str], task_type: str | None = None) -> str:
+    """分支与提交的类型：紧急修复取 types.hotfix(缺省 hotfix)；评估判为重构的取 types.refactor(配了才用)；其余按种类。"""
+    if urgent:
+        return types.get(HOTFIX, HOTFIX)
+    if task_type == REFACTOR and REFACTOR in types:
+        return types[REFACTOR]
+    return types[kind]
 
 
 def branch(fmt: str, *, kind: str, issue: str, slug: str, prefix: str | None = None) -> str:
@@ -204,13 +213,39 @@ def branch_problem(name: str, conventions: Conventions) -> str | None:
 def commit_message(fmt: str, *, kind: str, scope: str | None, summary: str, why: str | None) -> str:
     """第一行按格式串，空一行后写为什么这样改；不加任何署名行。"""
     check_format(fmt, COMMIT_PLACEHOLDERS)
-    first = fmt.format(type=kind, scope=f"({scope})" if scope else "", summary=summary.strip())
+    first = fmt.format(type=kind, scope=f"({scope})" if scope else "", summary=plain_subject(summary))
     return first + (f"\n\n{why.strip()}" if why and why.strip() else "") + "\n"
 
 
-def title(fmt: str, *, kind: str, summary: str) -> str:
+def title(fmt: str, *, kind: str, summary: str, issue: str = "") -> str:
+    """PR 标题；`{issue}` 为对外的 Issue 编号(有 GitHub 镜像时用 GitHub 编号，见 issue_ref)。"""
     check_format(fmt, TITLE_PLACEHOLDERS)
-    return fmt.format(type=kind, summary=summary.strip())
+    return fmt.format(type=kind, summary=plain_subject(summary), issue=issue.lstrip("0") or issue)
+
+
+def plain_subject(text: str) -> str:
+    """像人写的一行标题：去掉模型自己带的 `type(scope):` 前缀(否则与格式串叠成 `fix: fix(x): …`)、句末标点与换行；
+    超过 SUBJECT_WIDTH(中日文按两个宽度算)时在标点处截短，没有标点再硬截。"""
+    found = " ".join(text.split())
+    while (match := _TYPE_PREFIX.match(found)) is not None:
+        found = found[match.end():]
+    found = found.rstrip("。.；;，, ")
+    if _width(found) <= SUBJECT_WIDTH:
+        return found
+    cut = max((index for index, char in enumerate(found) if char in "，；,;" and _width(found[:index]) <= SUBJECT_WIDTH),
+              default=None)
+    if cut is not None and cut > 0:
+        return found[:cut]
+    kept = ""
+    for char in found:
+        if _width(kept + char) > SUBJECT_WIDTH:
+            break
+        kept += char
+    return kept.rstrip()
+
+
+def _width(text: str) -> int:
+    return sum(2 if ord(char) > 0x2E80 else 1 for char in text)
 
 
 def attribution_lines(message: str) -> list[str]:
@@ -227,25 +262,26 @@ def attribution_lines(message: str) -> list[str]:
 # PR 描述
 
 
-def pull_body(text: PullText, verification_title: str) -> str:
-    """通用的 PR 描述，不分固定小节：问题、做法、局限三段，之后是关联，最后是程序生成的验证结果。"""
+def pull_body(text: PullText) -> str:
+    """通用的 PR 描述，不分固定小节：问题、做法、局限三段，再是测试情况(一两句人话，不加分隔线与「自动生成」之类的
+    标题)，最后是关联。"""
     parts = [part.strip() for part in (text.problem, text.approach, text.limitations) if part.strip()]
+    if text.verification:
+        parts.append("\n".join(text.verification))
     if text.relations:
         parts.append("\n".join(text.relations))
-    if text.verification:
-        parts.append(f"---\n\n{verification_title}\n\n{_bullets(text.verification)}")
     return "\n\n".join(parts) + "\n"
 
 
-def fill_template(template: str, text: PullText, verification_title: str) -> str:
+def fill_template(template: str, text: PullText) -> str:
     """按项目 PR 模板的标题放进同样的内容：认得出的标题下的注释与空白由内容取代，模板原有的复选框保留；认不出的
     标题保留模板原文；模板没有对应标题的内容附在后面不丢；一个标题都认不出时在模板之后附上通用描述。"""
     contents = {"problem": text.problem.strip(), "approach": text.approach.strip(),
                 "limitations": text.limitations.strip(), "relations": "\n".join(text.relations),
-                "verification": _bullets(text.verification)}
+                "verification": "\n".join(text.verification)}
     matches = list(_TEMPLATE_HEADING.finditer(template))
     if all(_template_key(match.group(2)) is None for match in matches):
-        return template.rstrip() + "\n\n" + pull_body(text, verification_title)
+        return template.rstrip() + "\n\n" + pull_body(text)
     present = {_template_key(match.group(2)) for match in matches}
     prose = [key for key in PROSE if key in present]
     if prose:
@@ -267,9 +303,9 @@ def fill_template(template: str, text: PullText, verification_title: str) -> str
         if kept and kept != body and "- [" in kept:
             body = f"{body}\n\n{kept}"
         parts.append(f"{match.group(0)}\n\n{body}".rstrip())
-    tail = [contents["relations"]] if "relations" not in used and contents["relations"] else []
-    if "verification" not in used and contents["verification"]:
-        tail.append(f"---\n\n{verification_title}\n\n{contents['verification']}")
+    tail = [contents["verification"]] if "verification" not in used and contents["verification"] else []
+    if "relations" not in used and contents["relations"]:
+        tail.append(contents["relations"])
     return "\n\n".join(part for part in [*parts, *tail] if part) + "\n"
 
 
@@ -348,10 +384,6 @@ def infer_from_repo(git: Git) -> Inference:
 
 
 # 内部函数
-
-
-def _bullets(items: Sequence[str]) -> str:
-    return "\n".join(f"- {item}" for item in items)
 
 
 def _template_key(heading: str) -> str | None:

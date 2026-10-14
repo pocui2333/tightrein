@@ -471,7 +471,8 @@
       "slugMaxLength": 40,
       "newAcceptanceMax": 5,
       "github": {
-        "labelPrefix": "tightrein:"
+        "labelPrefix": "status:",
+        "statusLabels": false
       }
     },
     "implement": {
@@ -648,7 +649,7 @@
     },
     "release": {
       "mergeMethod": "squash",
-      "reviewComment": true
+      "reviewComment": false
     },
     "release.ci": {
       "watchInterval": "30s"

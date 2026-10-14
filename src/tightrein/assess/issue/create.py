@@ -209,8 +209,8 @@ def check_body(text: str, origin: str, snapshot: Snapshot) -> list[str]:
 
 
 def slug(finding: Finding, max_length: int, number: int) -> str:
-    """英文简称，也用作分支名：接口取路由末两段(去掉路径参数)加状态码，报错取异常类型加方法名，其余取检查类别加
-    方法名；小写连字符，截断后不留尾部连字符；取不到时为「来源-序号」。"""
+    """英文简称，也用作分支名：接口取路由末两段(去掉路径参数)加状态码，报错取异常类型加方法名，其余取具体分类加
+    方法名(不带 `static`、`probe` 这种来源名：一看就是工具起的)；小写连字符，截断后不留尾部连字符；取不到时为 `issue-<序号>`。"""
     problem = finding.problem
     evidence = signal_evidence(finding.latest)
     symbol = str(finding.latest.evidence.get("symbol") or problem.extra.get("symbol") or "").rpartition(".")[2]
@@ -221,9 +221,15 @@ def slug(finding: Finding, max_length: int, number: int) -> str:
     elif evidence.get("exceptionType"):
         words = [str(evidence["exceptionType"]).rpartition(".")[2], symbol]
     else:
-        words = [problem.check_type.partition(":")[2] or problem.check_type, symbol]
+        # 只留检查类别里的具体分类(incidental:error-handling 的 error-handling)，不留 static、probe 这种来源名
+        words = [problem.check_type.partition(":")[2], _snake_words(symbol)]
     found = normalize("-".join(word for word in words if word), max_length)
-    return found or f"{problem.source.rpartition('.')[2].replace('_', '-')}-{number}"
+    return found or f"issue-{number}"
+
+
+def _snake_words(symbol: str) -> str:
+    """方法名转成分支名用的词：去掉开头的下划线，驼峰拆开。"""
+    return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "-", symbol.lstrip("_"))
 
 
 def normalize(text: str, max_length: int) -> str:

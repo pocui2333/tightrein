@@ -29,7 +29,8 @@ def test_a_revert_pr_is_opened_but_not_merged(kit, github_runtime, fake_github, 
     message = repos.git(repos.origin, "log", "-1", "--format=%s", f"refs/heads/{branch}")
     assert message.startswith("Revert")
     assert fake_github.pulls[reverted.number]["state"] == "OPEN"
-    assert "不会自动合并" in fake_github.pulls[reverted.number]["body"]
+    body = fake_github.pulls[reverted.number]["body"]
+    assert "tightrein" not in body and "确认没问题再合进去" in body  # 口吻像人写的，不提工具
     assert not any(call[0] == "pr-merge" for call in fake_github.calls)
     assert not github_runtime.workspace.worktree("revert-0007").exists()
     assert worktree.exists()  # 修复 worktree 不动

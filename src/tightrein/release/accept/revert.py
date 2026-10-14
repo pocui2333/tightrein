@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 from tightrein.assess.issue import attempts
+from tightrein.assess.issue.github import public_id
 from tightrein.protocol.git import Conventions, Git, GitHub, WriteScope
 from tightrein.protocol.git.format import HOTFIX, BranchRejected, branch_name, kebab
 from tightrein.protocol.git.git import MergeConflict
@@ -39,9 +40,8 @@ def revert(runtime: Runtime, issue: Issue, merge_commit: str, reason: str, conve
     worktree = runtime.git.at(path)
     revert_commit(worktree, merge_commit, scope=scope)
     worktree.push(scope=scope)
-    title = f"Revert: {issue.title}"
-    body = "\n".join([f"撤销 Issue {issue.id} 的合并提交 {merge_commit[:12]}。", "", f"原因：{reason}", "",
-                      "这个 PR 由 tightrein 在部署后确认发现回归时生成，不会自动合并，请决定是否合并。"]) + "\n"
+    title = f'Revert "{issue.title}"'
+    body = "\n".join([f"撤回 {merge_commit[:7]}。", "", reason, "", "先撤回，确认没问题再合进去。"]) + "\n"
     number = github.create_pr(branch, runtime.git.main_branch, title, body, scope=scope)
     runtime.git.worktree_remove(path, scope=scope)
     return Reverted(branch, number, github.pr_view(number).url)
@@ -51,11 +51,12 @@ def revert_branch(issue: Issue, conventions: Conventions) -> str:
     """撤销分支；又一次修复尝试(assess/issue/attempts)回归时带上次数，不与上一次的撤销分支同名。"""
     number = attempts.current(issue)
     slug = f"{SLUG_PREFIX}{kebab(issue.title)}" + (f"-{number}" if number > 1 else "")
+    kind = conventions.types.get(HOTFIX, HOTFIX)
     try:
-        return branch_name(conventions, kind=HOTFIX, issue=issue.id, slug=slug)
+        return branch_name(conventions, kind=kind, issue=public_id(issue), slug=slug)
     except BranchRejected:
-        # 项目要求个人前缀而本机没配：撤销分支不带前缀，PR 里写明它由 tightrein 生成
-        return branch_name(_unprefixed(conventions), kind=HOTFIX, issue=issue.id, slug=slug)
+        # 项目要求个人前缀而本机没配：撤销分支不带前缀
+        return branch_name(_unprefixed(conventions), kind=kind, issue=public_id(issue), slug=slug)
 
 
 def revert_commit(worktree: Git, commit: str, *, scope: WriteScope) -> str:

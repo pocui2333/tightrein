@@ -86,16 +86,16 @@ def test_creating_a_local_issue_creates_the_mirror_with_a_redacted_body(mirrored
     assert "内部记录" not in created.body and "## 历史" not in created.body  # 去掉历史
     link = f"[`services/orders.py:3`](https://github.com/acme/shop/blob/{'c' * 40}/services/orders.py#L3)"
     assert link in created.body  # 代码位置换成取证 commit 的永久链接
-    assert created.marker in created.body and created.marker == "<!-- tightrein:demo:0007 -->"
-    assert created.labels == ("tightrein:todo",)
+    # 不留工具痕迹：正文不带标记，不打状态标签，只按类型打仓库已有的 bug
+    assert created.marker == "" and "tightrein" not in created.body and "<!--" not in created.body
+    assert created.labels == (("bug",) if "bug" in hub.labels() else ())
     assert mirrored.extra["github"] == {"number": 41, "url": "https://github.com/acme/shop/issues/41",
-                                        "state": "open", "label": "tightrein:todo"}
+                                        "state": "open", "label": None}
 
 
-def test_status_changes_move_the_label_and_close_or_reopen(runtime, mirrored, hub):
+def test_status_changes_close_or_reopen_without_status_labels(runtime, mirrored, hub):
     closed = transitions.close(runtime, "0007", "wont_fix")
-    assert ("label_create", "tightrein:cancelled") in hub.calls
-    assert ("labels", 41, ("tightrein:cancelled",), ("tightrein:todo",)) in hub.calls
+    assert not [call for call in hub.calls if call[0] in ("label_create", "labels")]  # 缺省不打状态标签
     assert ("close", 41, "not planned") in hub.calls
     assert issues.get(runtime.conn, "0007").extra["github"]["state"] == "closed" and closed.status == "cancelled"
     transitions.apply_event(runtime, "0007", IssueEvent.REOPEN)

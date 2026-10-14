@@ -227,7 +227,8 @@
 | `assess.issue` | `titleMaxLength` | `80` |
 | `assess.issue` | `slugMaxLength` | `40` |
 | `assess.issue` | `newAcceptanceMax` | `5` |
-| `assess.issue` | `github.labelPrefix` | `"tightrein:"` |
+| `assess.issue` | `github.labelPrefix` | `"status:"` |
+| `assess.issue` | `github.statusLabels` | `false` |
 | `implement` | `timeout` | `"2h"` |
 | `implement` | `knowledgeEntries` | `5` |
 | `implement` | `knowledgeTokens` | `3000` |
@@ -313,7 +314,7 @@
 | `implement.review.deep` | `timeout` | `"10m"` |
 | `implement.review.deep` | `pinActive` | `"5m"` |
 | `release` | `mergeMethod` | `"squash"` |
-| `release` | `reviewComment` | `true` |
+| `release` | `reviewComment` | `false` |
 | `release.ci` | `watchInterval` | `"30s"` |
 | `release.queue` | `timeLimit` | `"1h"` |
 | `release.deploy` | `assumeDeployedAfter` | `"1h"` |
