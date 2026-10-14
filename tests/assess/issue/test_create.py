@@ -2,8 +2,15 @@ import pytest
 
 from tightrein.assess import claims, notes
 from tightrein.assess.checks import Snapshot
-from tightrein.assess.issue import create, files
+from tightrein.assess.issue import body, create, files
 from tightrein.assess.issue.create import Created, Finding, IssueNotCreated
+from tightrein.implement import context as implement_context
+from tightrein.implement.context import Risk
+from tightrein.implement.design.design import SCHEMA as DESIGN_SCHEMA
+from tightrein.implement.prompts import common as implement_common
+from tightrein.implement.prompts import design as design_prompt
+from tightrein.prompts.build import build
+from tightrein.protocol.handoff import load_schema
 from tightrein.store.db import transaction
 from tightrein.store.files.json import read_json
 from tightrein.store.tables import issues, occurrences, problems
@@ -38,6 +45,109 @@ def test_a_problem_with_the_same_root_cause_is_appended_and_raises_the_severity(
     assert issue.extra["history"][-1]["note"] == "追加问题 P-0002，严重度由 P2 提升为 P1"
     assert issue.extra["rootKey"] == ["services/orders.py#OrderService.get"]  # 文件#方法，没有方法名时用行号
     assert issue.extra["plannedFiles"] == ["services/orders.py"]  # 评估预估要改的文件：调度据此不让改同一文件的并行
+
+
+def _list_output(good_output, **changes):
+    """与 P-0001 同一根因(OrderService.get)、另多一处根因(路由 show)的第二个问题。"""
+    output = good_output(
+        trigger="登录用户请求订单列表", rootCauses=[{"file": "services/orders.py", "line": 3, "symbol": "OrderService.get"},
+                                             {"file": "routes/orders.py", "line": 5, "symbol": "show"}],
+        facts=[{"location": "routes/orders.py:5", "observation": "列表直接调用服务的 get，没有带用户条件"}], **changes)
+    output["report"] = {**output["report"], "title": "[订单] 订单列表也能读到他人的订单",
+                        "summary": "订单列表逐个调用 get，同样没有按用户过滤。",
+                        "acceptance": ["用户 A 的订单列表里没有用户 B 的订单"]}
+    output["assessment"] = {**output["assessment"], "files": [{"path": "routes/orders.py", "isNew": False}],
+                            "direction": "列表按当前用户过滤"}
+    return output
+
+
+def test_an_appended_problem_is_written_into_the_body_and_the_record(runtime, repo, finding, good_output, layout):
+    """追加不只写一行历史：问题的内容按新建时的排版写进「追加的问题」，根因与预估文件并进记录，其余正文一字不动。"""
+    write(runtime, repo, finding("P-0001"))
+    before = files.read_body(layout, "0001")
+    second = finding("P-0002", output=_list_output(good_output), title="订单列表越权")
+    made = write(runtime, repo, second)
+    assert made.appended == "0001" and made.failures == []
+    text = files.read_body(layout, "0001")
+    sections = body.split(text)
+    assert list(sections)[-2:] == ["appended", "history"]  # 在「历史」之前
+    assert {key: value for key, value in sections.items() if key not in ("appended", "history")} == {
+        key: value for key, value in body.split(before).items() if key != "history"}
+    part = sections["appended"]
+    assert part.startswith("### P-0002 [订单] 订单列表也能读到他人的订单\n\n#### 结论")
+    assert "订单列表逐个调用 get，同样没有按用户过滤。" in part
+    assert "触发条件：登录用户请求订单列表" in part
+    assert "根因位置：`services/orders.py:3` OrderService.get、`routes/orders.py:5` show" in part
+    assert "`routes/orders.py:5` 列表直接调用服务的 get，没有带用户条件" in part
+    assert "#### 验收标准\n\n- [ ] 用户 A 的订单列表里没有用户 B 的订单" in part
+    assert "修复方向\n\n列表按当前用户过滤" in part
+    assert create.check_body(text, "problem", Snapshot(repo)) == []
+    # 验收标准：「验收标准」一节之后接着追加问题自己的
+    assert body.acceptance_items(text)[0] == "用户 A 请求用户 B 的订单返回 404"
+    assert "用户 A 的订单列表里没有用户 B 的订单" in body.acceptance_items(text)
+    assert implement_common.acceptance(text) == ["用户 A 请求用户 B 的订单返回 404", "用户 A 的订单列表里没有用户 B 的订单"]
+    issue = issues.get(runtime.conn, "0001")
+    assert issue.extra["rootKey"] == ["routes/orders.py#show", "services/orders.py#OrderService.get"]
+    assert [cause["file"] for cause in issue.extra["rootCauses"]] == ["services/orders.py", "routes/orders.py"]
+    assert issue.extra["plannedFiles"] == ["services/orders.py", "routes/orders.py"]
+    assert issue.extra["history"][-1]["note"] == "追加问题 P-0002"
+
+    write(runtime, repo, second)  # 已关联的问题再次评估：只记历史
+    again = files.read_body(layout, "0001")
+    assert again.count("### P-0002") == 1 and issues.get(runtime.conn, "0001").extra["problems"] == ["P-0001", "P-0002"]
+
+
+def test_a_second_appended_problem_follows_the_first_and_user_edits_stay(runtime, repo, finding, good_output, layout):
+    write(runtime, repo, finding("P-0001"))
+    path = files.body_path(layout, "0001")
+    path.write_text(path.read_text(encoding="utf-8").replace("按编号查询订单时没有按用户过滤。", "用户改过的问题描述。"),
+                    encoding="utf-8")
+    write(runtime, repo, finding("P-0002", output=_list_output(good_output), title="订单列表越权"))
+    third = _list_output(good_output)
+    third["report"] = {**third["report"], "title": "[订单] 导出也能读到他人的订单", "acceptance": ["导出只含自己的订单"]}
+    write(runtime, repo, finding("P-0003", output=third, title="导出越权"))
+    text = files.read_body(layout, "0001")
+    assert "用户改过的问题描述。" in text and text.count("## 追加的问题") == 1
+    assert text.index("### P-0002") < text.index("### P-0003") < text.index("## 历史")
+    assert implement_common.acceptance(text)[-1] == "导出只含自己的订单"
+
+
+def test_an_appended_problem_that_fails_the_checks_fails_the_handoff(runtime, repo, finding, good_output, layout):
+    write(runtime, repo, finding("P-0001"))
+    output = _list_output(good_output)
+    output["report"]["steps"] = ["昨天下午用户 A 打开订单列表"]
+    made = write(runtime, repo, finding("P-0002", output=output))
+    assert made.failures == ["0001：用了相对日期「昨天」"]
+    assert "昨天下午用户 A 打开订单列表" in files.read_body(layout, "0001")  # 与新建时一样：文件保留，交接为 failed
+
+
+def test_the_code_notes_of_an_appended_problem_are_merged(runtime, repo, finding, good_output, layout):
+    write(runtime, repo, finding("P-0001"))
+    issue_notes = notes.CodeNotes("0001", "c" * 40)
+    issue_notes.add([{"location": "services/orders.py:3", "description": "查询", "role": "core"}], repo)
+    notes.save(layout, issue_notes)
+    appended = notes.CodeNotes("P-0002", "d" * 40)
+    appended.add([{"location": "services/orders.py:3", "description": "重复的位置", "role": "core"},
+                  {"location": "routes/orders.py:5", "description": "列表入口", "role": "core"}], repo)
+    notes.save(layout, appended)
+    write(runtime, repo, finding("P-0002", output=_list_output(good_output)))
+    merged = notes.load(layout, "0001")
+    assert [entry.description for entry in merged.entries] == ["查询", "列表入口(截取于 commit dddddddddddd)"]
+    assert merged.files == ["services/orders.py", "routes/orders.py"] and merged.commit == "c" * 40
+
+
+def test_the_design_prompt_sees_an_appended_problem(runtime, repo, finding, good_output):
+    """实施的方案读正文与验收标准：追加的问题的内容与验收标准都要在提示里(只写一行历史时方案说「内容没有提供」)。"""
+    write(runtime, repo, finding("P-0001"))
+    write(runtime, repo, finding("P-0002", output=_list_output(good_output)))
+    context = implement_context.load(runtime, "0001")
+    variables = design_prompt.variables(runtime, context, risk=Risk(False, ()), replan=[], feedback=[],
+                                        design_accepted=False)
+    assert variables["acceptance"] == "- 用户 A 请求用户 B 的订单返回 404\n- 用户 A 的订单列表里没有用户 B 的订单"
+    assert variables["attempt"] == "无"  # 第一次修复
+    prompt = build("implement.design", variables, language="zh", schema=load_schema(DESIGN_SCHEMA), tool="claude").text
+    assert "## 追加的问题" in prompt and "### P-0002 [订单] 订单列表也能读到他人的订单" in prompt
+    assert "触发条件：登录用户请求订单列表" in prompt and "`routes/orders.py:5` 列表直接调用服务的 get" in prompt
 
 
 def test_root_keys_use_the_symbol_or_the_line():

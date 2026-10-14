@@ -1,7 +1,10 @@
 """Issue 正文：直接用取证时一并写好的报告(结论、问题、复现、原因、范围、验收标准)，只按模板排版。
 
-- 小节固定顺序：结论 → 问题 → 影响 → 复现 → 原因 → 范围 → 注意事项 → 验收标准 → 修复方向 → 引用 → 历史；
-  没有内容的小节不写(不再写「—」)，每个实施角色少读一些；
+- 小节固定顺序：结论 → 问题 → 影响 → 复现 → 原因 → 范围 → 注意事项 → 验收标准 → 修复方向 → 引用 → 追加的问题 →
+  历史；没有内容的小节不写(不再写「—」)，每个实施角色少读一些；
+- 追加到已有 Issue 的问题(同一根因)：这个问题按新建时的同一套小节排版、标题整体降两级(`### <问题编号> <标题>`，
+  其下 `#### 结论` 等)，接在「追加的问题」一节末尾，其余内容一字不动；它自己的验收标准留在它的一段里，
+  `acceptance_items` 与实施读验收标准时一并读出；
 - 不再加三条固定的通用验收项(复现测试先败后过、现有测试全部通过、其余行为不变)：实施的通用交付检查已有。只留
   这个 Issue 真正的要求：取证给的验收标准，其后是按来源能由采集复查的条件；
 - 按来源生成、由采集复查的条件(观察期内不再出现某指纹的问题、静态巡检不再命中、API 模糊测试通过、重新取证不成立)
@@ -21,8 +24,11 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from tightrein.store.files.markdown import demote_headings
+
 SECTIONS = ("conclusion", "problem", "impact", "reproduce", "cause", "scope", "notes", "acceptance", "direction",
-            "references", "history")
+            "references", "appended", "history")
+APPENDED_LEVELS = 2  # 追加的问题嵌进「追加的问题」一节时标题下移的级数：# 标题 → ###，## 小节 → ####
 HEADINGS: dict[str, dict[str, str]] = {
     "conclusion": {"zh": "结论", "en": "Conclusion", "ja": "結論"},
     "problem": {"zh": "问题", "en": "Problem", "ja": "問題"},
@@ -34,6 +40,7 @@ HEADINGS: dict[str, dict[str, str]] = {
     "acceptance": {"zh": "验收标准", "en": "Acceptance criteria", "ja": "受け入れ基準"},
     "direction": {"zh": "修复方向", "en": "Fix direction", "ja": "修正の方向"},
     "references": {"zh": "引用", "en": "References", "ja": "参照"},
+    "appended": {"zh": "追加的问题", "en": "Appended problems", "ja": "追加された問題"},
     "history": {"zh": "历史", "en": "History", "ja": "履歴"},
 }
 TEXTS: dict[str, dict[str, str]] = {
@@ -139,7 +146,8 @@ def title_of(output: Mapping[str, Any], claim: Mapping[str, Any], max_length: in
 
 
 def render(facts: IssueFacts, language: str) -> str:
-    """评估来的 Issue 正文；没有内容的小节不写。历史由 files.write 追加。"""
+    """评估来的 Issue 正文；没有内容的小节不写。历史由 files.write 追加。追加到已有 Issue 的问题也用它排版
+    (标题为「问题编号 标题」)，再由 add_appended 降级后写进「追加的问题」。"""
     output = facts.output
     report = output.get("report") or {}
     consequence = (output.get("impact") or {}).get("consequence")
@@ -163,6 +171,23 @@ def render_manual(issue: str, title: str, description: str, language: str) -> st
     """用户自己提的需求：「问题」为用户原文(小标题降为加粗，不打乱小节结构)，原文中验收标准一节提出来。"""
     problem, criteria = requirement_parts(description)
     return document(f"{issue} {title}", {"problem": problem, "acceptance": checkboxes(criteria)}, language)
+
+
+def add_appended(body: str, part: str, language: str) -> str:
+    """把一个追加问题的正文(render 的结果)降两级后写进「追加的问题」：已有这一节时接在节末，没有时在「历史」之前新起
+    一节(没有历史时在末尾)；其余内容一字不动，用户改过的地方不会被覆盖。"""
+    lines = body.rstrip().splitlines()
+    marks = _marks(lines, (2,))
+    keys = [key for _, _, key in marks]
+    block = [demote_headings(part.strip(), APPENDED_LEVELS)]
+    if "appended" in keys:
+        number = keys.index("appended") + 1
+        at = marks[number][0] if number < len(marks) else len(lines)
+    else:
+        at = marks[keys.index("history")][0] if "history" in keys else len(lines)
+        block.insert(0, f"## {heading('appended', language)}")
+    before, after = "\n".join(lines[:at]).rstrip(), "\n".join(lines[at:]).strip()
+    return "\n\n".join(item for item in (before, *block, after) if item) + "\n"
 
 
 def document(title: str, content: Mapping[str, str], language: str) -> str:
@@ -197,10 +222,28 @@ def requirement_parts(description: str) -> tuple[str, list[str]]:
 
 def split(body: str) -> dict[str, str]:
     """各二级小节的「键(认不出的保留标题) → 内容」；代码块里的 # 行不算标题。"""
+    lines = body.splitlines()
     found: dict[str, list[str]] = {}
-    current: list[str] | None = None
+    for key, part in _parts(lines, _marks(lines, (2,))):
+        found.setdefault(key, []).extend(part)
+    return {key: "\n".join(part).strip() for key, part in found.items()}
+
+
+def acceptance_items(body: str) -> list[str]:
+    """「验收标准」一节的条目，其后是「追加的问题」中各问题自己的验收标准(重复的只留一条)。"""
+    sections = split(body)
+    appended = sections.get("appended", "").splitlines()
+    own = [line for key, part in _parts(appended, _marks(appended, (3, 4))) if key == "acceptance" for line in part]
+    lines = [*sections.get("acceptance", "").splitlines(), *own]
+    return list(dict.fromkeys(_CHECKBOX.sub("", line[2:].strip()) for line in lines if line.startswith("- ")))
+
+
+def _marks(lines: Sequence[str], levels: Sequence[int]) -> list[tuple[int, int, str]]:
+    """代码块之外、级别在 levels 中的标题：(行号, 级别, 键(认不出的保留标题))。代码块按 CommonMark 规则闭合
+    (同种围栏、长度不短于开头)。"""
+    found: list[tuple[int, int, str]] = []
     fence: str | None = None
-    for line in body.splitlines():
+    for index, line in enumerate(lines):
         marker = _FENCE.match(line)
         if marker is not None:
             token = marker.group(1)
@@ -208,18 +251,18 @@ def split(body: str) -> dict[str, str]:
                 fence = token
             elif token[0] == fence[0] and len(token) >= len(fence):
                 fence = None
-        elif fence is None and line.startswith("## "):
-            title = line[3:].strip()
-            current = found.setdefault(_ALIASES.get(title, title), [])
             continue
-        if current is not None:
-            current.append(line)
-    return {key: "\n".join(lines).strip() for key, lines in found.items()}
+        level = len(line) - len(line.lstrip("#"))
+        if fence is None and level in levels and line[level:level + 1] == " ":
+            title = line[level + 1:].strip()
+            found.append((index, level, _ALIASES.get(title, title)))
+    return found
 
 
-def acceptance_items(body: str) -> list[str]:
-    return [_CHECKBOX.sub("", line[2:].strip()) for line in split(body).get("acceptance", "").splitlines()
-            if line.startswith("- ")]
+def _parts(lines: Sequence[str], marks: Sequence[tuple[int, int, str]]) -> list[tuple[str, list[str]]]:
+    """按标题切开：(键, 标题之后到下一个标题之前的行)；没有标题时为空。"""
+    bounds = [index for index, _, _ in marks] + [len(lines)]
+    return [(key, list(lines[index + 1:bounds[number + 1]])) for number, (index, _, key) in enumerate(marks)]
 
 
 def post_deploy(item: str) -> bool:

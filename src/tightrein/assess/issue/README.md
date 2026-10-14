@@ -7,7 +7,7 @@
 ## 流程
 
 1. **核对位置**(`create.from_problem`)：正文要引用的代码位置按只读 worktree 补全(只补全证据、根因、报告、评估)，补不全或不存在就不建，交接为 failed 并提示重新评估。
-2. **同一根因追加**：键是根因的「文件#方法」集合(没有方法名时用行号)，与任一未关闭 Issue 有交集就追加：加入问题、写历史，新问题严重度更高时提升并写明。
+2. **同一根因追加**：键是根因的「文件#方法」集合(没有方法名时用行号)，与任一未关闭 Issue 有交集就追加：加入问题、写历史，新问题严重度更高时提升并写明；这个问题的内容(问题、复现、原因、验收标准、引用等，与新建时同一套排版，标题降两级为 `### <问题编号> <标题>`)写进正文「追加的问题」一节，按新建时的检查项单独查一遍(不过同样保留文件、交接为 failed)；根因、根因键与预估要改的文件并进记录(去重)，代码笔记按「只补缺」合并，截取的 commit 不同的条目注明 commit。实施读验收标准时连同各追加问题自己的验收标准一起读(`body.acceptance_items`、`implement/prompts/common.acceptance`)。已关联的问题再次评估时只记历史，不重复追加。GitHub 镜像不随追加更新正文(同步只在新建、放行、关闭、重开时做)。
 3. **新建**：编号取 `sequences` 的 issue 序列与 `naming.issue_id`；粗规模档为「大」且根因分布在几个模块的，按模块拆成几个 Issue。
 4. **排版**(`body.py`)：正文直接用取证报告，去掉空小节，不再加三条固定的通用验收项；验收标准是取证给的条件加按来源能由采集复查的条件。观察类来源的「部署后的观察期内不再出现指纹为…的问题」只能在部署后确认，是验收阶段的标准(`body.post_deploy`)：方案不对应、审查不判断，由发布的验收按指纹确认。
 5. **放行**：缺省待决定(写 `90-issue-pending.md`)；`boundaries.gates.issue` 为 `auto…` 且低风险(没有安全、数据、权限类标记且规模为小)时直接待修。
@@ -19,7 +19,7 @@
 
 - 文件(Issue 目录 `data/issues/<编号>/`)：`00-issue-record.json`(记录，issues 表是它的索引，可重建)、`00-issue-body.md`(正文，用户可改)、`00-issue-notes.json`(代码笔记)、`22-assess.issue-handoff.json`。
 - issues 表：status、title、severity、kind(bug、feature)、origin(problem、user)、gate、stage、step、round 等；其余在 `extra`：slug、problems、rootCauses、rootKey、plannedFiles(评估预估要改的文件，调度据此不让改同一文件的 Issue 并行)、triageCommit、treatment、size、taskType、labels、history、closeReason、hold、blockedBy(前置 Issue)、github 等。
-- 正文的小节：结论、问题、影响、复现、原因、范围、注意事项、验收标准、修复方向、引用、历史；标题按项目语言(zh、en、ja)，读取时三种语言的标题都认。
+- 正文的小节：结论、问题、影响、复现、原因、范围、注意事项、验收标准、修复方向、引用、追加的问题、历史；标题按项目语言(zh、en、ja)，读取时三种语言的标题都认。
 
 ### 修复尝试(`attempts.py`)
 

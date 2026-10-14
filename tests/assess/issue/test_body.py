@@ -107,3 +107,23 @@ def test_user_headings_become_bold_and_acceptance_is_lifted_out():
                                                "- [x] 有备注列\n* 空值留空\n")
     assert problem == "**需求**\n导出带备注\n**细节**\n- 列名叫备注"
     assert criteria == ["有备注列", "空值留空"]
+
+
+def test_appended_problems_go_before_the_history_and_leave_the_rest_alone():
+    """追加的问题按新建时的排版、标题降两级写进「追加的问题」；代码块里的 # 行不动，验收标准连同各追加问题的一起读出。"""
+    entry = {"at": "2026-10-08T03:00:00Z", "event": "create", "actor": "tightrein", "reason": None, "note": None}
+    original = body.append_history(body.document("0007 订单越权", {"problem": "原来的问题",
+                                                                "acceptance": "- [ ] 原来的标准"}, "zh"), [entry], "zh")
+    first = body.document("P-0002 列表越权", {"problem": "列表也越权", "acceptance": "- [ ] 列表只有自己的\n- [ ] 原来的标准",
+                                            "references": "```\n## 不是标题\n```"}, "zh")
+    text = body.add_appended(original, first, "zh")
+    assert list(body.split(text)) == ["problem", "acceptance", "appended", "history"]
+    assert text.startswith(original.split("## 历史")[0])  # 原有内容一字不动
+    assert "## 追加的问题\n\n### P-0002 列表越权\n\n#### 问题\n\n列表也越权" in text
+    assert "#### 引用\n\n```\n## 不是标题\n```" in text
+    second = body.document("P-0003 导出越权", {"problem": "导出也越权", "acceptance": "- [ ] 导出只有自己的"}, "zh")
+    text = body.add_appended(text, second, "zh")
+    assert text.count("## 追加的问题") == 1 and text.index("### P-0002") < text.index("### P-0003") < text.index("## 历史")
+    assert body.acceptance_items(text) == ["原来的标准", "列表只有自己的", "导出只有自己的"]
+    assert body.add_appended("# 0008 x\n\n## Problem\n\ntext\n", second, "en").endswith(
+        "## Appended problems\n\n### P-0003 导出越权\n\n#### 问题\n\n导出也越权\n\n#### 验收标准\n\n- [ ] 导出只有自己的\n")

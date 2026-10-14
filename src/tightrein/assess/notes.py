@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -138,14 +138,17 @@ def save(layout: WorkspaceLayout, notes: CodeNotes) -> None:
 
 
 def copy_to(layout: WorkspaceLayout, notes: CodeNotes, subject: str) -> CodeNotes:
-    """问题的笔记交给 Issue(写成 Issue 时)；已有的 Issue 笔记按「只补缺」合并。"""
+    """问题的笔记交给 Issue(写成 Issue 时)；已有的 Issue 笔记(问题追加到已有 Issue 时)按「只补缺」合并，截取时的
+    commit 与 Issue 笔记不同的条目在说明后注明是在哪个 commit 截取的(笔记开头只写 Issue 笔记自己的 commit)。"""
     existing = load(layout, subject)
     if existing is None:
         moved = CodeNotes(subject, notes.commit, list(notes.entries), list(notes.files), notes.trigger)
     else:
         moved = existing
         known = {entry.location for entry in moved.entries}
-        moved.entries += [entry for entry in notes.entries if entry.location not in known]
+        other = f"(截取于 commit {notes.commit[:12]})" if notes.commit != moved.commit else ""
+        moved.entries += [replace(entry, description=entry.description + other) for entry in notes.entries
+                          if entry.location not in known]
         moved.files += [path for path in notes.files if path not in moved.files]
         moved.trigger = moved.trigger or notes.trigger
     save(layout, moved)

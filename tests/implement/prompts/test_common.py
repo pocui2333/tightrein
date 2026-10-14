@@ -35,6 +35,15 @@ def test_acceptance_criteria_are_read_from_their_section() -> None:
     assert common.acceptance("没有这一节") == []
 
 
+def test_criteria_of_appended_problems_are_read_too() -> None:
+    """正文「追加的问题」中各问题自己的验收标准一并读出(重复的只留一条)；只认以「验收标准」开头的标题，标题里提到
+    验收的 Issue 与问题不算。"""
+    body = ("# 0007 验收标准页面打不开\n\n## 问题\n\n- 不是验收标准\n\n## 验收标准\n\n- [ ] 页面能打开\n\n"
+            "## 追加的问题\n\n### P-0002 验收标准页面的按钮没反应\n\n#### 问题\n\n- 也不是\n\n"
+            "#### 验收标准\n\n- [ ] 按钮有反应\n- [ ] 页面能打开\n\n#### 引用\n\n- `a.py:1` 不算\n\n## 历史\n- 不算\n")
+    assert common.acceptance(body) == ["页面能打开", "按钮有反应"]
+
+
 def test_criteria_confirmed_only_after_deploy_are_left_to_acceptance() -> None:
     """方案不要求对应、审查不判断部署后才能确认的标准(44 号计划 6「验收：只做实施阶段做不到的」)。"""
     body = ("## 验收标准\n\n- [ ] average([]) 返回 0\n"

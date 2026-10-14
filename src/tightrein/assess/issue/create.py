@@ -1,7 +1,9 @@
 """写成 Issue：新建、追加到同一根因的 Issue、按根因或模块拆分、用户自己提的需求、实施退回的拆分。纯程序，不调用模型。
 
 - 同一根因追加：键是根因的「文件#方法」集合(没有方法名时用行号，比只用行号稳)，与任一未关闭 Issue 的键有交集就
-  追加；追加时加入问题、写历史，新问题严重度更高时提升 Issue 的严重度并写明；
+  追加；追加时加入问题、写历史，新问题严重度更高时提升 Issue 的严重度并写明；这个问题的内容按新建时的同一套小节
+  排版，写进正文「追加的问题」(实施各步读的是正文，只有一行历史就不知道追加的是什么)，按新建时的检查项单独查一遍；
+  根因、根因键与预估要改的文件并进记录(去重)，代码笔记按「只补缺」合并；已关联的问题再次评估时不重复追加；
 - 新建前核对正文要引用的代码位置(只补全证据、根因、报告、评估，不改主张与信号原文)：补不全或不存在就不建，交接
   为 failed 并提示重新评估；建好后按检查项(必需小节、位置真实、日期为绝对日期)再查一遍，不过就保留文件、交接为
   failed；
@@ -144,7 +146,7 @@ def from_problem(runtime: Runtime, finding: Finding, snapshot: Snapshot, made: C
     existing = same_root(runtime, root_key(causes))
     if existing is not None:
         made.remember(runtime.workspace, existing.id)
-        append(runtime, existing, finding)
+        made.failures += [f"{existing.id}：{reason}" for reason in append(runtime, existing, finding, snapshot)]
         made.issues, made.appended = [existing.id], existing.id
         return made
     created = made
@@ -167,17 +169,44 @@ def from_problem(runtime: Runtime, finding: Finding, snapshot: Snapshot, made: C
     return created
 
 
-def append(runtime: Runtime, issue: Issue, finding: Finding) -> Issue:
+def append(runtime: Runtime, issue: Issue, finding: Finding, snapshot: Snapshot) -> list[str]:
+    """追加到同一根因的 Issue；返回追加的内容没过检查的原因(与新建时一样：文件保留，交接为 failed)。"""
     severity = higher(finding.severity, issue.severity)
-    note = f"追加问题 {finding.problem.id}"
+    problem = finding.problem
+    note = f"追加问题 {problem.id}"
     if severity != issue.severity:
         note += f"，严重度由 {issue.severity} 提升为 {severity}"
     extra = dict(issue.extra)
-    extra[PROBLEMS] = [*extra.get(PROBLEMS, []), finding.problem.id]
+    text: str | None = None
+    failures: list[str] = []
+    added = problem.id not in (extra.get(PROBLEMS) or [])  # 已关联的问题再次评估：只记历史，不重复追加
+    if added:
+        extra[PROBLEMS] = [*extra.get(PROBLEMS, []), problem.id]
+        _merge_causes(extra, finding.output)
+        title = body.title_of(finding.output, finding.claim.to_json(),
+                              int(runtime.settings.section(POINT)["titleMaxLength"]))
+        part = body.render(_issue_facts(runtime, finding, problem.id, title), runtime.language)
+        failures = check_body(part, "problem", snapshot)
+        current = files.read_body(runtime.workspace, issue.id)
+        text = body.add_appended(current, part, runtime.language) if current else None
     extra[HISTORY] = [*extra.get(HISTORY, []), _entry(runtime, "append", note)]
     updated = replace(issue, severity=severity, extra=extra)
-    files.write(runtime, updated)
-    return updated
+    files.write(runtime, updated, body=text)
+    notes = code_notes.load(runtime.workspace, problem.id) if added else None
+    if notes is not None:
+        code_notes.copy_to(runtime.workspace, notes, issue.id)
+    return failures
+
+
+def _merge_causes(extra: dict[str, Any], output: Mapping[str, Any]) -> None:
+    """追加的问题的根因、根因键与预估要改的文件并进 Issue 的记录(去重，保持先后)：调度按它们判断能否并行，同一根因的
+    后续问题也按并进来的根因键找到这个 Issue。"""
+    causes = [*(extra.get("rootCauses") or []), *(output.get("rootCauses") or [])]
+    seen = {(cause["file"], cause.get("line"), cause.get("symbol")): dict(cause) for cause in causes}
+    extra["rootCauses"] = list(seen.values())
+    extra["rootKey"] = sorted({*(extra.get("rootKey") or []), *root_key(list(seen.values()))})
+    planned = [str(item["path"]) for item in (output.get("assessment") or {}).get("files") or []]
+    extra["plannedFiles"] = list(dict.fromkeys([*(extra.get("plannedFiles") or []), *planned]))
 
 
 def split_groups(causes: Sequence[Mapping[str, Any]]) -> list[list[Mapping[str, Any]]]:
@@ -352,13 +381,7 @@ def _new_record(runtime: Runtime, finding: Finding, split: bool) -> tuple[Issue,
         module = module_of(str(finding.output["rootCauses"][0]["file"]))
         title = f"{title}({module})"
     problem = finding.problem
-    role = signal_evidence(finding.latest).get("role")
-    facts = body.IssueFacts(
-        issue=identifier, title=title, severity=finding.severity, output=finding.output,
-        claim=finding.claim.to_json(), commit=finding.commit, introduced=finding.introduced, labels=finding.labels,
-        probe_acceptance=body.probe_acceptance(problem.source, problem.location, problem.check_type,
-                                               problem.fingerprint, role, runtime.language),
-        problems=((problem.id, problem.title),))
+    facts = _issue_facts(runtime, finding, identifier, title)
     auto = gate_is_auto(GATE, runtime.settings) and (low_risk(finding) or gate_is_auto_all(GATE, runtime.settings))
     status = IssueStatus.TODO if auto else IssueStatus.NEEDS_DECISION
     causes = list(finding.output.get("rootCauses") or [])
@@ -376,6 +399,18 @@ def _new_record(runtime: Runtime, finding: Finding, split: bool) -> tuple[Issue,
                APPROVED_AT: format_iso(runtime.clock.now()) if auto else None,
                HISTORY: [_entry(runtime, "create", note)]})
     return record, body.render(facts, runtime.language)
+
+
+def _issue_facts(runtime: Runtime, finding: Finding, identifier: str, title: str) -> body.IssueFacts:
+    """排版正文要用的东西：新建的 Issue 与追加到已有 Issue 的问题用同一份。"""
+    problem = finding.problem
+    role = signal_evidence(finding.latest).get("role")
+    return body.IssueFacts(
+        issue=identifier, title=title, severity=finding.severity, output=finding.output,
+        claim=finding.claim.to_json(), commit=finding.commit, introduced=finding.introduced, labels=finding.labels,
+        probe_acceptance=body.probe_acceptance(problem.source, problem.location, problem.check_type,
+                                               problem.fingerprint, role, runtime.language),
+        problems=((problem.id, problem.title),))
 
 
 def _subset(output: Mapping[str, Any], causes: Sequence[Mapping[str, Any]]) -> dict[str, Any]:

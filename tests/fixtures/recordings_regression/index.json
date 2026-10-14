@@ -18,7 +18,7 @@
       "dir": "02-implement.design",
       "tool": "claude",
       "exitCode": 0,
-      "sha256": "65215549749b6e336d43ded56f010e6cf66ecd788a48e560c9c71bee9293a46f"
+      "sha256": "10922d748a3f322852a8b8e78814d5e1b4063b83d7ec6b00e5d3724db77bad46"
     },
     {
       "point": "implement.code",
@@ -68,7 +68,7 @@
       "dir": "07-implement.design-c2",
       "tool": "claude",
       "exitCode": 0,
-      "sha256": "e8b18512d5549d510952253e8f07f5849bc0cf03f1f3ee8029858f65dc018b6f"
+      "sha256": "7fd460afe0302aaf65f2de3673a75ea7527eabaaa8853846139be9b0ed44967e"
     },
     {
       "point": "implement.code",

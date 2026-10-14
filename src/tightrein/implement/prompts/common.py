@@ -180,11 +180,12 @@ def plan_view(plan: Mapping[str, Any], keys: Sequence[str]) -> dict[str, Any]:
 
 
 def acceptance(body: str) -> list[str]:
-    """Issue 正文「验收标准」一节中实施阶段要满足的条目原文(方案逐条对应、审查逐条核对)。
+    """Issue 正文中实施阶段要满足的验收标准原文(方案逐条对应、审查逐条核对)：「验收标准」一节，其后是「追加的问题」中
+    各问题自己的「验收标准」(assess/issue/body.add_appended)；重复的只留一条。每节从以「验收标准」(各语言)开头的标题起，
+    到同级或更高级的标题为止；只看开头，标题里提到验收的问题(`### P-0061 验收标准页面…`)不算。
 
     只能在部署后确认的(按来源生成、由采集复查的「观察期内不再出现…」「静态巡检…不再命中」等，assess/issue/body.post_deploy)
-    不在其中：它是验收
-    阶段的标准，由发布的验收按关联问题的出现确认(44 号计划 6「验收：只做实施阶段做不到的」)。"""
+    不在其中：它是验收阶段的标准，由发布的验收按关联问题的出现确认(44 号计划 6「验收：只做实施阶段做不到的」)。"""
     found: list[str] = []
     level: int | None = None
     for line in body.splitlines():
@@ -192,15 +193,15 @@ def acceptance(body: str) -> list[str]:
         if heading is not None:
             depth, title = len(heading.group(1)), heading.group(2).strip().lower()
             if level is not None and depth <= level:
-                break
-            if level is None and any(word in title for word in ACCEPTANCE_HEADINGS):
+                level = None
+            if level is None and title.startswith(ACCEPTANCE_HEADINGS):
                 level = depth
             continue
         if level is not None:
             bullet = _BULLET.match(line)
             if bullet is not None and not post_deploy(bullet.group(1)):
                 found.append(bullet.group(1).strip())
-    return found
+    return list(dict.fromkeys(found))
 
 
 def _option(option: int | None) -> str:
