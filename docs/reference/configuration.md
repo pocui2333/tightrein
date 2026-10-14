@@ -319,6 +319,7 @@
 | `implement.review.deep` | `pinActive` | `"8m"` |
 | `release` | `mergeMethod` | `"squash"` |
 | `release` | `reviewComment` | `false` |
+| `release` | `conflictReturns` | `2` |
 | `release.ci` | `watchInterval` | `"30s"` |
 | `release.queue` | `timeLimit` | `"1h"` |
 | `release.deploy` | `assumeDeployedAfter` | `"1h"` |

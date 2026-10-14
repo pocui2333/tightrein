@@ -658,7 +658,8 @@
     },
     "release": {
       "mergeMethod": "squash",
-      "reviewComment": false
+      "reviewComment": false,
+      "conflictReturns": 2
     },
     "release.ci": {
       "watchInterval": "30s"

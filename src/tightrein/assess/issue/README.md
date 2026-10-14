@@ -34,7 +34,7 @@
 | APPROVE | needs_decision | accepting / releasing / implementing / todo | 按停下时记下的状态与阶段(hold.status、hold.stage)：验收中停下的回到 accepting，发布阶段停下的回到 releasing，实施中停下的回到 implementing(保留步骤与轮次，从停下处接着做)，其余(立项放行)为 todo；只在第一次放行时写 `extra.approvedAt`(合并队列排序，再放行不改) |
 | APPROVE | todo(用户需求) | 不变 | 照常申请建修复分支 |
 | REJECT | needs_decision | cancelled | reason 为 wont_fix、duplicate、not_a_bug |
-| START | todo、implementing、releasing | implementing | releasing：合并主干后改到同一文件或解决过冲突，退回实施重新审查 |
+| START | todo、implementing、releasing | implementing | releasing：合并主干后改到同一文件或解决过冲突，退回实施重新自检与审查；合并主干冲突，退回编码解决 |
 | DELIVER | implementing | releasing | |
 | MERGE | releasing | accepting | |
 | ACCEPT | accepting | done | 关闭原因 fixed；评估结论回填「判对」 |

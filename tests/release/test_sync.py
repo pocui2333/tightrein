@@ -1,5 +1,5 @@
 """同步 main：main 没动时不做事；只改别的文件时合并且不必重审；改到同一文件时报交集(从 merge-base 算)；冲突时
-写报告、记下冲突文件并停下，不自行取舍；用户解决后检查冲突标记、记下取了哪一侧再完成合并。"""
+写报告、放弃这次合并、带上冲突退回编码；退回次数用完后停下等人，用户解决后检查冲突标记、记下取了哪一侧再完成合并。"""
 
 import pytest
 
@@ -36,12 +36,28 @@ def test_overlap_counts_only_files_main_changed(kit, runtime, repos, worktree):
     assert result.overlap == ("src/order.py",) and result.needs_review
 
 
-def test_conflicts_are_reported_and_resolved_by_the_user(kit, runtime, repos, worktree):
+def test_conflicts_are_reported_and_handed_back_to_coding(kit, runtime, repos, worktree):
+    found = _fix(kit, repos, worktree, {"src/order.py": "PAGE = 0\n"})
+    main = repos.upstream("fix: page two", {"src/order.py": "PAGE = 2\n"})
+    git = runtime.git.at(worktree)
+    before = repos.head(worktree)
+    result = sync(runtime, "0007", found, ReleaseState(), git)
+    assert result.conflicts == ("src/order.py",) and result.main == main and result.merged is None
+    assert result.main_commits == (f"{main[:12]} fix: page two",)
+    report = next(runtime.workspace.issue_dir("0007").glob("41-release.pr-evidence.md")).read_text(encoding="utf-8")
+    assert result.report is not None and result.report.endswith("41-release.pr-evidence.md")
+    assert "PAGE = 0" in report and "PAGE = 2" in report and "退回编码" in report
+    # 放弃了这次合并：工作区回到合并前，冲突文件原样
+    assert git.merge_head() is None and git.status().clean and repos.head(worktree) == before
+    assert (worktree / "src/order.py").read_text(encoding="utf-8") == "PAGE = 0\n"
+
+
+def test_conflicts_after_the_returns_are_used_up_are_resolved_by_the_user(kit, runtime, repos, worktree):
     found = _fix(kit, repos, worktree, {"src/order.py": "PAGE = 0\n"})
     repos.upstream("fix: page two", {"src/order.py": "PAGE = 2\n"})
-    state = ReleaseState()
+    state = ReleaseState(conflict_returns=2)  # release.conflictReturns 缺省 2
     git = runtime.git.at(worktree)
-    with pytest.raises(ReleaseBlocked, match="冲突：src/order.py") as blocked:
+    with pytest.raises(ReleaseBlocked, match="已退回编码解决 2 次仍冲突.*src/order.py") as blocked:
         sync(runtime, "0007", found, state, git)
     assert state.conflicts == ["src/order.py"]
     report = next(runtime.workspace.issue_dir("0007").glob("41-release.pr-evidence.md")).read_text(encoding="utf-8")

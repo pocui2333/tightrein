@@ -30,7 +30,7 @@ def move(issue: Issue, event: IssueEvent, clock, reason: str | None = None) -> I
     (E.REJECT, "needs_decision", "不值得修", "problem", "cancelled"),
     (E.START, "todo", None, "problem", "implementing"),
     (E.START, "implementing", None, "problem", "implementing"),
-    (E.START, "releasing", None, "problem", "implementing"),  # 合并主干后改到同一文件：退回实施重新审查
+    (E.START, "releasing", None, "problem", "implementing"),  # 合并主干后改到同一文件、冲突：退回实施
     (E.DELIVER, "implementing", None, "problem", "releasing"),
     (E.MERGE, "releasing", None, "problem", "accepting"),
     (E.ACCEPT, "accepting", None, "problem", "done"),

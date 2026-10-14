@@ -1,5 +1,5 @@
 """发布的流程(本地真 git + 假 GitHub)：提交 → 推送 → PR → 等 CI → 合并一次走完并转为验收中；PR 被关闭且未合并时
-以修复未采纳取消并记下用户说明；合并 main 改到同一文件时退回实施重新审查；冲突时转为待决定并留下冲突文件清单；
+以修复未采纳取消并记下用户说明；合并 main 改到同一文件时退回实施重新自检与审查；冲突时退回编码解决，退回次数用完后转为待决定并留下冲突文件清单；
 验收通过转为完成、写交付文档并清理本地；回归时先提撤销 PR(只提一次)、清理修复目录，再退回待修并开下一次修复尝试；不在发布中的不碰；前置条件过期时
 留在发布中、下次重新观察；接入清单不启用验收时部署即完成、不观察。"""
 
@@ -91,21 +91,51 @@ def test_main_touching_the_same_file_goes_back_to_review(kit, github_runtime, re
     repos.commit(worktree, "fix: page", {"src/order.py": kit.FIX_ORDER})
     repos.upstream("feat: size", {"src/order.py": kit.MAIN_ORDER})
     outcome = release(github_runtime, "0007")
-    assert outcome.next_point == "implement.review" and "src/order.py" in outcome.summary
+    assert outcome.next_point == "implement.check" and "src/order.py" in outcome.summary
     issue = issues.get(github_runtime.conn, "0007")
-    assert issue.status == "implementing" and issue.step == "implement.review"
+    assert issue.status == "implementing" and issue.step == "implement.check"
     assert repos.git(repos.origin, "branch", "--list", kit.BRANCH) == ""  # 没有推送
+    facts = _handoff_facts(github_runtime)
+    # 实施据 backTo 接着做；合并过 main 后 HEAD 变了，检查点取合并之后的 commit
+    assert facts["backTo"] == "implement.check" and facts["worktreeCommit"] == repos.head(worktree)
 
 
-def test_conflicts_stop_for_a_decision(kit, github_runtime, repos, worktree, documents_written):
+def test_conflicts_go_back_to_coding_until_the_returns_are_used_up(kit, github_runtime, repos, worktree,
+                                                                   documents_written, simple_transitions):
     _ready(kit, github_runtime, repos, worktree)
-    repos.upstream("fix: page two", {"src/order.py": "PAGE = 2\n"})
+    main = repos.upstream("fix: page two", {"src/order.py": "PAGE = 2\n"})
     outcome = release(github_runtime, "0007")
-    assert outcome.status == Status.PENDING and "冲突" in outcome.summary
+    assert (outcome.status, outcome.next_point) == (Status.PASSED, "implement.code") and "冲突" in outcome.summary
+    issue = issues.get(github_runtime.conn, "0007")
+    assert issue.status == "implementing" and issue.step == "implement.code"
+    assert load_state(issue).conflict_returns == 1 and documents_written == []
+    facts = _handoff_facts(github_runtime)
+    assert facts["backTo"] == "implement.code" and facts["main"] == main and facts["conflicts"] == ["src/order.py"]
+    assert facts["mainCommits"] == [f"{main[:12]} fix: page two"] and facts["returns"] == 1
+    assert facts["worktreeCommit"] == repos.head(worktree)
+    assert _clean(github_runtime, worktree)  # 发布放弃了这次合并
+    assert simple_transitions == [("0007", "start", None)]
+
+    # 退回次数用完(release.conflictReturns 缺省 2)：照旧停下等人
+    issue.status, issue.extra = "releasing", {**issue.extra, "release": {**issue.extra["release"],
+                                                                         "conflict_returns": 2}}
+    issues.save(github_runtime.conn, issue, github_runtime.clock)
+    blocked = release(github_runtime, "0007")
+    assert blocked.status == Status.PENDING and "已退回编码解决 2 次仍冲突" in blocked.summary
     issue = issues.get(github_runtime.conn, "0007")
     assert issue.status == "needs_decision"
     assert load_state(issue).conflicts == ["src/order.py"]
     assert [kind for kind, _, _ in documents_written] == ["pending"]
+
+
+def _handoff_facts(runtime):
+    path = runtime.workspace.issue_dir("0007") / "41-release.pr-handoff.json"
+    return json.loads(path.read_text(encoding="utf-8"))["facts"]
+
+
+def _clean(runtime, worktree):
+    git = runtime.git.at(worktree)
+    return git.merge_head() is None and git.status().clean
 
 
 def test_acceptance_waits_then_passes_and_cleans_up(kit, github_runtime, repos, worktree, documents_written,

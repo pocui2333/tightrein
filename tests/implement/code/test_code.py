@@ -205,3 +205,72 @@ def test_a_check_with_more_problems_rolls_back_to_the_checkpoint(world: Any, mon
     assert result.facts["rolledBackTo"] == 1
     assert fake.requests[1].variables["corrections"].startswith("- 上一轮的改动已撤销，worktree 已恢复到第 1 轮的检查点")
     assert Path(world.repo.path / "src/orders.py").read_text() == FIX["src/orders.py"]
+
+
+# 发布合并 main 冲突，退回编码解决
+
+MAIN_ORDERS = "def recent(days):\n    return days + 1\n"
+FIX_ORDERS = "def recent(days):\n    return days * 7\n"
+BOTH_ORDERS = "def recent(days):\n    return days * 7 + 1\n"
+
+
+def _conflicting(world: Any) -> tuple[Any, str]:
+    """main 与修复分支都改了 src/orders.py 的同一行；发布放弃了合并、退回编码(release.pr 的 backTo)。"""
+    main = world.repo.commit("feat: one more day", {"src/orders.py": MAIN_ORDERS})
+    world.repo.git("checkout", "-q", "-b", "fix/18-orders", world.repo.base)
+    world.repo.commit("fix: week", {"src/orders.py": FIX_ORDERS})
+    returned = world.handoff("release.pr", {"backTo": code.POINT, "main": main, "conflicts": ["src/orders.py"],
+                                            "mainCommits": [f"{main[:12]} feat: one more day"]})
+    return replace(_context(world, round=2), returned=returned), main
+
+
+def test_a_round_sent_back_for_conflicts_merges_main_and_commits_the_resolution(
+        world: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    context, main = _conflicting(world)
+    fixed = world.repo.git("rev-parse", "HEAD").strip()
+    fake = _install(monkeypatch, world, ({"src/orders.py": BOTH_ORDERS}, _output(), CallStatus.OK))
+    result = code.run(world.runtime, context)
+    assert result.status is Status.PASSED
+    corrections = fake.requests[0].variables["corrections"]
+    assert corrections.startswith("- 发布前合并最新的 origin/main") and "冲突标记：src/orders.py" in corrections
+    assert "feat: one more day" in corrections and "保留两侧的意图" in corrections
+    git = world.git()
+    head = git.head().commit
+    assert git.merge_head() is None and git.status().clean
+    assert world.repo.git("log", "-1", "--format=%P").split() == [fixed, main]  # 程序完成的合并提交
+    assert world.repo.git("log", "-1", "--format=%s").strip() == "Merge origin/main into fix/18-orders"
+    assert result.facts["mergedMain"] == {"main": main, "conflicts": ["src/orders.py"], "commit": head}
+    # 本轮改动相对合并进来的 main 算
+    assert result.facts["baseCommit"] == main and result.facts["diffHash"] == git.diff_hash(main)
+    assert [item["path"] for item in result.facts["changedFiles"]] == ["src/orders.py"]
+
+
+def test_an_unresolved_conflict_drops_the_merge_for_the_next_round(world: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    context, _ = _conflicting(world)
+    fixed = world.repo.git("rev-parse", "HEAD").strip()
+    _install(monkeypatch, world, ({"tests/test_new.py": "def test_x():\n    pass\n"}, _output(), CallStatus.OK))
+    result = code.run(world.runtime, context)
+    assert result.status is Status.FAILED and result.facts["blockers"][0]["category"] == LOCAL
+    assert "冲突没解决完" in result.summary
+    git = world.git()
+    # 放弃了合并，worktree 回到这一轮开始时(新文件也清掉)，下一轮重新合并
+    assert git.merge_head() is None and git.status().clean and git.head().commit == fixed
+    assert code.merge.pending(context, git) is not None
+
+
+def test_mutually_exclusive_sides_go_to_the_user(world: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    context, _ = _conflicting(world)
+    big = {"description": "两侧都改了 recent 的返回值：一侧按周、一侧加一天", "locations": ["src/orders.py:2"]}
+    _install(monkeypatch, world, ({}, _output(status="aborted", bigIssue=big, release=None), CallStatus.OK))
+    result = code.run(world.runtime, context)
+    assert result.status is Status.FAILED and result.facts["blockers"][0]["category"] == NEEDS_USER
+    assert result.summary.startswith("合并 main 的冲突无法兼顾两侧") and world.git().merge_head() is None
+
+
+def test_after_the_merge_later_rounds_do_not_merge_again(world: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    context, main = _conflicting(world)
+    world.repo.git("merge", "-q", "-s", "ours", "--no-edit", main)
+    assert code.merge.pending(context, world.git()) is None
+    fake = _install(monkeypatch, world, ({}, _output(), CallStatus.OK))
+    code.run(world.runtime, context)
+    assert not fake.requests[0].variables["corrections"].startswith("- 发布前合并")

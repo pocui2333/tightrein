@@ -1,4 +1,4 @@
-"""实施的上下文：Issue、代码笔记、用户的决定与补充、各小步骤最近一次的交接。
+"""实施的上下文：Issue、代码笔记、用户的决定与补充、各小步骤最近一次的交接，以及交付之后发布的退回。
 
 各小步骤的入口统一为 `run(runtime, context) -> Handoff`：只读 context，交出这一步的 handoff(由 implement.py 落盘、推进)。
 """
@@ -69,6 +69,7 @@ class ImplementContext:
     round: int  # 编码、自检、审查这一圈的轮次，从 1 起
     latest: dict[str, Handoff] = field(default_factory=dict)  # 每个小步骤最近一次的交接
     risk: Risk | None = None
+    returned: Handoff | None = None  # 最近一次交付之后发布退回实施的交接(release.pr，带 backTo)；没有为 None
 
     def last(self, point: str) -> Handoff | None:
         return self.latest.get(point)
@@ -81,6 +82,9 @@ ACTOR = "tightrein"  # 程序自己触发的转换，不是用户的决定
 PREPARE = "implement.prepare"
 DESIGN = "implement.design"
 CODE = "implement.code"
+DELIVER = "implement.deliver"
+RELEASE_PR = "release.pr"  # 发布的提交、同步、推送、提 PR 记在这一步；退回实施也由它记
+BACK_TO = "backTo"  # 交接中「退回到哪一步」的键(交付回到自检或审查、发布退回编码或自检)
 
 
 def load(runtime: Runtime, issue: str) -> ImplementContext:
@@ -93,9 +97,15 @@ def load(runtime: Runtime, issue: str) -> ImplementContext:
     if record is None:
         raise LookupError(f"没有 Issue {issue}")
     latest: dict[str, Handoff] = {}
+    returned: Handoff | None = None
     for checkpoint in recovery.checkpoints(runtime.workspace, issue):
-        if checkpoint.handoff.point in STEPS:
-            latest[checkpoint.handoff.point] = checkpoint.handoff
+        point = checkpoint.handoff.point
+        if point in STEPS:
+            latest[point] = checkpoint.handoff
+        if point == DELIVER:
+            returned = None  # 重新交付之后，之前的退回已处理完
+        elif point == RELEASE_PR:
+            returned = checkpoint.handoff if checkpoint.handoff.facts.get(BACK_TO) in STEPS else None
     prepared = latest.get(PREPARE)
     worktree = Path(prepared.facts["worktree"]) if prepared is not None and prepared.facts.get("worktree") else None
     if worktree is not None and not worktree.is_dir():
@@ -116,6 +126,7 @@ def load(runtime: Runtime, issue: str) -> ImplementContext:
         round=(coded.round or 1) if coded is not None else 1,
         latest=latest,
         risk=_risk(design),
+        returned=returned,
     )
 
 

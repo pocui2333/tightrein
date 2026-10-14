@@ -165,7 +165,7 @@ def test_deep_review_runs_only_after_the_light_one_passes_and_is_blind(world: An
     assert result.facts["modes"] == ["light", "deep"] and result.facts["risk"]["high"] is True
     deep = fake.requests[1]
     # 盲审：只给验收标准、风险类别、最终改动与检查输出，不给 Issue 正文、方案与代码笔记
-    assert set(deep.variables) == {"acceptance", "risk", "diff", "results"}
+    assert set(deep.variables) == {"acceptance", "decisions", "risk", "diff", "results"}
     assert "订单列表只显示当天" not in "".join(deep.variables.values())
     assert deep.conditions == ("high_risk",)
     # 轻量没通过就不跑深度

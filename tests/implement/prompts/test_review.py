@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from tightrein.implement.context import Risk
+from tightrein.implement.context import Decision, Risk
 from tightrein.implement.prompts import review
 from tightrein.prompts.build import PROMPTS_DIR
 
@@ -16,7 +16,8 @@ CHECK = {"counted": {"files": 1, "lines": 2},
 def test_light_review_gets_the_actual_results_and_a_trimmed_plan(world: Any) -> None:
     variables = review.light(world.context(), plan=PLAN, diff="diff --git a/x b/x", results=review.results_text(CHECK),
                              hints=["`7` 与测试输入相同"], previous=[], files=None)
-    assert set(variables) == {"issue", "acceptance", "notes", "plan", "scope", "previous", "diff", "results", "hints"}
+    assert set(variables) == {"issue", "acceptance", "notes", "plan", "decisions", "scope", "previous", "diff",
+                              "results", "hints"}
     assert variables["scope"] == review.FULL_SCOPE
     assert "列表显示最近 7 天的订单" in variables["acceptance"]
     # 根因假说只留因果链与修改位置；编码用的步骤不给审查
@@ -38,9 +39,23 @@ def test_correction_rounds_name_the_files_and_the_previous_problems(world: Any) 
 def test_the_deep_review_is_blind(world: Any) -> None:
     risk = Risk(True, ("schema：含数据库迁移",))
     variables = review.deep(world.context(), diff="diff --git a/x b/x", results="- ok", risk=risk)
-    assert set(variables) == {"acceptance", "risk", "diff", "results"}
+    assert set(variables) == {"acceptance", "decisions", "risk", "diff", "results"}
     assert "schema：含数据库迁移" in variables["risk"]
     assert "订单列表只显示当天" not in "".join(variables.values())
+
+
+def test_both_reviews_get_the_user_decisions(world: Any) -> None:
+    """用户的决定高于方案：轻量与深度审查都拿到它(深度审查虽是盲审，用户的要求不属于编码的思路)。"""
+    decision = Decision("implement.approve", "approve", None, "分页保持每页 20 条，不按方案改成 50", "2026-10-08T03:00:00Z")
+    context = world.context(decisions=[decision])
+    light = review.light(context, plan=PLAN, diff="", results="", hints=[], previous=[], files=None)
+    deep = review.deep(context, diff="", results="", risk=None)
+    for variables in (light, deep):
+        assert "分页保持每页 20 条" in variables["decisions"]
+    prompts = PROMPTS_DIR / "implement.review.md", PROMPTS_DIR / "implement.review.deep.md"
+    for text in (path.read_text(encoding="utf-8") for path in prompts):
+        assert "{{decisions}}" in text and "高于方案" in text
+    assert "高于方案" in (PROMPTS_DIR / "implement.code.md").read_text(encoding="utf-8")
 
 
 def test_the_review_templates_name_the_two_kinds_hardcode_root_cause_and_categories() -> None:

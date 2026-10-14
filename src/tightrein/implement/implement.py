@@ -10,6 +10,7 @@ handoff.json 与用户的决定接着做，没做完的那一步整个丢掉，w
 |---|---|---|
 | 没有 | — | 准备 |
 | 任一步 | 通过 | 按 STEPS 的顺序；定案之后开新一轮编码，编码 → 自检 → 审查同一轮，审查通过后交付 |
+| 交付 | 通过，之后发布退回(release.pr 的 backTo) | 合并 main 冲突：开新一轮编码，先合并 main 解决冲突；main 改到同一文件：在最后一轮上重新自检与审查 |
 | 任一步 | 待决定 | 有了用户的新决定就重做这一步(由它取用决定)，否则继续等 |
 | 编码、自检、审查 | 没通过 | 越界：第一次撤回重做这一轮，再越界停下；检查没跑起来停下；不通过项按性质只处理最靠前的一类：设计问题停下、需要用户等决定、方案缺口重出方案、局部问题交回编码(轮数上限 controls.implement.review.rounds，连续两轮阻断项相同或 diff 没变即停) |
 | 方案 | 没通过 | 一个 PR 放不下：退回评估拆分(SPLIT_BACK)；要等别的 Issue 先合入：前置还没落地就退回待修(BLOCK)，都落地了从准备重新做起；其余停下 |
@@ -36,7 +37,7 @@ from tightrein.assess.issue.stages import IMPLEMENT, stage_for
 from tightrein.assess.issue.transitions import IssueEvent, IssueStatus, apply_event
 from tightrein.implement.check.findings import DESIGN as DESIGN_ISSUE
 from tightrein.implement.check.findings import NEEDS_USER, PLAN_GAP, Finding, first_category, from_facts, keys
-from tightrein.implement.context import STEPS, Decision, ImplementContext, load
+from tightrein.implement.context import BACK_TO, STEPS, Decision, ImplementContext, load
 from tightrein.implement.prepare import workspace
 from tightrein.protocol import documents, recovery
 from tightrein.protocol.boundaries import gate_is_auto_all
@@ -193,6 +194,11 @@ def _now_automatic(runtime: Runtime, context: ImplementContext, last: Handoff) -
 
 def _after_passed(context: ImplementContext, last: Handoff) -> Next:
     if last.point == DELIVER:
+        back = context.returned.facts.get(BACK_TO) if context.returned is not None else None
+        if back == CODE:  # 发布合并 main 冲突：开新一轮编码，先合并 main 解决冲突(code/merge.py)
+            return Next(Kind.RUN, CODE, round=_next_round(context))
+        if back == CHECK:  # 发布合并的 main 改到了同一文件：在这一轮上重新自检与审查
+            return Next(Kind.RUN, CHECK, round=_next_round(context) - 1)
         return Next(Kind.DONE, DELIVER)
     if last.point == APPROVE:
         return Next(Kind.RUN, CODE, round=_next_round(context))
@@ -220,7 +226,7 @@ def _dispatch(runtime: Runtime, context: ImplementContext, done: Sequence[Handof
                      advice="补充说明后接着做，或缩小 Issue 范围", tried=last.facts.get("problems") or ())
     if last.point == APPROVE:
         return _replan(runtime, context, last, "方案被否决")
-    back = last.facts.get("backTo")
+    back = last.facts.get(BACK_TO)
     if last.point == DELIVER and back in ROUND_POINTS and int(last.facts.get(RERUNS, 0)) < DELIVER_RERUNS:
         return Next(Kind.RUN, str(back), round=_next_round(context) - 1)  # 自检或审查后又有改动：只回到那一步
     if last.point in (PREPARE, LOCATE, DELIVER):
@@ -453,10 +459,11 @@ def _current(context: ImplementContext) -> str:
 
 
 def _cycle_first_round(context: ImplementContext, done: Sequence[Handoff]) -> int:
-    """这一版方案(或用户最近一次决定)之后的第一轮：轮数上限按它算。"""
+    """这一版方案(或用户最近一次决定、发布最近一次退回)之后的第一轮：轮数上限按它算。"""
     design = context.last(DESIGN)
     planned = (design.created_at or "") if design is not None else ""
-    since = max([planned, *(item.at for item in context.decisions)])
+    returned = (context.returned.created_at or "") if context.returned is not None else ""
+    since = max([planned, returned, *(item.at for item in context.decisions)])
     rounds = [item.round or 1 for item in done if item.point == CODE and (item.created_at or "") >= since]
     return min(rounds, default=1)
 

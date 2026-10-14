@@ -603,6 +603,11 @@ class Git:
 
         return once(scope, "fast-forward", (branch, target), action, moved)
 
+    def merge_abort(self) -> None:
+        """放弃进行中的合并(`merge --abort`)：工作区与暂存区回到合并前；没有进行中的合并时什么都不做。"""
+        if self.merge_head() is not None:
+            self._run("merge", "--abort", read=False)
+
     def revert(self, commit: str, *, scope: WriteScope, expected: Mapping[str, str | None] | None = None) -> str:
         """在当前分支上撤销 commit，返回新的 HEAD。合并提交(有第二个父提交)加 `-m 1` 取主干一侧；
         冲突时抛 MergeConflict，撤销停在进行中，不自行取舍。"""

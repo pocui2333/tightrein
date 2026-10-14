@@ -547,7 +547,8 @@ def test_uncommitted_changes_left_by_an_earlier_round_are_not_a_boundary_violati
     real = SubprocessRunner()
     monkeypatch.setattr(agents_call, "snapshot", lambda repo, runner: security.snapshot(repo, real))
     monkeypatch.setattr(agents_call, "compare",
-                        lambda before, after, repo, runner: security.compare(before, after, repo, real))
+                        lambda before, after, repo, runner, **options: security.compare(before, after, repo, real,
+                                                                                         **options))
     monkeypatch.setattr(agents_call, "credentials_present", lambda repo, runner, patterns: [])
     assert call(world.params(), world.context).status is CallStatus.OK
     changed = call(world.params(subject="P-0043"), world.context)

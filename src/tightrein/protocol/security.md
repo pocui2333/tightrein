@@ -94,7 +94,7 @@
 **怎么做**：
 
 - 只读步骤在调用前后各取一次 `snapshot`(工作目录)，可写步骤取主仓库的：`git status --porcelain=v2 --branch -z --untracked-files=all`(去掉随 fetch 变化的 `# branch.ab`)，加工作树哈希(已跟踪文件取 `git diff --binary HEAD`，未跟踪文件读内容；符号链接记目标文本、不跟随；读不了内容的以「大小:mtime」代替)，再加 HEAD 与分支、本地分支与标签、远程配置(`remote.*`)、stash、worktree 列表(路径、其他 worktree 的分支、锁定)、进行中的合并/变基/拣选状态文件(`MERGE_HEAD`、`CHERRY_PICK_HEAD`、`REVERT_HEAD`、`rebase-merge`、`rebase-apply`、`BISECT_LOG`)；
-- `compare` 按前后差异比较、逐项说明，不看绝对状态(上一轮留下的未提交改动不算)：分支不同为切换；分支相同而 commit 不同为新建提交；游离 HEAD 的 commit 变化时以祖先关系区分新建提交与切换；当前分支随提交前进已由 HEAD 一项报告，不重复报引用变化；有差异即丢弃这次结果并记越界(boundaries.md)；
+- `compare` 按前后差异比较、逐项说明，不看绝对状态(上一轮留下的未提交改动不算)：分支不同为切换；分支相同而 commit 不同为新建提交；游离 HEAD 的 commit 变化时以祖先关系区分新建提交与切换；当前分支随提交前进已由 HEAD 一项报告，不重复报引用变化；可写步骤比对主仓库时，别的 worktree 检出的分支向前移动(原 commit 是新 commit 的祖先)不算：并行实施时程序在别的 Issue 的修复分支上提交、合并主干，agent 自己 worktree 的分支照常比较；有差异即丢弃这次结果并记越界(boundaries.md)；
 - 可写步骤另对 worktree 之外 agent 不可写的路径(工作区的 setup.json、setup.md、settings.json、sites.json、secrets.json、scripts/，tightrein 的 src/、settings/、vendor/)前后各取 `file_snapshot`：记大小、mtime 与 sha256，再取时大小与 mtime 都没变的沿用哈希；遍历时不进入 `.git`、虚拟环境、缓存与 node_modules(不先遍历再过滤)；含工作目录的路径不算；
 - 启动 agent 前 `credentials_present` 检查工作目录：未跟踪(含被忽略)且匹配禁改级凭据模式(`boundaries.protected.forbidden`)的文件，仓库本地配置中带口令或 token 的远程地址(token 作用户名也算)与凭证助手；有就不启动(boundary)。只查 `--local`，不查全局与系统配置(macOS 系统配置自带 osxkeychain)；
 - git 状态读不了时抛 `SnapshotFailed`，不启动 agent：无法比对就不能放行；

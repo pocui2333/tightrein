@@ -158,7 +158,7 @@ TRANSITIONS: tuple[Rule, ...] = (
     # 拒绝时 reason 是用户的说明文字：按「不修」关闭
     Rule(IssueEvent.REJECT, frozenset({_S.NEEDS_DECISION}), _S.CANCELLED, effects=_CLOSE_EFFECTS,
          close_reason=WONT_FIX),
-    # 发布时合并主干后改到了同一文件：退回实施重新审查
+    # 发布时合并主干后改到了同一文件：退回实施重新自检与审查；合并主干冲突：退回编码解决
     Rule(IssueEvent.START, frozenset({_S.TODO, _S.IMPLEMENTING, _S.RELEASING}), _S.IMPLEMENTING),
     Rule(IssueEvent.DELIVER, frozenset({_S.IMPLEMENTING}), _S.RELEASING),
     Rule(IssueEvent.MERGE, frozenset({_S.RELEASING}), _S.ACCEPTING),

@@ -1,9 +1,9 @@
 """审查(implement.review、implement.review.deep)的提示变量。
 
-- 轻量审查：Issue、验收标准、代码笔记、方案摘要(根因假说只留因果链与修改位置)、改动、自检的实际结果与疑似写死提示；
-  修正轮次另给上一轮的问题，改动只给这一轮又改了的文件；
-- 深度审查是盲审：只给验收标准、最终改动与自检的实际输出，不给 Issue 正文、方案、根因假说与编码模型的任何说明，
-  让它独立于编码时的思路判断。
+- 轻量审查：Issue、验收标准、代码笔记、方案摘要(根因假说只留因果链与修改位置)、用户的决定与补充、改动、自检的实际
+  结果与疑似写死提示；修正轮次另给上一轮的问题，改动只给这一轮又改了的文件；
+- 深度审查是盲审：只给验收标准、用户的决定与补充、最终改动与自检的实际输出，不给 Issue 正文、方案、根因假说与编码
+  模型的任何说明，让它独立于编码时的思路判断；用户的决定是用户本人的要求(高于方案)，两种审查都核对它照做了没有。
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 from tightrein.implement.prompts.common import (
     NONE,
     acceptance,
+    decisions_text,
     issue_text,
     json_text,
     list_text,
@@ -40,6 +41,7 @@ def light(context: ImplementContext, *, plan: Mapping[str, Any], diff: str, resu
         "acceptance": list_text(acceptance(context.body)),
         "notes": notes_text(context),
         "plan": json_text(plan_view(plan, PLAN_FOR_REVIEW)) if plan else NONE,
+        "decisions": decisions_text(context.decisions),
         "scope": FULL_SCOPE if files is None else INCREMENTAL_SCOPE.format(files="、".join(files) or NONE),
         "previous": list_text(previous),
         "diff": diff_text(diff),
@@ -52,6 +54,7 @@ def deep(context: ImplementContext, *, diff: str, results: str, risk: Risk | Non
     reasons = list(risk.reasons) if risk is not None else []
     return {
         "acceptance": list_text(acceptance(context.body)),
+        "decisions": decisions_text(context.decisions),
         "risk": list_text(reasons),
         "diff": diff_text(diff),
         "results": results or NONE,

@@ -61,7 +61,7 @@ git 与 gh 的读写、worktree、分支提交与 PR 的格式。程序在同目
 - 改动哈希(`diff_hash`)逐文件记「路径 + 基准中的模式与 blob + 工作目录中的模式与 blob」，未跟踪文件用 `hash-object` 计入：与改动是否已提交无关(复现测试是新文件，提交后从未跟踪变已跟踪，哈希不变)，所以既能作提交的幂等键，也能判断评审过的改动是否变了；
 - 比较基准(`review_base`)取 HEAD 与主干的最近公共祖先：合并过主干后它就是最近一次合并进来的主干版本。主干只改了别的文件时改动哈希与评审时相同，只需重新验证；改到同一文件或解决过冲突时才重新审查；
 - 同步主干一律 `merge --no-ff`，不用 rebase、`push --force`、`reset --hard`、`commit --amend`：已推送的历史不改写，PR 上的评审不失效；
-- 冲突时合并停在进行中，抛 `MergeConflict` 列出冲突文件，不自行取舍；
+- 冲突时合并停在进行中，抛 `MergeConflict` 列出冲突文件，不自行取舍；调用方可用 `merge_abort`(`merge --abort`)放弃这次合并，回到合并前，已有提交不动；
 - 推送结果按 `git push --porcelain` 的引用标记判断(`!` 为被拒，`PushRejected`)，不看错误文字；被拒时先同步主干，绝不强推；
 - 合并 PR 用 `gh pr merge --match-head-commit <判断时的 head> --delete-branch`：判断后有人再推送就合并失败而不是合进未审查的提交；带 `--repo` 时 gh 只删远程分支，本地分支与 worktree 由清理负责；
 - 必需检查按 `gh pr checks --required --json` 每项的 bucket 判断，退出码不反映结果；免费账号的私有仓库查规则集返回 403，视为没有规则集。

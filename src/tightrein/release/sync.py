@@ -2,11 +2,13 @@
 
 - 判断时 fetch，合并的正是判断时看到的 origin/main；main 没有新提交就什么都不做；
 - 先算「main 新提交改到的文件」与修复文件的交集，main 一侧从 merge-base 算(直接拿 HEAD 比 origin/main，修复自己的
-  文件总会被算进去)。交集不为空或解决过冲突时，审查过的改动已经变了，退回实施重新审查；交集为空时改动哈希与审查时
-  相同(protocol/git 的 review_base、diff_hash)，接着推送，由 CI 验证；
+  文件总会被算进去)。交集不为空或解决过冲突时，审查过的改动已经变了，退回实施重新自检与审查；交集为空时改动哈希
+  与审查时相同(protocol/git 的 review_base、diff_hash)，接着推送，由 CI 验证；
 - 做决定时(fetch、确认工作区干净之后)记下分支、HEAD 与 origin/main(Git.state)，作为 expected 交给合并；用户解决冲突后
   完成合并提交时记下分支与 HEAD。执行前任何一项变了即抛 Stale、不执行(由 release.py 停到下次重新观察)；
-- 冲突不自行取舍、不改冲突文件：合并停在进行中，写冲突报告(逐文件列两侧相关提交与冲突片段)，冲突文件清单另存
+- 冲突时发布自己不取舍、不改冲突文件：先写冲突报告(逐文件列两侧相关提交与冲突片段)，再放弃这次合并(工作区回到
+  合并前)，冲突文件与 main 一侧的相关提交交给 release.py 退回编码，由编码合并并解决(implement/code/merge.py)；
+- 同一 Issue 退回编码解决冲突已达 release.conflictReturns 次仍冲突时交给人：合并停在进行中，冲突文件清单另存
   (用户 git add 后它们不再显示为冲突)；用户解决后再次发布时先检查是否还留冲突标记，记下每个文件取了哪一侧，
   再完成合并提交。
 """
@@ -37,6 +39,9 @@ class SyncResult:
     merged: str | None  # 合并后的 HEAD；main 没有新提交时为 None
     overlap: tuple[str, ...] = ()  # main 新改到的文件与修复文件的交集
     resolutions: dict[str, str] = field(default_factory=dict)  # 解决过冲突的文件 → 取了哪一侧
+    conflicts: tuple[str, ...] = ()  # 合并冲突、已放弃合并的冲突文件：退回编码解决
+    report: str | None = None  # 冲突报告的路径
+    main_commits: tuple[str, ...] = ()  # main 一侧改到冲突文件的提交(「短哈希 标题」)
 
     @property
     def needs_review(self) -> bool:
@@ -52,7 +57,8 @@ class ConflictFile:
 
 
 def sync(runtime: Runtime, issue: str, delivery: Delivery, state: ReleaseState, worktree: Git) -> SyncResult:
-    """合并最新的 origin/main。冲突时写报告并抛 ReleaseBlocked；用户解决冲突后再次调用即完成合并。"""
+    """合并最新的 origin/main。冲突时写报告：退回编码的次数没到上限就放弃合并、在结果中带上冲突；到了上限抛
+    ReleaseBlocked 交给人，用户解决冲突后再次调用即完成合并。"""
     if worktree.merge_head() is not None:
         return _finish_merge(runtime, issue, state, worktree)
     worktree.fetch()
@@ -69,9 +75,15 @@ def sync(runtime: Runtime, issue: str, delivery: Delivery, state: ReleaseState, 
     try:
         merged = worktree.merge(main, scope=runtime.scope(issue, POINT_PR), expected=decided)
     except MergeConflict as error:
+        returning = state.conflict_returns < int(runtime.settings.control("release", "conflictReturns"))
+        report = write_conflicts(runtime, issue, worktree, error.files, returning=returning)
+        if returning:
+            worktree.merge_abort()
+            commits = tuple(f"{item.commit[:12]} {item.subject}" for item in worktree.log(f"HEAD..{main}", error.files))
+            return SyncResult(main, None, conflicts=tuple(error.files), report=str(report), main_commits=commits)
         state.conflicts = list(error.files)
-        report = write_conflicts(runtime, issue, worktree, error.files)
-        raise ReleaseBlocked(POINT_PR, f"合并 {main_ref} 出现冲突：{'、'.join(error.files)}；冲突报告 {report}",
+        tried = f"(已退回编码解决 {state.conflict_returns} 次仍冲突)" if state.conflict_returns else ""
+        raise ReleaseBlocked(POINT_PR, f"合并 {main_ref} 出现冲突{tried}：{'、'.join(error.files)}；冲突报告 {report}",
                              options=("在修复目录解决冲突并 git add 后重新发布", "放弃这次合并(git merge --abort)后重新发布"),
                              command=f"tightrein run --object {issue}") from error
     return SyncResult(main, merged, overlap)
@@ -121,10 +133,12 @@ def resolution(fix_side: str | None, main_side: str | None, resolved: str) -> st
     return BOTH
 
 
-def render_conflicts(issue: str, files: Sequence[ConflictFile]) -> str:
-    parts = [f"# Issue {issue} 合并 origin/main 的冲突", "",
-             ("tightrein 不自行选择任何一侧，也不修改冲突文件。在修复目录逐个文件解决并 git add 后重新发布；"
-              "也可以 git merge --abort 放弃这次合并。")]
+def render_conflicts(issue: str, files: Sequence[ConflictFile], *, returning: bool = False) -> str:
+    lead = ("发布已放弃这次合并，退回编码：由编码重新合并 origin/main，保留两侧的意图解决冲突，再重新自检与审查。"
+            if returning else
+            "tightrein 不自行选择任何一侧，也不修改冲突文件。在修复目录逐个文件解决并 git add 后重新发布；"
+            "也可以 git merge --abort 放弃这次合并。")
+    parts = [f"# Issue {issue} 合并 origin/main 的冲突", "", lead]
     for item in files:
         parts += ["", f"## {item.path}", "", "修复分支一侧的提交：", "", f"```\n{item.fix_commits.strip() or '无'}\n```",
                   "", "origin/main 一侧的提交：", "", f"```\n{item.main_commits.strip() or '无'}\n```"]
@@ -134,13 +148,15 @@ def render_conflicts(issue: str, files: Sequence[ConflictFile]) -> str:
     return "\n".join(parts).rstrip() + "\n"
 
 
-def write_conflicts(runtime: Runtime, issue: str, worktree: Git, files: Sequence[str]) -> Path:
+def write_conflicts(runtime: Runtime, issue: str, worktree: Git, files: Sequence[str], *,
+                    returning: bool = False) -> Path:
+    """合并停在进行中时写冲突报告(读冲突文件里的标记)；returning 为退回编码解决(报告开头的说明不同)。"""
     found = [ConflictFile(path, _side_log(worktree, "MERGE_HEAD..HEAD", path),
                           _side_log(worktree, "HEAD..MERGE_HEAD", path),
                           tuple(hunks((worktree.repo / path).read_text(encoding="utf-8", errors="replace"))))
              for path in files]
     path = runtime.workspace.step_file(issue, FileName(POINT_PR, "evidence", "md"))
-    write_text(path, render_conflicts(issue, found))
+    write_text(path, render_conflicts(issue, found, returning=returning))
     return path
 
 

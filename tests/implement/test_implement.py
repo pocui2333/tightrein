@@ -377,6 +377,32 @@ def test_delivery_hands_the_issue_to_release(world: Any, steps: Steps) -> None:
     assert issues.get(world.runtime.conn, ISSUE).status == IssueStatus.RELEASING  # type: ignore[union-attr]
 
 
+def test_release_sending_the_issue_back_reopens_coding_or_checking(world: Any) -> None:
+    """交付之后发布退回(release.pr 的 backTo)：冲突开新一轮编码，main 改到同一文件在最后一轮上重新自检；
+    重新交付之后不再算退回。轮数上限从这次退回算。"""
+    _planned(world)
+    _round(world, 1, [_blocker("local")])
+    _save(world, CODE, round=2)
+    _save(world, CHECK, round=2)
+    _save(world, REVIEW, round=2)
+    _save(world, DELIVER)
+    assert _decide(world).kind is Kind.DONE
+    _save(world, "release.pr", facts={"backTo": CODE, "main": "m" * 40, "conflicts": ["src/orders.py"]})
+    assert _decide(world) == implement.Next(Kind.RUN, CODE, round=3)
+    for number in (3, 4, 5):
+        _round(world, number, [_blocker("local", kind=f"bug{number}")])
+    assert _decide(world) == implement.Next(Kind.RUN, CODE, round=6)  # 第 3 轮起算，3 轮还没用完
+    _save(world, CODE, round=6)
+    _save(world, CHECK, round=6)
+    _save(world, REVIEW, round=6)
+    _save(world, DELIVER)
+    assert _decide(world).kind is Kind.DONE  # 已重新交付
+    _save(world, "release.pr", facts={"backTo": CHECK, "overlap": ["src/orders.py"]})
+    assert _decide(world) == implement.Next(Kind.RUN, CHECK, round=6)
+    _save(world, "release.pr", summary="PR #1 已是最新")  # 没有 backTo 的发布交接不算退回
+    assert _decide(world).kind is Kind.DONE
+
+
 def test_the_budget_and_manual_takeover_stop_it(world: Any, steps: Steps) -> None:
     world.runtime.agents.budget = Budget(used=2_000_000)
     outcome = implement.implement(world.runtime, ISSUE)

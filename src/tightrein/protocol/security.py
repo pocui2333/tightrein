@@ -6,7 +6,8 @@
 - git 快照(snapshot、compare)：HEAD 与分支、本地分支与标签、远程配置、stash、worktree 列表、进行中的合并/变基/拣选
   状态文件，以及工作树内容(status、相对 HEAD 的 diff、未跟踪文件的内容)。分支不同为切换；分支相同而 commit 不同为
   新建提交；游离 HEAD 的 commit 变化时，新 commit 以原 commit 为祖先的算新建提交，否则算切换。当前分支随提交前进
-  已由 HEAD 一项报告，本地分支一项不重复报。
+  已由 HEAD 一项报告，本地分支一项不重复报。可写调用比对主仓库时，别的 worktree 检出的分支向前移动不算(并行实施
+  时程序在别的 Issue 的修复分支上提交、合并主干)，agent 自己 worktree 的分支照常比较。
 - 文件快照(file_snapshot、changed_files)：worktree 之外 agent 不可写的路径(工作区配置、tightrein 自身代码)，记大小、
   mtime 与 sha256；再取时大小与 mtime 都没变的沿用上次的哈希不再读内容；遍历时不进入虚拟环境、缓存与依赖目录。
 """
@@ -302,13 +303,20 @@ def _not_the_agent(name: str, old: Mapping[str, str], new: Mapping[str, str]) ->
     return name.startswith("refs/heads/") and name in new and new[name] == new.get(f"refs/remotes/origin/{branch}")
 
 
-def compare(before: TreeSnapshot, after: TreeSnapshot, repo: Path, runner: ProcessRunner) -> list[str]:
-    """前后两次 snapshot 的差异，每项一句说明；没有差异时为空。"""
+def compare(before: TreeSnapshot, after: TreeSnapshot, repo: Path, runner: ProcessRunner, *,
+            workdir: Path | None = None) -> list[str]:
+    """前后两次 snapshot 的差异，每项一句说明；没有差异时为空。
+
+    workdir 为 agent 自己的工作目录(可写调用比对主仓库时给出)：别的 worktree 检出的分支向前移动(新提交、合并提交)
+    是程序在并行实施的别的 Issue 上提交或同步主干，不算这个 agent 的；agent 自己的分支照常比较。"""
     changes = _head_change(before, after, repo, runner)
     own = f"refs/heads/{before.branch}" if before.branch is not None and before.branch == after.branch else None
     old, new = dict(before.refs), dict(after.refs)
+    others = _other_branches(before, after, workdir)
     for name in sorted(set(old) | set(new)):
         if name == own or old.get(name) == new.get(name) or _not_the_agent(name, old, new):
+            continue
+        if name in others and _forward(runner, repo, old.get(name), new.get(name)):
             continue
         changes.append(f"引用 {name} 从 {_short(old.get(name))} 变为 {_short(new.get(name))}")
     if before.remotes != after.remotes:
@@ -325,6 +333,23 @@ def compare(before: TreeSnapshot, after: TreeSnapshot, repo: Path, runner: Proce
     if before.tree_hash != after.tree_hash:
         changes.append("工作树的内容有变化")
     return changes
+
+
+def _other_branches(before: TreeSnapshot, after: TreeSnapshot, workdir: Path | None) -> frozenset[str]:
+    """前后都由别的 worktree 检出的分支(不含 workdir 自己的)；没给 workdir 时为空，不放宽。"""
+    if workdir is None:
+        return frozenset()
+    own = os.path.realpath(workdir)
+
+    def branches(snap: TreeSnapshot) -> set[str]:
+        return {branch for path, branch, _ in snap.worktrees if branch and os.path.realpath(path) != own}
+
+    return frozenset(branches(before) & branches(after))
+
+
+def _forward(runner: ProcessRunner, repo: Path, old: str | None, new: str | None) -> bool:
+    """分支只是向前移动(原 commit 是新 commit 的祖先)；被删、被挪到别处不算。"""
+    return old is not None and new is not None and _is_ancestor(runner, repo, old, new)
 
 
 def credentials_present(repo: Path, runner: ProcessRunner, patterns: Sequence[str]) -> list[str]:
