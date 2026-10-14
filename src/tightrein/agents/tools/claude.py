@@ -34,7 +34,9 @@ WRITE_TOOLS = ("Edit", "Write")
 WEB_TOOLS = ("WebSearch", "WebFetch")
 SHELL = "Bash"
 SUCCESS = "success"
-ENDINGS = {"error_max_turns": CallStatus.TURN_LIMIT, "error_max_budget_usd": CallStatus.BUDGET_LIMIT}
+# claude 自己的结构化输出重试用完：就是格式不符，归 schema_invalid(续接带原因重试，再不行升档)，不当作笼统的失败
+ENDINGS = {"error_max_turns": CallStatus.TURN_LIMIT, "error_max_budget_usd": CallStatus.BUDGET_LIMIT,
+           "error_max_structured_output_retries": CallStatus.SCHEMA_INVALID}
 # rate_limit_event 的 rateLimitType 与 status → 统一的额度窗口与状态
 WINDOWS = {"five_hour": "five_hour", "seven_day": "weekly", "seven_day_opus": "opus", "seven_day_sonnet": "sonnet"}
 LIMIT_STATES = {"allowed": "allowed", "allowed_warning": "warning", "rejected": "rejected"}

@@ -127,6 +127,8 @@ def test_parse_native_limits_and_missing_results(adapter):
     assert (parsed.status, parsed.turns) == (CallStatus.TURN_LIMIT, 40)
     budget = result_line("", subtype="error_max_budget_usd")
     assert adapter.parse(budget, "", 1, NOW).status is CallStatus.BUDGET_LIMIT
+    retries = result_line("", subtype="error_max_structured_output_retries")  # 自己的格式重试用完：就是格式不符
+    assert adapter.parse(retries, "", 1, NOW).status is CallStatus.SCHEMA_INVALID
     missing = adapter.parse('{"type":"system","subtype":"init","session_id":"s"}\n', "", 1, NOW)
     assert (missing.status, missing.session_id, missing.error) == (CallStatus.FAILED, "s", "输出中没有 result 事件")
 
