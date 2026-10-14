@@ -8,9 +8,11 @@
   完成合并提交时记下分支与 HEAD。执行前任何一项变了即抛 Stale、不执行(由 release.py 停到下次重新观察)；
 - 冲突时发布自己不取舍、不改冲突文件：先写冲突报告(逐文件列两侧相关提交与冲突片段)，再放弃这次合并(工作区回到
   合并前)，冲突文件与 main 一侧的相关提交交给 release.py 退回编码，由编码合并并解决(implement/code/merge.py)；
-- 同一 Issue 退回编码解决冲突已达 release.conflictReturns 次仍冲突时交给人：合并停在进行中，冲突文件清单另存
-  (用户 git add 后它们不再显示为冲突)；用户解决后再次发布时先检查是否还留冲突标记，记下每个文件取了哪一侧，
-  再完成合并提交。
+- 同一 Issue 连续退回编码解决冲突已达 release.conflictReturns 次仍冲突时交给人：合并停在进行中，冲突文件清单另存
+  (用户 git add 后它们不再显示为冲突)；
+- 发布开始时合并停在进行中(上面交给人的，或旧版发布冲突时留下的)，由 resume 在提交之前处理：用户已解决(没有
+  未合并的文件、没有冲突标记)就记下每个文件取了哪一侧、完成合并提交；没解决而退回编码的次数没用完就放弃这次合并，
+  照常同步时再冲突即退回编码；次数用完了继续等人。提交只提交修复自己的改动，不能把半截合并当成修复提交。
 """
 
 from __future__ import annotations
@@ -20,9 +22,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from tightrein.protocol.git import Git, MergeConflict
+from tightrein.protocol.git.git import RepoStatus
 from tightrein.protocol.naming import FileName
 from tightrein.protocol.runtime import Runtime
-from tightrein.release.record import POINT_PR, Delivery, ReleaseBlocked, ReleaseState
+from tightrein.release.record import POINT_PR, Delivery, ReleaseBlocked, ReleaseState, emit
 from tightrein.store.files.atomic import write_text
 
 MARKERS = ("<<<<<<< ", ">>>>>>> ")
@@ -59,8 +62,9 @@ class ConflictFile:
 def sync(runtime: Runtime, issue: str, delivery: Delivery, state: ReleaseState, worktree: Git) -> SyncResult:
     """合并最新的 origin/main。冲突时写报告：退回编码的次数没到上限就放弃合并、在结果中带上冲突；到了上限抛
     ReleaseBlocked 交给人，用户解决冲突后再次调用即完成合并。"""
-    if worktree.merge_head() is not None:
-        return _finish_merge(runtime, issue, state, worktree)
+    resumed = resume(runtime, issue, delivery, state, worktree)
+    if resumed is not None:
+        return resumed
     worktree.fetch()
     main_ref = f"origin/{worktree.main_branch}"
     main = worktree.rev_parse(main_ref)
@@ -75,7 +79,7 @@ def sync(runtime: Runtime, issue: str, delivery: Delivery, state: ReleaseState, 
     try:
         merged = worktree.merge(main, scope=runtime.scope(issue, POINT_PR), expected=decided)
     except MergeConflict as error:
-        returning = state.conflict_returns < int(runtime.settings.control("release", "conflictReturns"))
+        returning = _returning(runtime, state)
         report = write_conflicts(runtime, issue, worktree, error.files, returning=returning)
         if returning:
             worktree.merge_abort()
@@ -87,6 +91,28 @@ def sync(runtime: Runtime, issue: str, delivery: Delivery, state: ReleaseState, 
                              options=("在修复目录解决冲突并 git add 后重新发布", "放弃这次合并(git merge --abort)后重新发布"),
                              command=f"tightrein run --object {issue}") from error
     return SyncResult(main, merged, overlap)
+
+
+def resume(runtime: Runtime, issue: str, delivery: Delivery, state: ReleaseState, worktree: Git) -> SyncResult | None:
+    """合并停在进行中时先处理(release.py 在提交之前调用)。没有进行中的合并、或放弃了这次合并时为 None：
+    - 用户已解决(没有未合并的文件，冲突文件里没有冲突标记)：完成合并提交；
+    - 还没解决、退回编码的次数没用完：放弃这次合并(工作区回到合并前)，之后照常同步，再冲突即退回编码；
+    - 还没解决、次数已用完：继续等人(ReleaseBlocked)。"""
+    if worktree.merge_head() is None:
+        return None
+    status = worktree.status()
+    files = sorted(set(status.unmerged) | set(state.conflicts))
+    left = sorted(set(status.unmerged) | set(markers_left(worktree.repo, files)))
+    if not left:
+        return _finish_merge(runtime, issue, delivery, state, worktree, status, files)
+    if _returning(runtime, state):
+        worktree.merge_abort()
+        state.conflicts = []
+        emit(runtime, issue, POINT_PR, "effect",
+             f"放弃停在进行中、还有冲突的合并：{'、'.join(left)}；重新同步 main，再冲突即退回编码解决")
+        return None
+    raise ReleaseBlocked(POINT_PR, f"合并 origin/main 还有没解决的冲突：{'、'.join(left)}",
+                         command=f"tightrein run --object {issue}")
 
 
 def overlapping(fix_files: Sequence[str], main_files: Sequence[str]) -> tuple[str, ...]:
@@ -160,25 +186,27 @@ def write_conflicts(runtime: Runtime, issue: str, worktree: Git, files: Sequence
     return path
 
 
-def _finish_merge(runtime: Runtime, issue: str, state: ReleaseState, worktree: Git) -> SyncResult:
-    """用户解决冲突之后：还有冲突或冲突标记就继续等；否则记下每个文件取了哪一侧，完成合并提交。"""
-    status = worktree.status()
-    files = sorted(set(status.unmerged) | set(state.conflicts))
-    left = sorted(set(status.unmerged) | set(markers_left(worktree.repo, files)))
-    if left:
-        raise ReleaseBlocked(POINT_PR, f"合并 origin/main 还有没解决的冲突：{'、'.join(left)}",
-                             command=f"tightrein run --object {issue}")
+def _finish_merge(runtime: Runtime, issue: str, delivery: Delivery, state: ReleaseState, worktree: Git,
+                  status: RepoStatus, files: Sequence[str]) -> SyncResult:
+    """用户解决冲突之后：记下每个文件取了哪一侧，完成合并提交。合并进来的 main 改到修复文件的照样算交集
+    (冲突文件清单丢了时也不会不经审查就推送)。"""
     main = worktree.merge_head() or ""
     resolutions = {path: resolution(worktree.show("HEAD", path), worktree.show("MERGE_HEAD", path),
                                     (worktree.repo / path).read_text(encoding="utf-8", errors="replace"))
                    for path in files}
     message = f"Merge origin/{worktree.main_branch} into {worktree.head().branch}\n"
     base = worktree.merge_base("HEAD", main)
+    overlap = overlapping(delivery.changed_files, [change.path for change in worktree.numstat(base, main)])
     decided = worktree.state(FINISH_KEYS, base=base)
     merged = worktree.commit(status.changed_paths or files, message, base=base, scope=runtime.scope(issue, POINT_PR),
                              expected=decided)
     state.conflicts = []
-    return SyncResult(main, merged, (), resolutions)
+    return SyncResult(main, merged, overlap, resolutions)
+
+
+def _returning(runtime: Runtime, state: ReleaseState) -> bool:
+    """冲突时还能退回编码解决(退回次数没到 release.conflictReturns)。"""
+    return state.conflict_returns < int(runtime.settings.control("release", "conflictReturns"))
 
 
 def _side_log(worktree: Git, rev_range: str, path: str) -> str:

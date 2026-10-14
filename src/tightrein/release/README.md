@@ -10,7 +10,7 @@
 
 | Issue 状态 | 做什么 | 停在哪里 |
 |---|---|---|
-| 发布中 `releasing` | `commit.py` 提交 → `sync.py` 合并最新的 origin/main → `push.py` 推送 → `pr.py` 提 PR、发审查摘要评论 → `ci.py` 等 CI 结束 → `merge.py` 判断并合并 | 合并 main 改到同一文件或解决过冲突：退回实施重新自检与审查；合并 main 冲突：放弃这次合并、退回编码解决(`release.conflictReturns` 次之后再冲突才停下等人)；高风险路径或人工合并关卡：写待决定文档，等人在 GitHub 上合并；CI 未结束：下次接着等 |
+| 发布中 `releasing` | `commit.py` 提交 → `sync.py` 合并最新的 origin/main → `push.py` 推送 → `pr.py` 提 PR、发审查摘要评论 → `ci.py` 等 CI 结束 → `merge.py` 判断并合并 | 合并 main 改到同一文件或解决过冲突：退回实施重新自检与审查；合并 main 冲突：放弃这次合并、退回编码解决(连续退回 `release.conflictReturns` 次之后再冲突才停下等人)；高风险路径或人工合并关卡：写待决定文档，等人在 GitHub 上合并；CI 未结束：下次接着等 |
 | 验收中 `accepting` | `deploy.py` 找包含合并提交的部署 → `accept/confirm.py` 按问题来源确认 → 通过时转为完成、写交付文档(`90-issue-deliver.md`)、`cleanup.py` 清理本地；回归时 `accept/revert.py` 先提撤销 PR、清理这一次的修复目录，再退回待修(开下一次修复尝试，见 assess/issue/attempts)；Issue 正文中部署后才能确认的验收标准按指纹对应到确认结论(交接的 `criteria`)；接入清单 `release.accept` 不启用时部署完成即完成，不观察 | 还没部署、观察期未满：下次接着看；部署失败：写待决定文档 |
 
 PR 已被人合并(含 GitHub 原生自动合并)的转为验收中；被关闭且未合并的以「修复未采纳」取消，PR 上最后一条评论或评审正文作为用户说明记下。
@@ -18,6 +18,8 @@ PR 已被人合并(含 GitHub 原生自动合并)的转为验收中；被关闭�
 退回实施时 `41-release.pr` 的交接写 `backTo`(`implement.code` 或 `implement.check`)与 worktree 当前的 commit(`worktreeCommit`，作为实施的检查点)，冲突时另写要合并的 `main`、冲突文件 `conflicts`、main 一侧的相关提交 `mainCommits`、冲突报告 `report` 与第几次退回 `returns`；实施据此接着做(implement/context 的 `returned`)。
 
 停下要人处理的(退回编码次数用完后的冲突、检查未通过、交付之后工作区变了、分支名不合规、没有交付记录)写 `90-issue-pending.md`，Issue 转为待决定，写明原因。
+
+发布开始时合并停在进行中(交给人解决的冲突，或旧版发布冲突时留下的)，在提交之前先处理(`sync.resume`)：用户已解决(没有未合并的文件、冲突文件里没有冲突标记)就完成合并提交、退回实施重新自检与审查；没解决而退回编码的次数没用完就放弃这次合并，照常同步时再冲突即退回编码；次数用完了继续等人。待决定的 Issue 经 `tightrein approve` 回到发布中，下次运行即按这里处理。
 
 提交、同步、推送、提 PR 在做决定时记下观察到的状态(`Git.state` 的分支、HEAD、改动哈希、origin/main，`GitHub.pull_state` 的打开的 PR)，作为 `expected` 交给写操作；执行前重新观察有不同(protocol/git 的 `Stale`)就不执行，记一条事件，Issue 留在发布中，下次运行重新观察、重新决定。
 
@@ -45,7 +47,7 @@ PR 已被人合并(含 GitHub 原生自动合并)的转为验收中；被关闭�
 |---|---|---|
 | `release.mergeMethod` | `squash` | `gh pr merge` 的方式；`merge` 时撤销加 `-m 1` 由合并提交的父提交数判断 |
 | `release.reviewComment` | `false` | 是否把最后一轮审查结论发成 PR 评论 |
-| `release.conflictReturns` | `2` | 合并 main 冲突时退回编码解决的次数上限；用完后再冲突就停下等人解决 |
+| `release.conflictReturns` | `2` | 合并 main 冲突时连续退回编码解决的次数上限；用完后再冲突就停下等人解决；同步没有冲突、推送成功后重新计 |
 | `release.ci.watchInterval` | `30s` | `gh pr checks --watch` 的刷新间隔；等待上限为 `limits.timeouts.ci` |
 | `release.queue.timeLimit` | `1h` | 合并队列一次运行的时间上限 |
 | `release.deploy.assumeDeployedAfter` | `1h` | 没有部署来源时，合并后多久视为已部署 |
@@ -59,7 +61,8 @@ PR 已被人合并(含 GitHub 原生自动合并)的转为验收中；被关闭�
 
 - 写操作都经 protocol/git(幂等键、状态不明先对账、不重试写操作、永远不直接写主分支)，发布这里不再自己判断「做过没有」：中断后重跑整条流程，做过的直接返回上次结果(protocol/git.md)。
 - 同步用 `merge --no-ff`，不 rebase：已推送的历史不改写，PR 上的评审不失效。合并 main 后以合并进来的 main 为基准算改动哈希，main 只改了别的文件时不必重新审查(#5)；交集从 merge-base 算，否则修复自己的文件总被算进去。
-- 冲突发布自己不取舍，退回编码解决：并行实施时几个 Issue 常在同一文件末尾各自加测试、各改页面的一处，合并时冲突但两侧并不矛盾，交给编码保留两侧的意图解决，之后照常自检、审查，不必等人。合并与合并提交由程序做(agent 不做 git 写操作)。两侧可能是同一功能的互斥实现，这时编码中止、交给人选；同一 Issue 反复冲突(到 `release.conflictReturns`)也交给人。交给人时冲突文件清单另存，因为用户 `git add` 后它们不再显示为冲突。
+- 冲突发布自己不取舍，退回编码解决：并行实施时几个 Issue 常在同一文件末尾各自加测试、各改页面的一处，合并时冲突但两侧并不矛盾，交给编码保留两侧的意图解决，之后照常自检、审查，不必等人。合并与合并提交由程序做(agent 不做 git 写操作)。两侧可能是同一功能的互斥实现，这时编码中止、交给人选；同一 Issue 反复冲突(到 `release.conflictReturns`)也交给人。交给人时冲突文件清单另存，因为用户 `git add` 后它们不再显示为冲突。退回次数按连续计：每一段冲突各自有上限，不因之前解决过的冲突累计到上限。
+- 停在进行中的合并要在提交之前处理：提交按「工作区相对 merge-base 的改动」核对交付清单，合并进行中时 main 的改动也在工作区里，要么被当成交付之后新增的改动停下，要么连同冲突标记一起以修复的提交信息提交成合并提交，之后 main 已是祖先、同步什么都不做，不经审查就推送。
 - 提交的文件清单取工作区实际改动并与交付核对：防止把交付之后出现的无关文件或临时文件一起提交。
 - 提 PR 先查后做、只在描述变化时更新；审查结论同一 PR 同一轮只发一次：每次跟踪都会走一遍，否则 PR 上被同一段话刷屏。
 - 自动合并要求 PR 头部等于本工具最近一次推送的 commit，合并带 `--match-head-commit`：判断与合并之间有人推送时宁可失败，不合进没审查过的提交([gh pr merge](https://cli.github.com/manual/gh_pr_merge))。评审只看每人最后一次结论：先请求修改后批准的不算阻断。

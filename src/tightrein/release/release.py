@@ -2,8 +2,10 @@
 
 `release(runtime, issue)` 从 Issue 当前的状态接着推进，能做多少做多少，遇到要等的(CI、部署、观察期)或要人决定的就停：
 - 发布中(releasing)：提交、同步、推送、提 PR(都幂等，重来不重复)；合并 main 改到同一文件或解决过冲突时退回实施重新
-  自检与审查；合并 main 冲突时放弃这次合并、退回编码解决(次数到 release.conflictReturns 后再冲突才停下等人)；
-  提完 PR 当场等 CI 结束并判断合并，不等下一次定时运行。PR 已被人合并或关闭的按实际状态处理；
+  自检与审查；合并 main 冲突时放弃这次合并、退回编码解决(连续退回 release.conflictReturns 次后再冲突才停下等人，
+  同步干净、推送成功后重新计)；合并停在进行中(交给人的冲突)时先处理再提交：用户解决了就完成合并、退回重新自检与
+  审查，没解决而退回次数没用完就放弃合并、按冲突退回编码；提完 PR 当场等 CI 结束并判断合并，不等下一次定时运行。
+  PR 已被人合并或关闭的按实际状态处理；
 - 验收中(accepting)：找包含合并提交的部署，按问题来源确认(Issue 正文中只能在部署后确认的验收标准在这里按指纹对应到
   确认结论，写进交接的 criteria)；全部通过转为完成，写交付文档，清理本地；回归时先提
   撤销 PR，再退回待修；接入清单不启用 release.accept 时部署完成即完成，不观察；
@@ -96,9 +98,12 @@ def _release(runtime: Runtime, issue: Issue) -> StepOutcome:
     found = delivery(runtime, issue.id)
     conventions = resolve(runtime.settings, runtime.git.repo)
     worktree = runtime.git.at(found.worktree)
-    committed = commit.commit(runtime, issue, found, conventions, worktree)
     try:
-        synced = sync.sync(runtime, issue.id, found, state, worktree)
+        # 合并停在进行中(交给人解决的，或旧版发布冲突时留下的)先处理再提交：提交只提交修复自己的改动，
+        # 不能把半截合并(带着冲突标记)当成修复提交，再因 main 已是祖先而不经审查就推送
+        resumed = sync.resume(runtime, issue.id, found, state, worktree)
+        committed = commit.commit(runtime, issue, found, conventions, worktree) if resumed is None else None
+        synced = resumed if resumed is not None else sync.sync(runtime, issue.id, found, state, worktree)
     except ReleaseBlocked:
         save_state(runtime, issue, state)  # 冲突文件清单要留到用户解决之后
         raise
@@ -110,6 +115,7 @@ def _release(runtime: Runtime, issue: Issue) -> StepOutcome:
         return _back_to_review(runtime, issue, state, synced, worktree, started)
     pushed = push.push(runtime, issue.id, found.branch, worktree)
     state.pushed = pushed.commit or state.pushed or _remote_head(worktree, found.branch)
+    state.conflict_returns = 0  # 同步没有冲突、推送成功：这一段冲突已解决，之后再冲突重新计退回次数
     pull = pr.open_pull(runtime, issue, found, conventions, github)
     state.pr_url = pull.url
     pr.post_review(runtime, issue.id, pull.number, found, state, github)
@@ -180,8 +186,11 @@ def _back_to_review(runtime: Runtime, issue: Issue, state: ReleaseState, synced:
                     started: float) -> StepOutcome:
     """合并进来的 main 改到了修复的文件(或解决过冲突)：审查过的改动变了，退回实施重新自检与审查，不接着推送。"""
     resolved = "、".join(f"{path}({side})" for path, side in synced.resolutions.items())
-    reason = "合并 origin/main 后" + (f"与修复改到同一文件：{'、'.join(synced.overlap)}" if synced.overlap
-                                       else f"解决过冲突：{resolved}")
+    touched = "、".join(path for path in synced.overlap if path not in synced.resolutions)
+    found = [f"解决过冲突：{resolved}"] if resolved else []
+    if touched:
+        found.append(f"与修复改到同一文件：{touched}")
+    reason = "合并 origin/main 后" + "；".join(found)
     return _send_back(runtime, issue, state, worktree, started, CHECK_STEP, reason + "，退回实施重新自检与审查", {
         "syncedMain": synced.main, "merged": synced.merged, "overlap": list(synced.overlap),
         "resolutions": synced.resolutions})
@@ -190,7 +199,7 @@ def _back_to_review(runtime: Runtime, issue: Issue, state: ReleaseState, synced:
 def _back_to_code(runtime: Runtime, issue: Issue, state: ReleaseState, synced: sync.SyncResult, worktree: Git,
                   started: float) -> StepOutcome:
     """合并 main 冲突(发布已放弃这次合并)：退回编码，由编码合并 main、保留两侧的意图解决冲突，再照常自检与审查。
-    退回的次数记在发布进度里，到 release.conflictReturns 后再冲突就交给人(sync.py)。"""
+    退回的次数记在发布进度里，连续到 release.conflictReturns 后再冲突就交给人(sync.py)；同步干净、推送成功后清零。"""
     state.conflict_returns += 1
     reason = f"合并 origin/main 出现冲突：{'、'.join(synced.conflicts)}"
     return _send_back(runtime, issue, state, worktree, started, CODE_STEP,

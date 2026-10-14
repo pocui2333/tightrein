@@ -1,5 +1,6 @@
 """同步 main：main 没动时不做事；只改别的文件时合并且不必重审；改到同一文件时报交集(从 merge-base 算)；冲突时
-写报告、放弃这次合并、带上冲突退回编码；退回次数用完后停下等人，用户解决后检查冲突标记、记下取了哪一侧再完成合并。"""
+写报告、放弃这次合并、带上冲突退回编码；退回次数用完后停下等人，用户解决后检查冲突标记、记下取了哪一侧再完成合并；
+停在进行中、还没解决的合并在退回次数没用完时放弃，按最新的 main 重新合并；完成停着的合并时照样算交集。"""
 
 import pytest
 
@@ -72,6 +73,30 @@ def test_conflicts_after_the_returns_are_used_up_are_resolved_by_the_user(kit, r
     result = sync(runtime, "0007", found, state, git)
     assert result.resolutions == {"src/order.py": MAIN_SIDE} and result.needs_review
     assert state.conflicts == [] and git.merge_head() is None
+
+
+def test_an_unresolved_merge_left_in_progress_is_abandoned_while_returns_remain(kit, runtime, repos, worktree):
+    found = _fix(kit, repos, worktree, {"src/order.py": "PAGE = 0\n"})
+    repos.upstream("fix: page two", {"src/order.py": "PAGE = 2\n"})
+    repos.merge_main(worktree)  # 旧版发布冲突时留下的合并：停在进行中，冲突标记还在
+    latest = repos.upstream("feat: user", {"src/user.py": "NAME = 'b'\n"})
+    git = runtime.git.at(worktree)
+    before = repos.head(worktree)
+    state = ReleaseState(conflicts=["src/order.py"])
+    result = sync(runtime, "0007", found, state, git)
+    # 放弃了那次合并，按最新的 main 重新合并，再冲突即带上冲突退回编码
+    assert result.conflicts == ("src/order.py",) and result.main == latest and result.merged is None
+    assert state.conflicts == [] and git.merge_head() is None and git.status().clean
+    assert repos.head(worktree) == before
+
+
+def test_a_finished_merge_still_reports_the_files_main_changed(kit, runtime, repos, worktree):
+    found = _fix(kit, repos, worktree, {"src/order.py": kit.FIX_ORDER})
+    main = repos.upstream("feat: order size", {"src/order.py": kit.MAIN_ORDER})
+    repos.merge_main(worktree, "--no-commit")  # 没有冲突、停在提交之前的合并，冲突文件清单里什么都没有
+    result = sync(runtime, "0007", found, ReleaseState(), runtime.git.at(worktree))
+    assert result.main == main and result.merged == repos.head(worktree) and result.resolutions == {}
+    assert result.overlap == ("src/order.py",) and result.needs_review  # 不能不经审查就推送
 
 
 def test_conflict_helpers():

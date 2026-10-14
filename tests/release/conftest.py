@@ -115,6 +115,12 @@ class Repos:
     def head(self, cwd: Path) -> str:
         return self.git(cwd, "rev-parse", "HEAD").strip()
 
+    def merge_main(self, cwd: Path, *args: str) -> None:
+        """在 cwd 里 fetch 后 git merge origin/main(冲突时不报错，合并停在进行中)：模拟旧版发布或人留下的合并。"""
+        self.git(cwd, "fetch", "-q", "origin")
+        subprocess.run(["git", "merge", "--no-ff", "--no-edit", *args, "origin/main"], cwd=cwd, env=GIT_ENV,
+                       capture_output=True, text=True, check=False)
+
     def upstream(self, message: str, files: dict[str, str]) -> str:
         """别人在 origin/main 上提交并推送。"""
         self.git(self.other, "pull", "-q", "origin", "main")

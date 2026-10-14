@@ -99,7 +99,8 @@ class ReleaseState:
     pushed: str | None = None  # 最近一次推送的 commit：PR 头部不等于它说明有别人的提交
     synced_main: str | None = None  # 最近一次合并进来的 origin/main
     conflicts: list[str] = field(default_factory=list)  # 进行中的合并的冲突文件(用户 git add 后不再显示为冲突)
-    conflict_returns: int = 0  # 合并 main 冲突后退回编码解决的次数；到 release.conflictReturns 即交给人
+    # 合并 main 冲突后连续退回编码解决的次数，到 release.conflictReturns 即交给人；同步干净、推送成功后清零
+    conflict_returns: int = 0
     pr_url: str | None = None
     review_posted: str | None = None  # 已发审查摘要评论的「PR:轮次」
     ci: dict[str, Any] | None = None
