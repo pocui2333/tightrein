@@ -1,3 +1,4 @@
+import json
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
@@ -49,3 +50,16 @@ def test_retriage_only_marks_the_problem_and_override_needs_a_verdict(cli):
     assert cli("problem", "retriage", "P-0002", "--yes").code == exit_codes.USAGE
     assert cli("problem", "override", "P-0001", "--verdict", "maybe", "--reason", "x", "--yes").code == \
         exit_codes.USAGE
+
+
+def test_override_and_new_refuse_while_a_run_holds_the_run_lock(cli):
+    """改判、提需求会评估、动只读 worktree：运行中直接拒绝，不和那一轮抢只读 worktree。"""
+    cli.save(problems, problem("P-0001", "new"))
+    holder = {"pid": 4242, "host": "other-host", "acquiredAt": "2026-10-08T03:00:00Z",
+              "heartbeatAt": "2026-10-08T03:00:00Z"}
+    cli.layout.run_lock.parent.mkdir(parents=True, exist_ok=True)
+    cli.layout.run_lock.write_text(json.dumps(holder))
+    refused = cli.json("problem", "override", "P-0001", "--verdict", "refuted", "--reason", "x", "--yes")
+    assert refused["exitCode"] == exit_codes.USAGE and "正有一轮在运行" in json.dumps(refused, ensure_ascii=False)
+    assert cli.load(problems, "P-0001").status == "new"
+    assert cli("new", "加个导出按钮", "--yes").code == exit_codes.USAGE

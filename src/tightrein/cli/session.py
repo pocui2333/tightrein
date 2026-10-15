@@ -21,6 +21,7 @@ from tightrein.cli.text import LANGUAGES, text
 from tightrein.protocol.naming import kind_of
 from tightrein.protocol.runtime import Runtime
 from tightrein.store.files.layout import WorkspaceLayout
+from tightrein.store.locks import Busy, FileLock
 from tightrein.store.tables import runs
 
 DEFAULT_LANGUAGE = "zh"
@@ -95,8 +96,15 @@ class Session:
         return runtime(self.externals, self.workspace, new_run(self.workspace, self.externals, stage))
 
     def begin(self, stage: str) -> Runtime:
-        """命令自己发起、要记进 runs 表的运行(tightrein new 等)：结束时调用 end；中途出错由 main 的收尾标为失败。"""
+        """命令自己发起、要记进 runs 表的运行(tightrein new 等)：结束时调用 end；中途出错由 main 的收尾标为失败。
+        先拿运行锁：这些命令会评估、动只读 worktree，与正在进行的运行同时做会互相把只读 worktree 切乱(曾在运行中改判，
+        两边各切一半，评估因只读 worktree 有未提交改动而停下)。运行中直接报错，等这一轮结束再执行；锁由 main 的收尾释放。"""
         current = self.runtime(stage)
+        lock = FileLock(self.layout.run_lock, current.clock, stale_s=current.settings.duration("limits.lock.stale"))
+        try:
+            lock.acquire(wait=False)
+        except Busy as busy:
+            raise UsageError(self.text("cli.run_in_progress", holder=str(busy))) from busy
         runs.start(current.conn, runs.Run(id=current.run, stage=stage, trigger="manual", status="running",
                                           started_at=current.clock.now()))
         return current

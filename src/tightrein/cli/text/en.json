@@ -295,6 +295,7 @@
   },
   "cli": {
     "close_failed": "Closing this process's runs failed ({kind}): {message}; the next run will recover them",
+    "run_in_progress": "A run is in progress ({holder}); run this command after it finishes",
     "confirm_needs_yes": "This command changes things and needs confirmation: add --yes when not interactive",
     "confirm_prompt": "Proceed? [y/N] ",
     "confirm_title": "About to:",

@@ -295,6 +295,7 @@
   },
   "cli": {
     "close_failed": "收尾本进程的运行失败({kind})：{message}；下次运行开始时由启动恢复兜底",
+    "run_in_progress": "正有一轮在运行({holder})，等它结束再执行这条命令",
     "confirm_needs_yes": "这条命令会改动东西，需要确认：非交互时加 --yes",
     "confirm_prompt": "确认执行？[y/N] ",
     "confirm_title": "将要做：",
