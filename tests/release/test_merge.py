@@ -1,6 +1,6 @@
 """自动合并：全部条件满足才合并(带 --match-head-commit)；评审只看每人最后一次结论；PR 头部要等于本工具最近一次
 推送的 commit；高风险路径交人且同一组只写一次，定案时用户逐项确认过的照常自动合并；用户在合并关卡上通过后由本工具
-合并(选自己在 GitHub 上合并的不合并，重新交付后要重新通过)；原因没变不重复记；要求必需检查时开 GitHub 原生自动合并，
+合并(选自己在 GitHub 上合并的、交付带用户接受的未通过项的不合并，重新交付后要重新通过)；原因没变不重复记；要求必需检查时开 GitHub 原生自动合并，
 同一 head 只开一次；免费私有仓库查规则集 403 视为没有。"""
 
 import json
@@ -186,6 +186,23 @@ def test_choosing_to_merge_on_github_leaves_the_pr_to_the_user(kit, github_runti
     decision = merge.decide(github_runtime, "0007", number, found, state, PASSED, fake_github, chosen)
     assert not decision.merged and decision.gate is None and "本工具不合并" in decision.reasons[0]
     assert not any(call[0] == "pr-merge" for call in fake_github.calls)
+
+
+def test_accepted_findings_keep_the_tool_from_merging_even_after_the_gate_is_approved(kit, github_runtime,
+                                                                                        fake_github, tmp_path):
+    number, _, state = _ready(kit, fake_github, tmp_path)
+    found = parse_delivery(kit.delivery_facts(tmp_path, ["requirements.txt"], acceptedFindings=["ruff：行太长"]),
+                           "0007")
+    gated = merge.decide(github_runtime, "0007", number, found, state, PASSED, fake_github)
+    assert gated.gate == merge.HIGH_RISK_GATE and gated.manual == [merge.CHECKS_NOT_PASSED]
+    approved = [_approved("2026-10-08T03:10:00Z")]
+    decision = merge.decide(github_runtime, "0007", number, found, state, PASSED, fake_github, approved)
+    assert not decision.merged and decision.gate is None
+    assert decision.reasons == [merge.CHECKS_NOT_PASSED,
+                                "关卡上的通过不改变这一点，本工具不合并，等 PR 在 GitHub 上合并或关闭"]
+    assert not any(call[0] == "pr-merge" for call in fake_github.calls)
+    clean = parse_delivery(kit.delivery_facts(tmp_path, ["requirements.txt"]), "0007")
+    assert merge.decide(github_runtime, "0007", number, clean, state, PASSED, fake_github).manual == []
 
 
 def test_a_new_delivery_needs_the_gate_approved_again(kit, github_runtime, fake_github, tmp_path):

@@ -2,7 +2,9 @@
 以修复未采纳取消并记下用户说明；合并 main 改到同一文件时退回实施重新自检与审查；冲突时退回编码解决，退回次数用完后转为待决定并留下冲突文件清单；
 合并停在进行中时先处理再提交(没解决且退回次数没用完时放弃、退回编码，用户解决了就完成合并、退回自检与审查，次数用完继续等人)；
 同步干净、推送成功后退回次数清零；推送前要推送的改动与交付时审查过的不同(人自己提交了合并、交付之后另有提交)时退回自检与
-审查，合并的 main 只改了别的文件时照常推送；高风险路径停在合并关卡，用户通过后由发布合并；
+审查，合并的 main 只改了别的文件时照常推送；
+高风险路径停在合并关卡，用户通过后由发布合并(等 CI 期间通过的也不丢)，交付带用户接受的未通过项时文档请人在 GitHub 上合并；
+等 CI 期间被接管的不再往下做；
 验收通过转为完成、写交付文档并清理本地；回归时先提撤销 PR(只提一次)、清理修复目录，再退回待修并开下一次修复尝试；推送撤销分支一直
 遇到服务器错误时留在验收中、这一步记为失败、下次再提；不在发布中的不碰；前置条件过期时留在发布中、下次重新观察；推送一直遇到服务器错误时
 留在发布中、下次再推送；接入清单不启用验收时部署即完成、不观察。"""
@@ -258,13 +260,8 @@ def test_approving_the_high_risk_gate_lets_release_merge_the_pr(kit, github_runt
     from tightrein.implement.approve.approve import record
     from tightrein.implement.context import Decision
 
-    repos.write(worktree, {"requirements.txt": "fastembed>=0.4.0\n"})
-    kit.deliver(github_runtime, "0007", kit.delivery_facts(worktree, ["requirements.txt"],
-                                                          highRiskPaths=["requirements.txt"]))
-    kit.new_issue(github_runtime)
-    gated = release(github_runtime, "0007")
-    issue = issues.get(github_runtime.conn, "0007")
-    assert gated.status == Status.PENDING and issue.status == "releasing" and issue.gate == "high_risk_merge"
+    _gated(kit, github_runtime, repos, worktree)
+    assert issues.get(github_runtime.conn, "0007").status == "releasing"
     [(kind, _, written)] = documents_written
     assert kind == "pending" and written["command"] == "tightrein approve 0007"
     assert written["options"][:2] == ["审阅改动后由 tightrein 合并：tightrein approve 0007",
@@ -283,6 +280,76 @@ def test_approving_the_high_risk_gate_lets_release_merge_the_pr(kit, github_runt
     facts = json.loads(path.read_text(encoding="utf-8"))["facts"]
     assert facts["merged"] and [item["point"] for item in facts["approvals"]] == ["high_risk_merge"]
     assert simple_transitions == [("0007", "merge", None)]
+
+
+def _gated(kit, runtime, repos, worktree, **facts):
+    """交付改了 requirements.txt(高风险路径)，第一次发布停在 high_risk_merge。"""
+    repos.write(worktree, {"requirements.txt": "fastembed>=0.4.0\n"})
+    kit.deliver(runtime, "0007", kit.delivery_facts(worktree, ["requirements.txt"], highRiskPaths=["requirements.txt"],
+                                                    **facts))
+    kit.new_issue(runtime)
+    gated = release(runtime, "0007")
+    assert gated.status == Status.PENDING and issues.get(runtime.conn, "0007").gate == "high_risk_merge"
+
+
+def _meanwhile(monkeypatch, change):
+    """等 CI 的时候(ci.wait 阻塞期间)别处改了 Issue 记录：change(runtime) 模拟命令行的操作。"""
+    real = flow.ci.wait
+
+    def wait(runtime, github, number, *, required):
+        change(runtime)
+        return real(runtime, github, number, required=required)
+
+    monkeypatch.setattr(flow.ci, "wait", wait)
+
+
+def test_an_approval_given_while_waiting_for_ci_is_not_lost(kit, github_runtime, fake_github, repos, worktree,
+                                                             documents_written, simple_transitions, monkeypatch):
+    from dataclasses import replace
+
+    from tightrein.implement.approve.approve import record
+    from tightrein.implement.context import Decision
+
+    _gated(kit, github_runtime, repos, worktree)
+
+    def approve(runtime):  # tightrein approve 0007：记下决定、清掉 gate(cli/commands/approve.py)
+        record(runtime, "0007", Decision("high_risk_merge", "approve", None, "看过了", "2026-10-08T03:00:00Z"))
+        issues.save(runtime.conn, replace(issues.get(runtime.conn, "0007"), gate=None), runtime.clock)
+
+    _meanwhile(monkeypatch, approve)
+    outcome = release(github_runtime, "0007")
+    assert (outcome.status, outcome.next_point) == (Status.PASSED, "release.deploy")
+    issue = issues.get(github_runtime.conn, "0007")
+    assert issue.status == "accepting" and issue.gate is None
+    assert [item["verdict"] for item in issue.extra["decisions"]] == ["approve"]  # 用户的决定还在记录里
+    assert len(documents_written) == 1 and simple_transitions == [("0007", "merge", None)]
+
+
+def test_an_issue_taken_over_while_waiting_for_ci_is_left_alone(kit, github_runtime, fake_github, repos, worktree,
+                                                                 simple_transitions, monkeypatch):
+    from dataclasses import replace
+
+    _ready(kit, github_runtime, repos, worktree)
+    _meanwhile(monkeypatch, lambda runtime: issues.save(
+        runtime.conn, replace(issues.get(runtime.conn, "0007"), status="held", held_by="cty"), runtime.clock))
+    outcome = release(github_runtime, "0007")
+    assert (outcome.status, outcome.next_point) == (Status.PASSED, None) and "由 cty 接管" in outcome.summary
+    issue = issues.get(github_runtime.conn, "0007")
+    assert (issue.status, issue.held_by) == ("held", "cty")
+    assert not any(call[0] == "pr-merge" for call in fake_github.calls) and simple_transitions == []
+
+
+def test_a_gate_on_accepted_findings_asks_for_a_merge_on_github(kit, github_runtime, fake_github, repos, worktree,
+                                                                documents_written):
+    _gated(kit, github_runtime, repos, worktree, acceptedFindings=["ruff：行太长"])
+    [(kind, _, written)] = documents_written
+    assert kind == "pending" and written["command"] == "tightrein run --object 0007"
+    assert written["options"][0] == "审阅改动后在 GitHub 上合并"
+    assert not any("tightrein approve" in option for option in written["options"])
+    assert "在 GitHub 上合并" in written["recommendation"] and "tightrein" not in written["recommendation"]
+    assert written["reason"].startswith("改动涉及高风险路径，不自动合并：requirements.txt；最后一轮检查没有全部通过")
+    assert "本工具不合并这次交付" in written["reason"]
+    assert not any(call[0] == "pr-merge" for call in fake_github.calls)
 
 
 def _handoff_facts(runtime):

@@ -16,7 +16,10 @@
 - 提交、同步、推送、提 PR 执行前发现前置条件已变(protocol/git 的 Stale：做决定之后仓库或 PR 被别人动过)：不执行旧决定，
   记一条事件，Issue 留在发布中，下次运行重新观察、重新决定(这不是要人处理的事)；
 - 推送修复分支遇到远程服务器或网络的临时错误、退避重试后仍失败(protocol/git 的 TransientError)：同样记事件、留在
-  发布中，下次运行再推送。
+  发布中，下次运行再推送；
+- 一次推进可能要几分钟(同步、推送、等 CI)，期间用户可以在合并关卡上 tightrein approve(记下决定、清掉 gate)或接管：
+  记下 PR 与判断合并之前都重新读一次 Issue，基于最新的记录判断与保存，不把开头读入的旧记录整份写回；期间已不在
+  发布中的(接管、取消)不再往下做。
 每一步各落盘一份 handoff.json；状态转换都经 assess/issue/transitions。
 """
 
@@ -132,6 +135,7 @@ def _release(runtime: Runtime, issue: Issue) -> StepOutcome:
     pull = pr.open_pull(runtime, issue, found, conventions, github)
     state.pr_url = pull.url
     pr.post_review(runtime, issue.id, pull.number, found, state, github)
+    issue = _latest(runtime, issue)  # 推送、提 PR 期间用户可能已在关卡上做了决定：PR 记在最新的记录上
     issue.pr, issue.branch = pull.number, found.branch
     save_state(runtime, issue, state)
     write_handoff(runtime, issue.id, POINT_PR, Status.PASSED, f"PR #{pull.number} 已是最新：{pull.url}", {
@@ -139,6 +143,8 @@ def _release(runtime: Runtime, issue: Issue) -> StepOutcome:
         "overlap": list(synced.overlap), "pushed": state.pushed, "pushedCommits": list(pushed.commits),
         "pr": pull.number, "url": pull.url, "title": pull.title,
     }, started=started)
+    if not _releasing(issue):
+        return _left(runtime, issue, POINT_PR)
     return _ci_and_merge(runtime, issue, found, state, pull.number, github)
 
 
@@ -150,6 +156,9 @@ def _ci_and_merge(runtime: Runtime, issue: Issue, found: Delivery, state: Releas
     # 交给 GitHub 合并时只看当前的检查结果、开了自动合并就交给它(不在这里等)；由本工具合并时先等 CI 结束再判断
     checks = ci.current(runtime, github, number, required=required) if native else \
         ci.wait(runtime, github, number, required=required)
+    issue = _latest(runtime, issue)  # 等 CI 的几分钟里用户可能已在关卡上做了决定
+    if not _releasing(issue):
+        return _left(runtime, issue, POINT_CI)
     decision = merge.decide(runtime, issue.id, number, found, state, checks, github,
                             list(issue.extra.get(DECISIONS) or []))
     state.ci = checks.to_json()
@@ -247,16 +256,24 @@ def _to_gate(runtime: Runtime, issue: Issue, state: ReleaseState, decision: merg
     """高风险路径或人工合并关卡：写待决定文档(同一组原因只写一次)，Issue 留在发布中，等人决定。
 
     选项的序号与 merge.BY_TOOL、merge.SELF_MERGE 对应：approve 不带选项或选第 1 个时，下次推进由本工具合并；
-    选第 2 个时本工具不合并，人在 GitHub 上合并后照常转入验收。"""
+    选第 2 个时本工具不合并，人在 GitHub 上合并后照常转入验收。交付本身使本工具不合并的(decision.manual，如带用户
+    接受的未通过项)，文档只请人在 GitHub 上合并，不提 approve。"""
     if decision.new_gate:
         approve = f"tightrein approve {issue.id}"
+        reason = decision.gate_reason or ""
+        if decision.manual:
+            options = ["审阅改动后在 GitHub 上合并"]
+            recommendation = "审阅列出的文件与 PR 描述中未通过的检查项后，在 GitHub 上合并"
+            reason += f"；{'；'.join(decision.manual)}：本工具不合并这次交付，关卡上通过也一样，只能在 GitHub 上合并"
+            command = COMMAND.format(issue=issue.id)
+        else:
+            options = [f"审阅改动后由 tightrein 合并：{approve}",
+                       f"自己在 GitHub 上合并：{approve} --option {merge.SELF_MERGE}，或直接合并"]
+            recommendation, command = f"审阅列出的文件后执行 {approve}，由 tightrein 合并", approve
         documents.pending(runtime, issue.id, point=POINT_MERGE, decision=f"是否合并 PR #{number}：{state.pr_url}",
-                          options=[f"审阅改动后由 tightrein 合并：{approve}",
-                                   f"自己在 GitHub 上合并：{approve} --option {merge.SELF_MERGE}，或直接合并",
-                                   "要求补充审查后再合并", "关闭 PR，不采用这次修复"],
-                          recommendation=f"审阅列出的文件后执行 {approve}，由 tightrein 合并",
-                          reason=decision.gate_reason or "", if_not="PR 一直保持打开，修复不会上线",
-                          command=approve)
+                          options=[*options, "要求补充审查后再合并", "关闭 PR，不采用这次修复"],
+                          recommendation=recommendation, reason=reason, if_not="PR 一直保持打开，修复不会上线",
+                          command=command)
     issue.gate = decision.gate
     save_state(runtime, issue, state)
     return StepOutcome(issue.id, POINT_MERGE, Status.PENDING, decision.gate_reason or "等人决定是否合并", POINT_MERGE)
@@ -406,6 +423,14 @@ def _hold(runtime: Runtime, issue: Issue, blocked: ReleaseBlocked) -> StepOutcom
     return StepOutcome(issue.id, blocked.point, Status.PENDING, blocked.reason, blocked.point)
 
 
+def _left(runtime: Runtime, issue: Issue, point: str) -> StepOutcome:
+    """推进中途 Issue 已不在发布中(被接管、取消)：不再往下做(不判断合并)。"""
+    holder = f"，由 {issue.held_by} 接管" if issue.held_by else ""
+    summary = f"发布中途 Issue 已转为 {issue.status}{holder}，不再往下做"
+    emit(runtime, issue.id, point, "effect", summary)
+    return StepOutcome(issue.id, point, Status.PASSED, summary, None)
+
+
 def _stale(runtime: Runtime, issue_id: str, error: Stale) -> StepOutcome:
     """前置条件已变：不执行旧决定，记事件，留在发布中等下次重新观察。"""
     summary = f"{error}；下次运行重新观察后再决定"
@@ -451,6 +476,16 @@ def _unreviewed(worktree: Git, found: Delivery) -> str | None:
     文件时哈希不变(sync.py)，变了说明审查过的改动被改过。"""
     now = worktree.diff_hash(worktree.review_base(f"origin/{worktree.main_branch}"))
     return None if now == found.diff_hash else now
+
+
+def _latest(runtime: Runtime, issue: Issue) -> Issue:
+    """记录里最新的这个 Issue：发布开头读入的那份可能已过时(期间用户 approve、接管)，之后基于它判断与保存。
+    发布在开头那份上改过的都已随时保存，换成最新的不丢东西。"""
+    return issues.get(runtime.conn, issue.id) or issue
+
+
+def _releasing(issue: Issue) -> bool:
+    return issue.held_by is None and issue.status == IssueStatus.RELEASING
 
 
 def _remote_head(worktree: Git, branch: str) -> str | None:

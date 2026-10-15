@@ -7,7 +7,7 @@
   选项序号，不通过必带原因)经 implement/approve 的 record 持久化(写记录文件，重建不丢)，清掉 gate；停下的再经
   APPROVE 回到继续实施。不通过不取消 Issue：停着的那一步按原因重出(计划「reject：方案按原因重出」)；
 - 发布中的合并关卡(high_risk_merge、merge)同样记下决定、清掉 gate：通过后下次推进由发布合并 PR(选「自己在
-  GitHub 上合并」的除外，见 release/merge.py)。
+  GitHub 上合并」的、交付带用户接受的未通过项的除外，见 release/merge.py)。
 审核本身不推进对象，推进交给 `tightrein run --object <编号>`。
 """
 

@@ -10,7 +10,7 @@
 
 | Issue 状态 | 做什么 | 停在哪里 |
 |---|---|---|
-| 发布中 `releasing` | `commit.py` 提交 → `sync.py` 合并最新的 origin/main → `push.py` 推送 → `pr.py` 提 PR、发审查摘要评论 → `ci.py` 等 CI 结束 → `merge.py` 判断并合并 | 合并 main 改到同一文件或解决过冲突、要推送的改动与交付时审查过的不同(diff 哈希，比如人解决冲突后自己提交了合并)：退回实施重新自检与审查；合并 main 冲突：放弃这次合并、退回编码解决(连续退回 `release.conflictReturns` 次之后再冲突才停下等人)；高风险路径(定案时用户逐项确认过的除外)或人工合并关卡：写待决定文档等人确认，`tightrein approve` 通过后由本工具合并，选「自己在 GitHub 上合并」时等人合并；CI 未结束：下次接着等 |
+| 发布中 `releasing` | `commit.py` 提交 → `sync.py` 合并最新的 origin/main → `push.py` 推送 → `pr.py` 提 PR、发审查摘要评论 → `ci.py` 等 CI 结束 → `merge.py` 判断并合并 | 合并 main 改到同一文件或解决过冲突、要推送的改动与交付时审查过的不同(diff 哈希，比如人解决冲突后自己提交了合并)：退回实施重新自检与审查；合并 main 冲突：放弃这次合并、退回编码解决(连续退回 `release.conflictReturns` 次之后再冲突才停下等人)；高风险路径(定案时用户逐项确认过的除外)或人工合并关卡：写待决定文档等人确认，`tightrein approve` 通过后由本工具合并，选「自己在 GitHub 上合并」时等人合并(交付带用户接受的未通过项时本工具不合并，文档直接请人在 GitHub 上合并)；CI 未结束：下次接着等 |
 | 验收中 `accepting` | `deploy.py` 找包含合并提交的部署 → `accept/confirm.py` 按问题来源确认 → 通过时转为完成、写交付文档(`90-issue-deliver.md`)、`cleanup.py` 清理本地；回归时 `accept/revert.py` 先提撤销 PR、清理这一次的修复目录，再退回待修(开下一次修复尝试，见 assess/issue/attempts)；Issue 正文中部署后才能确认的验收标准按指纹对应到确认结论(交接的 `criteria`)；接入清单 `release.accept` 不启用时部署完成即完成，不观察 | 还没部署、观察期未满：下次接着看；部署失败：写待决定文档 |
 
 PR 已被人合并(含 GitHub 原生自动合并)的转为验收中；被关闭且未合并的以「修复未采纳」取消，PR 上最后一条评论或评审正文作为用户说明记下。
@@ -24,6 +24,7 @@ PR 已被人合并(含 GitHub 原生自动合并)的转为验收中；被关闭�
 提交、同步、推送、提 PR 在做决定时记下观察到的状态(`Git.state` 的分支、HEAD、改动哈希、origin/main，`GitHub.pull_state` 的打开的 PR)，作为 `expected` 交给写操作；执行前重新观察有不同(protocol/git 的 `Stale`)就不执行，记一条事件，Issue 留在发布中，下次运行重新观察、重新决定。
 
 推送被拒分三种(protocol/git)：非快进时先同步 main，转为待决定；其余远程拒绝转为待决定，原因写明是分支保护、仓库规则或权限不允许，还是认不出的原因(附错误输出，不说成权限问题)；远程服务器或网络的临时错误(如 GitHub 的 `[remote rejected] (Internal Server Error)`、`(failure)` 加 `fatal error in commit_refs`、`(cannot lock ref …)`)由 `Git.push` 退避重试，次数用完仍失败也不交人，记一条事件，Issue 留在发布中，下次运行再推送。验收中回归时推送撤销分支遇到同样的临时错误：撤销 PR 还没提，记一条事件，Issue 留在验收中，这一步记为失败(一直推不上去时由对象熔断交给人)，下次运行再提。
+一次推进可能要几分钟(同步、推送、等 CI)，合并关卡上的 Issue 每次运行都会接着推进：记下 PR 与判断合并之前重新读一次 Issue，期间用户的决定(`tightrein approve` 记下决定、清掉 gate)照常生效，不会被开头读入的旧记录整份覆盖；期间被接管或取消的不再往下做。
 
 `queue(runtime) -> list[StepOutcome]`(`queue.py`)：发布中的 Issue 按严重度、再按放行时间排队，依次调用 `release`；合并一个接着下一个，后面的由 `release` 先合并最新的 main；转为待决定的移出队列，继续后面的；遇到人工合并关卡、或到达时间上限即停。仓库开了 GitHub 自带的合并队列(或主分支要求必需检查)时，`release` 对每个 PR 只做到开启 GitHub 原生自动合并就返回，由 GitHub 排队。
 
@@ -57,7 +58,7 @@ PR 已被人合并(含 GitHub 原生自动合并)的转为验收中；被关闭�
 | `release.deploy.<方法>` | 见文件 | 部署来源各方法的参数，按 `deploy_source/<方法>.yaml` 的 optionsSchema 校验 |
 | `release.accept.windows` | 运行时来源 `24h`，静态巡检与任务外发现 `0s` | 各来源的观察期，`default` 为没列出的来源 |
 
-关卡：`boundaries.gates.merge`(缺省 `auto_ci_passed`)；高风险路径取 `boundaries.protected.highRisk`，命中即固定人工(`high_risk_merge`)，除非每个命中的路径都在用户通过的那份方案的 `protectedTouches` 里(定案关卡逐条列给用户确认过)。两个关卡上用户通过后，本工具照常检查其余条件后合并；合并的交接 `43-release.merge` 的 `approvals` 记下用了哪些确认(`point`、`at`、`note`、`option`，定案的另有 `planHash`、`paths`)。
+关卡：`boundaries.gates.merge`(缺省 `auto_ci_passed`)；高风险路径取 `boundaries.protected.highRisk`，命中即固定人工(`high_risk_merge`)，除非每个命中的路径都在用户通过的那份方案的 `protectedTouches` 里(定案关卡逐条列给用户确认过)。两个关卡上用户通过后，本工具照常检查其余条件后合并；关卡上的通过不改变「没有用户接受的未通过项」这一条，交付带这类项时本工具不合并，待决定文档直接请人在 GitHub 上合并；合并的交接 `43-release.merge` 的 `approvals` 记下用了哪些确认(`point`、`at`、`note`、`option`，定案的另有 `planHash`、`paths`)。
 
 ## 设计依据
 
