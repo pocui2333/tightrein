@@ -285,8 +285,9 @@ def test_approving_the_high_risk_gate_lets_release_merge_the_pr(kit, github_runt
 def _gated(kit, runtime, repos, worktree, **facts):
     """交付改了 requirements.txt(高风险路径)，第一次发布停在 high_risk_merge。"""
     repos.write(worktree, {"requirements.txt": "fastembed>=0.4.0\n"})
+    delivered = kit.diff_hash(runtime, worktree)  # 推送前据此核对要推送的就是审查过的改动
     kit.deliver(runtime, "0007", kit.delivery_facts(worktree, ["requirements.txt"], highRiskPaths=["requirements.txt"],
-                                                    **facts))
+                                                    diffHash=delivered, **facts))
     kit.new_issue(runtime)
     gated = release(runtime, "0007")
     assert gated.status == Status.PENDING and issues.get(runtime.conn, "0007").gate == "high_risk_merge"
