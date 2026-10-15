@@ -88,6 +88,18 @@ def test_real_locations_next_to_urls_are_still_completed_and_checked(tmp_path: P
     assert len(wrong.problems()) == 1 and "`processors/ai_review.py:999`" in wrong.problems()[0]
 
 
+def test_locations_written_right_after_chinese_text_are_found(tmp_path: Path) -> None:
+    """P-0052 的写法：位置紧挨着中文叙述，前面的中文不能被截进路径。"""
+    snapshot = Snapshot(agy_repo(tmp_path))
+    text = "该文章因此在processors/ai_review.py:126被跳过，继而在config/config.yaml:77标记，正常返回后ai_review.py:219"
+    assert [match.group(0) for match in checks.locations_in(text)] == [
+        "processors/ai_review.py:126", "config/config.yaml:77", "ai_review.py:219"]
+    done = complete({"note": text}, snapshot)
+    assert done.problems() == []
+    assert "正常返回后processors/ai_review.py:219" in done.value["note"]
+    assert complete({"note": "继而在processors/ai_review.py:999"}, snapshot).problems()  # 越界照样报
+
+
 def test_only_the_given_keys_are_touched(repo: Path) -> None:
     value = {"claim": "routes/orders.py:4", "rootCauses": [{"file": "routes/orders.py", "line": 4}],
              "facts": [{"location": "../orders.py:1"}]}

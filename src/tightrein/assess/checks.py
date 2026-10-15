@@ -23,8 +23,9 @@ from typing import Any
 
 VERDICTS = ("confirmed", "conditional", "refuted", "insufficient")
 CONFIRMING = frozenset({"confirmed", "conditional"})
-# 文字中引用的 `文件:行号`：文件名带扩展名，前面不是路径字符
-IN_TEXT = re.compile(r"(?<![\w/.-])([\w./-]+\.[A-Za-z0-9]+):(\d+)(?:-(\d+))?")
+# 文字中引用的 `文件:行号`：文件名带扩展名，前面不是路径字符。路径只认 ASCII：中文叙述里常紧挨着写位置
+# (「该文章因此在collect/ingest.py:126」)，按 Unicode 的 \w 会把前面的中文一起截进路径
+IN_TEXT = re.compile(r"(?<![\w/.-])([\w./-]+\.[A-Za-z0-9]+):(\d+)(?:-(\d+))?", re.ASCII)
 # 网址：其中的主机、端口与路径都不是代码位置。只认 ASCII，到空白、中文标点、括号、引号、逗号为止，紧挨着网址写的
 # 代码位置照常认
 URL_TAIL = r"[\w\-.~:/?#\[\]@!$&*+=%]*"
@@ -36,6 +37,7 @@ URL = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://" + URL_TAIL, re.ASCII)
 BARE_URL = re.compile(r"(?<![\w./-])(?://)?(?:(?:\d{1,3}(?:\.\d{1,3}){3}|localhost):\d+"
                       r"|[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*:\d+(?=/))" + URL_TAIL, re.ASCII | re.IGNORECASE)
 WHOLE = re.compile(r"([^:\s][^:]*):(\d+)(?:-(\d+))?")
+PATH_ONLY = re.compile(r"[\w./@+()\[\]-]+", re.ASCII)  # 整段当作位置时文件部分只能是路径字符(含 `[id].js` 这类路由文件)
 LEADING = re.compile(r"([^:\s（(][^:\s（(]*:\d+(?:-\d+)?)`?(?:\s|（|\(|$)")
 SKIPPED_DIRECTORIES = frozenset({".git", "node_modules"})
 FILE_KEY = "file"
@@ -282,9 +284,10 @@ def values_at(value: Any, path: str) -> list[tuple[str, Any]]:
 
 
 def _whole(snapshot: Snapshot, text: str) -> str | None:
-    """整个字符串是一个位置时补全后的值；不是位置(文件部分含空白，如「见 a.py:3」是文字)时为 None。"""
+    """整个字符串是一个位置时补全后的值；不是位置(文件部分含空白或非 ASCII 字符，如「见 a.py:3」「继而在a.py:3」是
+    文字)时为 None，交给 _in_text 从文字里认位置。"""
     match = WHOLE.fullmatch(text)
-    if match is None or re.search(r"\s", match.group(1)) or ("/" not in text and "." not in match.group(1)):
+    if match is None or not PATH_ONLY.fullmatch(match.group(1)) or ("/" not in text and "." not in match.group(1)):
         return None
     resolved = snapshot.resolve(match.group(1))
     return text if resolved is None else resolved + text[match.end(1):]

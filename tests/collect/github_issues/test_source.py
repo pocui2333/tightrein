@@ -90,6 +90,7 @@ def test_paths_inside_urls_are_not_taken_as_the_location():
     bare = "代理 127.0.0.1:8118/src/app/main.py:3、proxy.example.com:3128/src/app/main.py:4 报错"  # 不带协议头
     assert source.location_in(bare) is None
     assert source.location_in(bare + "，见 src/app/main.py:120") == "src/app/main.py:120"
+    assert source.location_in("点保存后在src/app/main.py:120报错") == "src/app/main.py:120"  # 紧挨着中文
 
 
 def test_github_failures_fail_the_source_and_disabled_sync_skips_it(source_runtime):

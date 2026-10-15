@@ -35,8 +35,9 @@ REPORT, REQUEST = "report", "request"
 GROUP_KEY = "github-issue:{number}"
 NOT_ENABLED = "GitHub Issue 同步没有启用(接入清单 release.github_issues)，或 origin 不是 GitHub 仓库"
 NOTHING_NEW = "没有新的打开的 Issue"
-# 正文中的代码位置：至少带一层目录的 `路径:行号`，前面不能紧跟路径字符；网址里的由 locations_in 排除
-LOCATION = re.compile(r"(?<![\w/.\-])((?:[\w.\-]+/)+[\w.\-]+\.[A-Za-z0-9]+):(\d+)\b")
+# 正文中的代码位置：至少带一层目录的 `路径:行号`，前面不能紧跟路径字符；网址里的由 locations_in 排除。路径只认
+# ASCII，紧挨着写在中文后面的也能认出(见 assess/checks.IN_TEXT)
+LOCATION = re.compile(r"(?<![\w/.\-])((?:[\w.\-]+/)+[\w.\-]+\.[A-Za-z0-9]+):(\d+)\b", re.ASCII)
 
 
 def collect(runtime: Runtime) -> SourceResult:
