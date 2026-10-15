@@ -59,15 +59,22 @@ UNTRACKED = "?"
 # Git.state 能观察的前置条件：分支、HEAD、相对 base 的改动哈希、远程主干的 commit
 STATE_KEYS = ("branch", "head", "diffHash", "originMain")
 _BLAME_HEADER = re.compile(r"^([0-9a-f]{40}) (\d+) (\d+)(?: (\d+))?$")
-# 推送失败的分类(_push_failure)：引用摘要中的原因来自远程(GitHub)，错误输出中 git 自己的文字因 LC_ALL=C 为英文
-_DENIED = re.compile(r"declined|denied|protected branch|returned error: 40[13]|\bhttp 40[13]\b|authentication failed"
-                     r"|could not read username", re.IGNORECASE)
+# 推送失败的分类(_push_failure)：引用摘要与 `remote:` 行中的原因来自远程(GitHub 或 git 的 receive-pack)，错误输出中
+# git 自己的文字因 LC_ALL=C 为英文。GitHub 的服务器错误有时摘要只给 `(failure)`，原因在 `remote:` 行
+# (`fatal error in commit_refs`)；远程更新引用时锁不住(`cannot lock ref`，多是同时有别的推送)、解包失败(`unpacker
+# error`)也是远程那边的事，重推可能就成功(别人先推了的，重推时成为非快进)
+_DENIED = re.compile(r"declined|denied|protected branch|refusing to allow|insufficient permission"
+                     r"|returned error: 40[13]|\bhttp 40[13]\b|authentication failed|could not read username",
+                     re.IGNORECASE)
 _CLIENT_ERROR = re.compile(r"returned error: 4\d\d|\bhttp 4\d\d\b", re.IGNORECASE)
 _TRANSIENT = re.compile(r"internal server error|bad gateway|service unavailable|gateway time-?out"
-                        r"|returned error: 5\d\d|\bhttp 5\d\d\b|try again|temporar|rpc failed|early eof"
+                        r"|returned error: 5\d\d|\bhttp 5\d\d\b|try again|temporarily unavailable"
+                        r"|temporary failure|\(failure\)|fatal error in commit_refs|cannot lock ref|failed to lock"
+                        r"|failed to update ref|unpacker error|rpc failed|early eof"
                         r"|unexpected disconnect|hung up unexpectedly|connection (?:was )?reset|connection refused"
                         r"|timed out|could not resolve host|failed to connect|ssl_read|gnutls"
                         r"|failed to report status", re.IGNORECASE)
+_NOT_ALLOWED = "分支保护、仓库规则或权限不允许这次推送"
 STEP_LOG_DIR = "vcs"
 # 当前写操作的命令输出存放处：(原始输出目录, 相对目录)；由 once 设置、launch 写入。用 ContextVar 而不是 Git 的属性：
 # 操作中经 Git.at 得到的另一个 Git、同一操作里的 gh 命令也记在同一处，并发的线程互不干扰。
@@ -122,7 +129,9 @@ class PushRejected(GitError):
 
 
 class PushDenied(GitError):
-    """远程以非临时的原因拒绝推送(分支保护、仓库规则、钩子、权限)：同步主干与重试都没用，要人处理。"""
+    """远程以非快进以外、又不像临时错误的原因拒绝推送：同步主干与重试都没用，要人处理。消息写明是分支保护、仓库规则或
+    权限不允许(钩子拒绝、403、缺 `workflow` 权限等)，还是认不出的原因(如 `(shallow update not allowed)`，附错误输出)；
+    认不出的不说成权限问题。"""
 
     def __init__(self, message: str, *, rejected: Sequence[str], argv: Sequence[str] = (),
                  exit_code: int | None = None, stderr: str = "") -> None:
@@ -704,7 +713,8 @@ class Git:
     def push(self, *, scope: WriteScope, expected: Mapping[str, str | None] | None = None) -> str:
         """`push --porcelain -u origin <当前分支>`，绝不强推；返回推送的 commit。失败按 _push_failure 分类：远程服务器
         或网络的临时错误按 limits.retry 退避重试(不强推，重做安全)，次数用完抛 TransientError；非快进抛 PushRejected，
-        分支保护或权限抛 PushDenied，都不重试。重试在幂等键之内：做成才记完成，最后仍失败则删键，下次重来。"""
+        其余远程拒绝(分支保护、权限或认不出的原因)抛 PushDenied，都不重试。重试在幂等键之内：做成才记完成，最后仍失败
+        则删键，下次重来。"""
         branch = self._refuse_main()
         commit = self.head().commit or ""
 
@@ -781,9 +791,11 @@ def _file_mode(path: Path) -> str:
 
 
 def _push_failure(argv: Sequence[str], outcome: Outcome, redact: Callable[[str], str]) -> GitError:
-    """推送失败(退出码非 0)的分类。有 `!` 的引用时按摘要：`[rejected]` 为非快进；`[remote rejected]` 等远程给的原因
-    像临时错误(如 GitHub 的 `(Internal Server Error)`)的可以重试，其余(钩子拒绝、分支保护、权限)要人处理。没有时看
-    错误输出：权限不足要人处理，HTTP 4xx 以外的服务器与网络错误可以重试，其余照退出码。"""
+    """推送失败(退出码非 0)的分类。有 `!` 的引用时：摘要 `[rejected]` 为非快进；`[remote rejected]` 等看远程给的原因
+    (摘要与错误输出中 `remote:` 开头的行，引用名与仓库地址不算)：像分支保护、仓库规则或权限的要人处理；像远程服务器
+    的临时错误的(`(Internal Server Error)`、`(failure)` 加 `remote: fatal error in commit_refs`、`(cannot lock ref …)`、
+    `(unpacker error)` 等)可以重试；都不像的也要人处理，消息写明认不出原因并附错误输出，不说成权限问题。没有 `!` 的
+    引用时看错误输出：权限不足要人处理，HTTP 4xx 以外的服务器与网络错误可以重试，其余照退出码。"""
     stderr = redact(outcome.stderr_tail.strip())
     refused = _refused_refs(outcome.stdout)
     behind = tuple(ref for ref, summary in refused if summary.startswith("[rejected]"))
@@ -792,12 +804,19 @@ def _push_failure(argv: Sequence[str], outcome: Outcome, redact: Callable[[str],
                             exit_code=outcome.exit_code, stderr=stderr)
     if refused:
         detail = redact("；".join(f"{ref} {summary}" for ref, summary in refused))
-        if all(_TRANSIENT.search(summary) and not _DENIED.search(summary) for _, summary in refused):
+        refs = tuple(ref for ref, _ in refused)
+        said = "\n".join([*(summary for _, summary in refused),
+                          *(line for line in stderr.splitlines() if line.startswith("remote:"))])
+        if _DENIED.search(said):
+            return PushDenied(f"远程拒绝推送 {detail}：{_NOT_ALLOWED}", rejected=refs, argv=argv,
+                              exit_code=outcome.exit_code, stderr=stderr)
+        if _TRANSIENT.search(said) and not _CLIENT_ERROR.search(said):
             return TransientError(detail, argv=argv, exit_code=outcome.exit_code, stderr=stderr)
-        return PushDenied(f"远程拒绝推送 {detail}", rejected=tuple(ref for ref, _ in refused), argv=argv,
+        return PushDenied(f"远程拒绝推送 {detail}：认不出原因(不是非快进，不像分支保护或权限，也不像服务器或网络的临时错误)"
+                          + (f"；错误输出：{stderr}" if stderr else ""), rejected=refs, argv=argv,
                           exit_code=outcome.exit_code, stderr=stderr)
     if _DENIED.search(stderr):
-        return PushDenied(f"远程拒绝推送：{stderr}", rejected=(), argv=argv, exit_code=outcome.exit_code,
+        return PushDenied(f"远程拒绝推送，{_NOT_ALLOWED}：{stderr}", rejected=(), argv=argv, exit_code=outcome.exit_code,
                           stderr=stderr)
     if _TRANSIENT.search(stderr) and not _CLIENT_ERROR.search(stderr):
         return TransientError(stderr, argv=argv, exit_code=outcome.exit_code, stderr=stderr)

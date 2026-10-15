@@ -1,5 +1,5 @@
 """推送：origin/main 有新提交时先同步不推送；待推送的提交以 origin/<分支>(首次为 origin/main)为基准列出；
-没有要推送的不推；分支保护被拒时写明要人处理，不说成要同步。"""
+没有要推送的不推；分支保护被拒时写明要人处理，不说成要同步；认不出原因的拒绝也交人，但不说成权限问题。"""
 
 import pytest
 
@@ -58,3 +58,17 @@ def test_a_protected_branch_needs_a_person_rather_than_a_sync(kit, runtime, repo
         push(runtime, "0007", kit.BRANCH, runtime.git.at(worktree))
     reason = caught.value.reason
     assert "(protected branch hook declined)" in reason and "需要人处理" in reason and "先同步" not in reason
+    assert "分支保护、仓库规则或权限不允许这次推送" in reason
+
+
+def test_a_rejection_with_an_unknown_reason_needs_a_person_without_blaming_permissions(kit, runtime, repos, worktree):
+    repos.commit(worktree, "fix: page", {"src/order.py": "PAGE = 0\n"})
+    ref = f"refs/heads/{kit.BRANCH}"
+    runtime.runner.replies[PUSH] = [Outcome(
+        1, f"To https://github.com/o/r.git\n!\t{ref}:{ref}\t[remote rejected] (shallow update not allowed)\nDone\n",
+        "error: failed to push some refs to 'https://github.com/o/r.git'\n", 1, None, None)]
+    with pytest.raises(ReleaseBlocked) as caught:
+        push(runtime, "0007", kit.BRANCH, runtime.git.at(worktree))
+    reason = caught.value.reason
+    assert "(shallow update not allowed)" in reason and "认不出原因" in reason and "需要人处理" in reason
+    assert "权限不允许" not in reason and "先同步" not in reason

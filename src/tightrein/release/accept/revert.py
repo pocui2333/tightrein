@@ -3,7 +3,9 @@
 - 撤销在单独的临时 worktree(`revert-<编号>`)与新分支上做，从 fetch 后的 origin/main 建，不碰修复 worktree；
 - `git revert` 合并提交(以 merge 方式合并的有两个父提交，加 `-m 1` 取主干一侧)，推送并开 PR，但不合并，交人决定；
 - 按「Issue + 合并提交」幂等：同一回归只提一次；又一次修复尝试回归时撤销分支带上次数(建 worktree、撤销、推送、开 PR 各自经 protocol/git 的幂等键)；
-- PR 开好后删除临时 worktree(干净才删)，撤销分支留在远程等人处理。
+- PR 开好后删除临时 worktree(干净才删)，撤销分支留在远程等人处理；
+- 推送撤销分支遇到远程服务器或网络的临时错误、退避重试后仍失败(protocol/git 的 TransientError)原样抛给 release.py：
+  撤销 PR 还没提，Issue 留在验收中，下次运行再提(已做的建分支、撤销不重复)。
 """
 
 from __future__ import annotations

@@ -3,8 +3,9 @@
 合并停在进行中时先处理再提交(没解决且退回次数没用完时放弃、退回编码，用户解决了就完成合并、退回自检与审查，次数用完继续等人)；
 同步干净、推送成功后退回次数清零；推送前要推送的改动与交付时审查过的不同(人自己提交了合并、交付之后另有提交)时退回自检与
 审查，合并的 main 只改了别的文件时照常推送；
-验收通过转为完成、写交付文档并清理本地；回归时先提撤销 PR(只提一次)、清理修复目录，再退回待修并开下一次修复尝试；不在发布中的不碰；前置条件过期时
-留在发布中、下次重新观察；推送一直遇到服务器错误时留在发布中、下次再推送；接入清单不启用验收时部署即完成、不观察。"""
+验收通过转为完成、写交付文档并清理本地；回归时先提撤销 PR(只提一次)、清理修复目录，再退回待修并开下一次修复尝试；推送撤销分支一直
+遇到服务器错误时留在验收中、这一步记为失败、下次再提；不在发布中的不碰；前置条件过期时留在发布中、下次重新观察；推送一直遇到服务器错误时
+留在发布中、下次再推送；接入清单不启用验收时部署即完成、不观察。"""
 
 import json
 from datetime import timedelta
@@ -13,7 +14,7 @@ import pytest
 
 from tightrein.assess.issue import transitions
 from tightrein.onboard.setup import ModuleStatus
-from tightrein.protocol.git import Stale
+from tightrein.protocol.git import Stale, TransientError
 from tightrein.protocol.handoff import Status
 from tightrein.protocol.process import Outcome
 from tightrein.release import deploy
@@ -333,6 +334,39 @@ def test_a_regression_opens_one_revert_then_goes_back_to_todo(kit, github_runtim
     (first,) = issue.extra["attempts"]
     assert first["release"]["revert"]["pr"] == 190 and first["mergeCommit"] == "m" * 40
     assert first["release"]["cleanup"] is not None  # 这一次的修复目录已清理(或写明为什么保留)
+
+
+def test_a_revert_push_that_keeps_meeting_server_errors_stays_in_acceptance_as_a_failure(
+        kit, github_runtime, repos, worktree, documents_written, monkeypatch, simple_transitions):
+    """验收中判定回归、推送撤销分支退避重试后仍遇到服务器错误：撤销 PR 还没提，Issue 留在验收中(不说成留在发布中)，
+    这一步记为失败(不当成进展清零对象熔断计数)，下次运行再提撤销 PR、退回待修。"""
+    _problem(github_runtime, kit, "P-0001", "collect.platform_errors")
+    _accepting(kit, github_runtime, worktree, ["P-0001"], merged_at="2026-10-08T01:00:00Z")
+    occurrences.add(github_runtime.conn, occurrences.Occurrence("P-0001", kit.NOW + timedelta(minutes=5),
+                                                                "collect.platform_errors"), github_runtime.clock)
+    github_runtime.clock.advance(timedelta(minutes=10))
+    reverts = []
+
+    def revert(runtime, issue, merge_commit, reason, conventions, github):
+        reverts.append(merge_commit)
+        if len(reverts) == 1:
+            raise TransientError("推送 hotfix/7-revert 遇到远程服务器或网络的临时错误，共试 3 次仍失败："
+                                 "refs/heads/hotfix/7-revert:refs/heads/hotfix/7-revert "
+                                 "[remote rejected] (Internal Server Error)")
+        return Reverted("hotfix/7-revert", 190, "https://github.com/cty/sample/pull/190")
+
+    monkeypatch.setattr(flow.revert, "revert", revert)
+    outcome = release(github_runtime, "0007")
+    assert (outcome.point, outcome.status, outcome.next_point) == ("release.accept", Status.FAILED, "release.accept")
+    assert "临时错误" in outcome.summary and "撤销 PR 还没提，Issue 留在验收中" in outcome.summary
+    assert "发布中" not in outcome.summary
+    issue = issues.get(github_runtime.conn, "0007")
+    assert issue.status == "accepting" and load_state(issue).revert is None
+    assert documents_written == [] and simple_transitions == []
+    again = release(github_runtime, "0007")  # 服务器恢复：下次运行提撤销 PR，再退回待修
+    assert again.status == Status.FAILED and "pull/190" in again.summary
+    assert reverts == ["m" * 40, "m" * 40] and simple_transitions == [("0007", "regress", None)]
+    assert issues.get(github_runtime.conn, "0007").status == "todo"
 
 
 def test_a_failing_read_only_query_skips_only_that_issue_with_the_reason(kit, github_runtime, worktree,

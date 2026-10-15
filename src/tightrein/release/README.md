@@ -23,7 +23,7 @@ PR 已被人合并(含 GitHub 原生自动合并)的转为验收中；被关闭�
 
 提交、同步、推送、提 PR 在做决定时记下观察到的状态(`Git.state` 的分支、HEAD、改动哈希、origin/main，`GitHub.pull_state` 的打开的 PR)，作为 `expected` 交给写操作；执行前重新观察有不同(protocol/git 的 `Stale`)就不执行，记一条事件，Issue 留在发布中，下次运行重新观察、重新决定。
 
-推送被拒分三种(protocol/git)：非快进时先同步 main，转为待决定；分支保护、仓库规则或权限不允许时写明要人处理，转为待决定；远程服务器或网络的临时错误(如 GitHub 的 `[remote rejected] (Internal Server Error)`)由 `Git.push` 退避重试，次数用完仍失败也不交人，记一条事件，Issue 留在发布中，下次运行再推送。
+推送被拒分三种(protocol/git)：非快进时先同步 main，转为待决定；其余远程拒绝转为待决定，原因写明是分支保护、仓库规则或权限不允许，还是认不出的原因(附错误输出，不说成权限问题)；远程服务器或网络的临时错误(如 GitHub 的 `[remote rejected] (Internal Server Error)`、`(failure)` 加 `fatal error in commit_refs`、`(cannot lock ref …)`)由 `Git.push` 退避重试，次数用完仍失败也不交人，记一条事件，Issue 留在发布中，下次运行再推送。验收中回归时推送撤销分支遇到同样的临时错误：撤销 PR 还没提，记一条事件，Issue 留在验收中，这一步记为失败(一直推不上去时由对象熔断交给人)，下次运行再提。
 
 `queue(runtime) -> list[StepOutcome]`(`queue.py`)：发布中的 Issue 按严重度、再按放行时间排队，依次调用 `release`；合并一个接着下一个，后面的由 `release` 先合并最新的 main；转为待决定的移出队列，继续后面的；遇到人工合并关卡、或到达时间上限即停。仓库开了 GitHub 自带的合并队列(或主分支要求必需检查)时，`release` 对每个 PR 只做到开启 GitHub 原生自动合并就返回，由 GitHub 排队。
 

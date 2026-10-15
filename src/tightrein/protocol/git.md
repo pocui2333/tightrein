@@ -65,8 +65,11 @@ git 与 gh 的读写、worktree、分支提交与 PR 的格式。程序在同目
 - 冲突时合并停在进行中，抛 `MergeConflict` 列出冲突文件，不自行取舍；调用方可用 `merge_abort`(`merge --abort`)放弃这次合并，回到合并前，已有提交不动。合并后自动合并并已暂存的文件又被改过时 `merge --abort` 会失败(Entry not uptodate)，这时用 `merge_quit`(`merge --quit`，只丢合并状态、不动文件)再另行恢复文件；`conflict_stages`(`ls-files --unmerged`)给出每个冲突文件在暂存区占的阶段，缺了哪一侧就是那一侧删了或改了名，这类冲突与二进制文件一样没有冲突标记；`keep_side` 把冲突文件写成一侧的版本；`move_back` 把当前分支退回它的某个祖先(只动分支，检查点恢复用)；
 - 推送绝不强推。git 对非快进、远程拒绝与服务器出错给的退出码相同，失败按 `git push --porcelain` 的引用标记(`!` 为被拒)与摘要、再按错误输出分类(git 自己的文字因 `LC_ALL=C` 为英文)：
   - 摘要 `[rejected]`(non-fast-forward、fetch first)：远程分支有本地没有的提交，`PushRejected`，先同步主干；
-  - 远程服务器或网络的临时错误：`[remote rejected]` 的原因像 `(Internal Server Error)`，或错误输出有 HTTP 5xx、`RPC failed`、`early EOF`、连接重置或超时、`Could not resolve host` 等(HTTP 4xx 除外)：按 `limits.retry` 退避重试，次数用完抛 `TransientError`(`NetworkError` 的子类)；重试在幂等键之内，做成才记完成，最后仍失败则删键；
-  - 其余远程拒绝(钩子拒绝、分支保护、仓库规则)与权限不足(403、`Permission denied`)：`PushDenied`，同步与重试都没用，要人处理；
+  - `[remote rejected]` 等别的摘要看远程给的原因(摘要与错误输出中 `remote:` 开头的行，引用名与仓库地址不算)，先认拒绝、再认临时错误：
+    - 钩子拒绝、分支保护、仓库规则、权限不足(`declined`、`denied`、缺 `workflow` 权限的 `refusing to allow …`、403)：`PushDenied`，消息写明分支保护、仓库规则或权限不允许，同步与重试都没用，要人处理；
+    - 远程服务器的临时错误：`(Internal Server Error)`；`(failure)` 加 `remote: fatal error in commit_refs`(GitHub 的另一种服务器错误)；`(cannot lock ref …)`(远程更新引用时锁不住，多是同时有别的推送；别人先推了的，重推时成为非快进)；`(unpacker error)`：按 `limits.retry` 退避重试，次数用完抛 `TransientError`(`NetworkError` 的子类)；重试在幂等键之内，做成才记完成，最后仍失败则删键；
+    - 都认不出的(如 `(shallow update not allowed)`)：也是 `PushDenied`，但消息写明认不出原因并附错误输出，不说成权限问题；
+  - 没有 `!` 的引用时看错误输出：权限不足(403、`Permission denied`)为 `PushDenied`；HTTP 5xx、`RPC failed`、`early EOF`、连接重置或超时、`Could not resolve host` 等(HTTP 4xx 除外)为临时错误，同样退避重试；
   - 都不是的照退出码(128 为 `NetworkError`，其余 `CommandFailed`)，不重试；
 - 合并 PR 用 `gh pr merge --match-head-commit <判断时的 head> --delete-branch`：判断后有人再推送就合并失败而不是合进未审查的提交；带 `--repo` 时 gh 只删远程分支，本地分支与 worktree 由清理负责；
 - 必需检查按 `gh pr checks --required --json` 每项的 bucket 判断，退出码不反映结果；免费账号的私有仓库查规则集返回 403，视为没有规则集。

@@ -44,6 +44,26 @@ FORBIDDEN = (128, "", ("remote: Permission to o/r.git denied to cty.\n"
                        "fatal: unable to access 'https://github.com/o/r.git/': The requested URL returned error: 403\n"))
 
 
+def refused(reason, stderr=""):
+    """远程以 reason 拒绝推送 cty/fix-order(porcelain 摘要 `[remote rejected] (reason)`)；stderr 为错误输出中
+    `error: failed to push` 之前的行。"""
+    ref = "refs/heads/cty/fix-order"
+    return (1, f"To https://github.com/o/r.git\n!\t{ref}:{ref}\t[remote rejected] ({reason})\nDone\n",
+            f"{stderr}error: failed to push some refs to 'https://github.com/o/r.git'\n")
+
+
+# GitHub 的另一种服务器错误：摘要只给 (failure)，原因在 remote: 行
+COMMIT_REFS = refused("failure", "remote: fatal error in commit_refs        \n")
+LOCKED = refused(f"cannot lock ref 'refs/heads/cty/fix-order': is at {'1' * 40} but expected {'2' * 40}")
+UNPACK = refused("unpacker error", "error: remote unpack failed: index-pack abnormal exit\n")
+UNPACK_DENIED = refused("unpacker error", (
+    "remote: error: insufficient permission for adding an object to repository database ./objects\n"
+    "remote: fatal: failed to write object\nerror: remote unpack failed: unpack-objects abnormal exit\n"))
+WORKFLOW_SCOPE = refused("refusing to allow a Personal Access Token to create or update workflow "
+                         "`.github/workflows/ci.yml` without `workflow` scope")
+SHALLOW = refused("shallow update not allowed")
+
+
 def scripted_git(tmp_path, settings, scripted, *outcomes):
     sleeps = []
     runner = scripted(*outcomes)
@@ -364,11 +384,13 @@ def test_push_and_rejected_pushes(fix_branch, scope):
     assert pushes(git) == before + 1  # 非快进不重试
 
 
-def test_a_push_that_github_answers_with_a_server_error_is_retried(fix_branch, scope):
-    """GitHub 偶发 `[remote rejected] (Internal Server Error)`：不是非快进，退避后重推；不强推的推送重做是安全的。"""
+@pytest.mark.parametrize("reply", [SERVER_ERROR, COMMIT_REFS], ids=["internal-server-error", "commit-refs"])
+def test_a_push_that_github_answers_with_a_server_error_is_retried(fix_branch, scope, reply):
+    """GitHub 偶发 `[remote rejected] (Internal Server Error)` 或 `(failure)` 加 `fatal error in commit_refs`：不是
+    非快进，退避后重推；不强推的推送重做是安全的。"""
     repos, origin, git = fix_branch
     commit = repos.commit(git.repo, "fix: one", {"a.txt": "a\n"})
-    flaky, sleeps = failing_pushes(git, SERVER_ERROR, 2)
+    flaky, sleeps = failing_pushes(git, reply, 2)
     assert flaky.push(scope=scope) == commit
     assert repos.git(origin, "rev-parse", "refs/heads/cty/fix-order").strip() == commit
     assert pushes(git) == 3 and len(sleeps) == 2 and 0 <= sleeps[0] <= 1.0 and 0 <= sleeps[1] <= 2.0
@@ -420,16 +442,40 @@ def test_protected_branches_and_missing_permissions_are_denied_without_retrying(
               "fatal: the remote end hung up unexpectedly\n")), CommandFailed),
     ((128, "", ("fatal: '/tmp/unreachable.git' does not appear to be a git repository\n"
                 "fatal: Could not read from remote repository.\n")), NetworkError),
+    (COMMIT_REFS, TransientError),
+    (LOCKED, TransientError),
+    (UNPACK, TransientError),
     (PROTECTED, PushDenied),
     (FORBIDDEN, PushDenied),
+    (UNPACK_DENIED, PushDenied),
+    (WORKFLOW_SCOPE, PushDenied),
+    (SHALLOW, PushDenied),
     ((1, "To /tmp/o.git\n!\tHEAD:refs/heads/x\t[rejected] (fetch first)\nDone\n", "error: failed to push\n"),
      PushRejected),
-], ids=["github-500", "dns", "http-502", "reset", "connect", "http-413", "no-repo", "protected", "forbidden",
-        "fetch-first"])
+], ids=["github-500", "dns", "http-502", "reset", "connect", "http-413", "no-repo", "commit-refs", "cannot-lock-ref",
+        "unpacker-error", "protected", "forbidden", "unpack-permission", "workflow-scope", "unknown", "fetch-first"])
 def test_push_failures_are_classified_by_the_porcelain_summary_and_the_error_output(reply, kind):
     found = _push_failure(("git", "push", "origin", "x"), Outcome(reply[0], reply[1], reply[2], 1, None, None),
                           lambda text: text)
     assert type(found) is kind
+
+
+@pytest.mark.parametrize("reply", [PROTECTED, FORBIDDEN, UNPACK_DENIED, WORKFLOW_SCOPE],
+                         ids=["protected", "forbidden", "unpack-permission", "workflow-scope"])
+def test_rules_and_permissions_are_named_as_the_reason(reply):
+    found = _push_failure(("git", "push", "origin", "x"), Outcome(reply[0], reply[1], reply[2], 1, None, None),
+                          lambda text: text)
+    assert "分支保护、仓库规则或权限不允许这次推送" in str(found) and "认不出" not in str(found)
+
+
+def test_a_rejection_whose_reason_is_not_recognised_is_not_called_a_permission_problem():
+    """认不出的远程拒绝也交人，但写明认不出原因、附错误输出，不说成分支保护或权限不允许。"""
+    found = _push_failure(("git", "push", "origin", "x"), Outcome(SHALLOW[0], SHALLOW[1], SHALLOW[2], 1, None, None),
+                          lambda text: text)
+    message = str(found)
+    assert "[remote rejected] (shallow update not allowed)" in message and "认不出原因" in message
+    assert "错误输出：error: failed to push some refs" in message and "权限不允许" not in message
+    assert isinstance(found, PushDenied) and found.rejected == ("refs/heads/cty/fix-order:refs/heads/cty/fix-order",)
 
 
 def test_an_interrupted_push_is_reconciled_against_the_remote(fix_branch, scope, interrupt):

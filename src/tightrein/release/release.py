@@ -9,12 +9,14 @@
   PR 已被人合并或关闭的按实际状态处理；
 - 验收中(accepting)：找包含合并提交的部署，按问题来源确认(Issue 正文中只能在部署后确认的验收标准在这里按指纹对应到
   确认结论，写进交接的 criteria)；全部通过转为完成，写交付文档，清理本地；回归时先提
-  撤销 PR，再退回待修；接入清单不启用 release.accept 时部署完成即完成，不观察；
+  撤销 PR，再退回待修；接入清单不启用 release.accept 时部署完成即完成，不观察。推送撤销分支遇到远程服务器或网络的
+  临时错误、退避重试后仍失败(protocol/git 的 TransientError)时撤销 PR 还没提：记事件，Issue 留在验收中，这一步记为
+  失败(连续失败到对象熔断即交给人)，下次运行再提；
 - 停下要人处理的(退回编码次数用完后的冲突、检查未通过、交付与工作区不符、分支名不合规)写待决定文档，Issue 转为待决定；
 - 提交、同步、推送、提 PR 执行前发现前置条件已变(protocol/git 的 Stale：做决定之后仓库或 PR 被别人动过)：不执行旧决定，
   记一条事件，Issue 留在发布中，下次运行重新观察、重新决定(这不是要人处理的事)；
-- 推送遇到远程服务器或网络的临时错误、退避重试后仍失败(protocol/git 的 TransientError)：同样记事件、留在发布中，
-  下次运行再推送。
+- 推送修复分支遇到远程服务器或网络的临时错误、退避重试后仍失败(protocol/git 的 TransientError)：同样记事件、留在
+  发布中，下次运行再推送。
 每一步各落盘一份 handoff.json；状态转换都经 assess/issue/transitions。
 """
 
@@ -81,8 +83,6 @@ def release(runtime: Runtime, issue_id: str) -> StepOutcome:
         return _accept(runtime, issue)
     except Stale as error:
         return _stale(runtime, issue_id, error)
-    except TransientError as error:
-        return _retry_later(runtime, issue_id, error)
     except (ReleaseBlocked, DeliveryMissing) as error:
         blocked = error if isinstance(error, ReleaseBlocked) else ReleaseBlocked(POINT_PR, str(error))
         return _hold(runtime, issues.get(runtime.conn, issue_id) or issue, blocked)
@@ -123,7 +123,10 @@ def _release(runtime: Runtime, issue: Issue) -> StepOutcome:
     unreviewed = _unreviewed(worktree, found)
     if unreviewed is not None:
         return _changed_after_delivery(runtime, issue, state, found, unreviewed, worktree, started)
-    pushed = push.push(runtime, issue.id, found.branch, worktree)
+    try:
+        pushed = push.push(runtime, issue.id, found.branch, worktree)
+    except TransientError as error:
+        return _retry_later(runtime, issue.id, error)
     state.pushed = pushed.commit or state.pushed or _remote_head(worktree, found.branch)
     state.conflict_returns = 0  # 同步没有冲突、推送成功：这一段冲突已解决，之后再冲突重新计退回次数
     pull = pr.open_pull(runtime, issue, found, conventions, github)
@@ -343,8 +346,11 @@ def _regressed(runtime: Runtime, issue: Issue, state: ReleaseState, reason: str)
     退回待修即开下一次修复尝试(assess/issue/attempts)：这一次的修复分支已合并，本地修复目录清理掉(与验收通过时
     一样不删未合并的、不删有改动的)；PR、合并提交与发布进度由状态转换留档后清空，下一次重新提交、重新提 PR。"""
     if state.revert is None:
-        reverted = revert.revert(runtime, issue, issue.merge_commit or "", reason,
-                                 resolve(runtime.settings, runtime.git.repo), _github(runtime))
+        try:
+            reverted = revert.revert(runtime, issue, issue.merge_commit or "", reason,
+                                     resolve(runtime.settings, runtime.git.repo), _github(runtime))
+        except TransientError as error:
+            return _revert_later(runtime, issue.id, reason, error)
         state.revert = {"branch": reverted.branch, "pr": reverted.number, "url": reverted.url}
         save_state(runtime, issue, state)
     if state.cleanup is None:
@@ -400,10 +406,18 @@ def _stale(runtime: Runtime, issue_id: str, error: Stale) -> StepOutcome:
 
 
 def _retry_later(runtime: Runtime, issue_id: str, error: TransientError) -> StepOutcome:
-    """推送遇到远程服务器或网络的临时错误、重试后仍失败：不是要人决定的事，记事件，留在发布中，下次运行再推送。"""
+    """推送修复分支遇到远程服务器或网络的临时错误、重试后仍失败：不是要人决定的事，记事件，留在发布中，下次运行再推送。"""
     summary = f"{error}；Issue 留在发布中，下次运行再推送"
     emit(runtime, issue_id, POINT_PR, "effect", summary)
     return StepOutcome(issue_id, POINT_PR, Status.PASSED, summary, POINT_PR)
+
+
+def _revert_later(runtime: Runtime, issue_id: str, reason: str, error: TransientError) -> StepOutcome:
+    """验收中判定回归、推送撤销分支遇到临时错误：撤销 PR 还没提，Issue 留在验收中，下次运行再提(已做成的建分支、
+    撤销有幂等键，不重复做，只重来推送)。这一步记为失败：一直推不上去时由对象熔断交给人，不当成进展清零熔断计数。"""
+    summary = f"回归：{reason}；提撤销 PR 时{error}；撤销 PR 还没提，Issue 留在验收中，下次运行再提"
+    emit(runtime, issue_id, POINT_ACCEPT, "effect", summary)
+    return StepOutcome(issue_id, POINT_ACCEPT, Status.FAILED, summary, POINT_ACCEPT)
 
 
 # 内部函数
